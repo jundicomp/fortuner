@@ -23,7 +23,6 @@ import { PengeluaranPage } from '@/pages/keuangan/PengeluaranPage';
 import { HutangPage } from '@/pages/keuangan/HutangPage';
 import { LaporanPage } from '@/pages/laporan/LaporanPage';
 import { PrinterPage } from '@/pages/desktop/PrinterPage';
-import { PcPage } from '@/pages/desktop/PcPage';
 import { AboutPage } from '@/pages/AboutPage';
 import { StokPage } from '@/pages/stok/StokPage';
 import { PembelianPage } from '@/pages/stok/PembelianPage';
@@ -61,7 +60,6 @@ const PAGES: Record<string, () => ReactElement | null> = {
   '/pengaturan/umum': GeneralPage,
   '/pengaturan/log': LogPage,
   '/pengaturan/printer': PrinterPage,
-  '/pengaturan/pc': PcPage,
   '/pengaturan/tentang': AboutPage,
 };
 

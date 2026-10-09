@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { api, IS_DEMO, serverEverOk } from '@/lib/api';
 import { machineInfo, pcReg } from '@/platform/desktop';
 import { Modal } from '@/components/ui/Modal';
-import { ServerForm } from './PcPage';
+import { ServerForm } from './ServerForm';
 
 const STATUS: Record<string, [string, string]> = { menunggu: ['Menunggu persetujuan admin', 'pill-warn'], disetujui: ['Disetujui', 'pill-ok'], dicabut: ['Akses dicabut', 'pill-bad'] };
 

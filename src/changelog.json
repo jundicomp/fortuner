@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.1.1",
+    "tanggal": "2026-10-10",
+    "catatan": [
+      "Halaman Aplikasi PC Ini dan Tentang Aplikasi digabung jadi satu halaman yang lebih ringkas: versi, pembaruan, identitas PC, dan koneksi server."
+    ]
+  },
+  {
     "version": "1.1.0",
     "tanggal": "2026-10-10",
     "catatan": [
