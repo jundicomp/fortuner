@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Download, Info, Lock } from 'lucide-react';
 import { DataTable } from '@/components/table/DataTable';
@@ -169,14 +170,14 @@ function Laba({ r }: { r: Ringkas }) {
   const lk = r.laba_kotor || 0, ops = r.biaya_operasional || 0;
   const tiles = [
     { label: 'Omzet ber-HPP', value: rp(r.omzet_ber_hpp), sub: `cakupan ${String(r.cakupan_hpp ?? 0).replace('.', ',')}% dari omzet`, tint: 'orange' },
-    { label: 'HPP (harga pokok)', value: rp(r.hpp), sub: 'dari harga beli saat nota dibuat', tint: 'purple' },
+    { label: 'HPP (harga pokok)', value: rp(r.hpp), sub: 'bahan dari stok + klik mesin', tint: 'purple' },
     { label: 'Laba kotor', value: rp(lk), sub: `margin ${pct(lk, r.omzet_ber_hpp || 0)}`, ok: lk >= 0, tint: 'green' },
     { label: 'Biaya operasional', value: rp(ops), sub: 'non-bahan & non-aset + kas kecil', tint: 'amber' },
     { label: 'Perkiraan laba bersih', value: rp(lk - ops), sub: 'laba kotor − biaya operasional', ok: lk - ops >= 0, tint: 'teal' },
   ];
   return (
     <section className="mt-4">
-      <h2 className="mb-2 text-base font-bold">Laba</h2>
+      <div className="mb-2 flex items-center justify-between"><h2 className="text-base font-bold">Laba</h2><Link to="/laporan/laba-rugi" className="text-xs font-semibold text-brand">Laba rugi lengkap →</Link></div>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {tiles.map((t) => (
           <div key={t.label} className={`card tint tint-${t.tint} p-4`}>
@@ -187,7 +188,7 @@ function Laba({ r }: { r: Ringkas }) {
         ))}
       </div>
       {(r.cakupan_hpp ?? 0) < 100 && (
-        <p className="mt-2 flex gap-2 text-xs text-warn"><Info size={14} className="shrink-0" />Sebagian omzet berasal dari produk yang belum punya harga beli, jadi laba kotor hanya dihitung dari {String(r.cakupan_hpp).replace('.', ',')}% omzet. Lengkapi lewat Pengeluaran (isi "isi per satuan") atau Master Produk.</p>
+        <p className="mt-2 flex gap-2 text-xs text-warn"><Info size={14} className="shrink-0" />Laba kotor di sini dihitung dari {String(r.cakupan_hpp).replace('.', ',')}% omzet: sisanya item yang belum selesai/dipotong stok atau produk tanpa resep. Isi resep di Master Produk → Resep & HPP.</p>
       )}
     </section>
   );

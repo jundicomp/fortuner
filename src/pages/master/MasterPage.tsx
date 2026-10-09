@@ -11,7 +11,7 @@ import { useAuth } from '@/auth/AuthContext';
 import type { MasterTable } from '@/types';
 
 export interface FieldDef {
-  key: string; label: string; type?: 'text' | 'tel' | 'textarea' | 'select' | 'switch'; required?: boolean; hint?: string;
+  key: string; label: string; type?: 'text' | 'tel' | 'number' | 'textarea' | 'select' | 'switch'; required?: boolean; hint?: string;
   options?: { value: string; label: string }[]; placeholder?: string; full?: boolean;
 }
 
@@ -68,7 +68,7 @@ export function MasterPage<T extends { id: string; aktif: boolean }>({ table, pe
                   ) : f.type === 'textarea' ? (
                     <textarea id={id} className="input min-h-[80px]" value={String(v ?? '')} onChange={(e) => set(f.key, e.target.value)} placeholder={f.placeholder} />
                   ) : (
-                    <input id={id} className="input" type={f.type === 'tel' ? 'tel' : 'text'} inputMode={f.type === 'tel' ? 'tel' : undefined} value={String(v ?? '')} onChange={(e) => set(f.key, e.target.value)} placeholder={f.placeholder} required={f.required} />
+                    <input id={id} className={`input${f.type === 'number' ? ' num text-right' : ''}`} type={f.type === 'tel' ? 'tel' : 'text'} inputMode={f.type === 'tel' ? 'tel' : f.type === 'number' ? 'decimal' : undefined} value={String(v ?? '')} onChange={(e) => set(f.key, e.target.value)} placeholder={f.placeholder} required={f.required} />
                   )}
                 </Field>
               );

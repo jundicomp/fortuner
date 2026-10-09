@@ -2,12 +2,14 @@ import { isDesktop } from '@/platform/desktop';
 import { NavLink, useLocation } from 'react-router-dom';
 import { ChevronDown, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { MENU, type MenuGroup, type MenuItem } from './menu';
+import { ALL_ITEMS, MENU, type MenuGroup, type MenuItem } from './menu';
 import { useAuth } from '@/auth/AuthContext';
 
 interface Props { collapsed: boolean; mobileOpen: boolean; onCloseMobile: () => void; appName: string }
 
-const isActivePath = (path: string, current: string) => (path === '/' ? current === '/' : current.startsWith(path));
+/** Menu yang punya sub-halaman (mis. /laporan dan /laporan/laba-rugi) hanya aktif persis di path-nya sendiri. */
+const exact = (path: string) => path === '/' || ALL_ITEMS.some((i) => i.path !== path && i.path.startsWith(path + '/'));
+const isActivePath = (path: string, current: string) => (exact(path) ? current === path : current.startsWith(path));
 
 /**
  * Sidebar tanpa gulir:
@@ -68,7 +70,7 @@ function Link({ item, narrow, onNavigate, nested }: { item: MenuItem; narrow?: b
   return (
     <NavLink
       to={item.path}
-      end={item.path === '/'}
+      end={exact(item.path)}
       onClick={onNavigate}
       className={({ isActive }) =>
         `${linkBase} ${nested ? 'py-[7px] pl-11 text-[13px]' : 'py-2'} ${isActive ? 'bg-brand text-white' : 'text-white/75 hover:bg-white/10 hover:text-white'} ${narrow ? 'lg:justify-center lg:px-0' : ''}`
@@ -125,7 +127,7 @@ function FlyoutGroup({ group, active, open, onOpen, onClose, onNavigate }: { gro
           <div className="w-56 rounded-xl border border-white/10 bg-side py-2 shadow-2xl">
             <div className="px-4 pb-1.5 pt-0.5 text-[10.5px] font-bold uppercase tracking-[0.08em] text-white/40">{group.label}</div>
             {group.items.map((i) => (
-              <NavLink key={i.path} to={i.path} onClick={() => { onClose(); onNavigate(); }}
+              <NavLink key={i.path} to={i.path} end={exact(i.path)} onClick={() => { onClose(); onNavigate(); }}
                 className={({ isActive }) => `mx-2 flex items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-semibold ${isActive ? 'bg-brand text-white' : 'text-white/75 hover:bg-white/10 hover:text-white'}`}>
                 <i.icon size={17} className="shrink-0" />
                 <span className="truncate">{i.label}</span>

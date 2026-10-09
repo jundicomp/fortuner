@@ -13,6 +13,8 @@ export const MODULES: { key: string; label: string; group: string }[] = [
   { key: 'hutang', label: 'Hutang Supplier', group: 'Keuangan' },
   { key: 'kas', label: 'Kas', group: 'Keuangan' },
   { key: 'mesin', label: 'Mesin & Operator', group: 'Operasional' },
+  { key: 'stok', label: 'Stok bahan & opname', group: 'Operasional' },
+  { key: 'pembelian', label: 'Pembelian bahan', group: 'Operasional' },
   { key: 'master.produk', label: 'Produk & Harga', group: 'Master Data' },
   { key: 'master.harga_beli', label: 'Lihat harga beli', group: 'Master Data' },
   { key: 'master.konsumen', label: 'Konsumen', group: 'Master Data' },
@@ -57,10 +59,12 @@ export function defaultPermissions(role: Role): PermissionMap {
     case 'operator':
       set(['dashboard', 'order'], view);
       set(['produksi', 'mesin'], { lihat: true, tambah: true, ubah: true });
+      set(['stok'], { lihat: true, tambah: true });
       break;
     case 'keuangan':
       set(['dashboard', 'order', 'piutang', 'master.produk', 'master.harga_beli', 'master.supplier'], { lihat: true, ekspor: true });
-      set(['pengeluaran', 'hutang', 'kas', 'laporan'], all);
+      set(['pengeluaran', 'hutang', 'kas', 'laporan', 'pembelian'], all);
+      set(['stok'], { lihat: true, tambah: true, ubah: true, ekspor: true });
       break;
   }
   return p;

@@ -7,6 +7,8 @@ import { useAuth } from '@/auth/AuthContext';
 import { useSettings } from '@/lib/queries';
 import type { Settings } from '@/types';
 
+const bulanIni = (() => { const n = new Date(); return { key: `target_${n.getFullYear()}${String(n.getMonth() + 1).padStart(2, '0')}`, label: n.toLocaleDateString('id-ID', { month: 'long', year: 'numeric' }) }; })();
+
 export function GeneralPage() {
   const { can } = useAuth();
   const qc = useQueryClient();
@@ -38,6 +40,21 @@ export function GeneralPage() {
             <Field label="Awalan nomor nota" hint="Format: AWALAN-KODEPC-BULANTAHUN-URUT, mis. FT-K1-1026-0001."><input {...f('prefix_nota')} maxLength={4} /></Field>
             <Field label="Lama sesi login (jam)" hint="Setelah ini user harus login lagi."><input {...f('sesi_jam')} inputMode="numeric" /></Field>
             <Field label="Batas perangkat aktif" hint="Jumlah maksimal PC/perangkat berstatus Disetujui. Kosongkan untuk tanpa batas."><input {...f('maks_perangkat')} inputMode="numeric" placeholder="tanpa batas" /></Field>
+          </div>
+        </section>
+        <section className="card p-5 lg:col-span-2">
+          <h2 className="mb-4 text-sm font-bold">Stok, HPP & target</h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Field label="Stok bahan dipotong saat" hint="Stok selalu dipotong juga saat barang diserahkan ke konsumen, sekali per item.">
+              <select id="set-stok_kurang_saat" className="input" disabled={ro} value={d.stok_kurang_saat || 'selesai'} onChange={(e) => setD({ ...d, stok_kurang_saat: e.target.value })}>
+                <option value="selesai">Item selesai diproduksi (dicetak)</option>
+                <option value="bayar">Pembayaran diterima</option>
+              </select>
+            </Field>
+            <Field label="Batas margin tipis (%)" hint="Produk dengan margin di bawah ini ditandai di laporan Margin Produk."><input {...f('margin_min')} inputMode="decimal" /></Field>
+            <Field label={`Target omzet ${bulanIni.label}`} hint="Tampil di dashboard beserta proyeksi akhir bulan. Kosongkan bila tidak dipakai.">
+              <input id="set-target" className="input num" inputMode="numeric" disabled={ro} value={d[bulanIni.key] ? Number(d[bulanIni.key]).toLocaleString('id-ID') : ''} onChange={(e) => setD({ ...d, [bulanIni.key]: e.target.value.replace(/\D/g, '') })} placeholder="mis. 75.000.000" />
+            </Field>
           </div>
         </section>
       </div>

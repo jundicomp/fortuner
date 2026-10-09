@@ -10,6 +10,7 @@ import type { Env, Store } from './store';
 import { MODULES, defaultPermissions } from '../lib/modules';
 import { TIERS, hargaBerlaku, hitungHarga } from '../lib/pricing';
 import type { PermissionMap, Role } from '../types';
+import { makeExt } from './ext';
 
 export const API_VERSION = 1;
 
@@ -207,7 +208,7 @@ function orderDetail(c: Ctx, id: string) {
   const jenis = Object.fromEntries(c.s.all('products').map((x) => [x.id, x.jenis_harga]));
   return {
     order: { ...(o as Row), customer_nama: str((cu as Row).nama), customer_telp: str((cu as Row).telp), customer_tipe: str((cu as Row).tipe), customer_kode: str((cu as Row).kode), cs_nama: str(users[str((o as Row).cs_id)]) },
-    items: c.s.all('order_items').filter((i) => i.order_id === id).map((i) => ({ ...i, harga_beli: canCost ? i.harga_beli : null, mesin_nama: str(machines[str(i.mesin_id)]), jenis_harga: str(jenis[str(i.product_id)]) })),
+    items: c.s.all('order_items').filter((i) => i.order_id === id).map((i) => ({ ...i, harga_beli: canCost ? i.harga_beli : null, hpp_bahan: canCost ? i.hpp_bahan : null, hpp_klik: canCost ? i.hpp_klik : null, mesin_nama: str(machines[str(i.mesin_id)]), jenis_harga: str(jenis[str(i.product_id)]) })),
     payments: c.s.all('payments').filter((x) => x.order_id === id).sort((a, b) => str(a.created_at).localeCompare(str(b.created_at)))
       .map((x) => ({ ...x, method_nama: str(methods[str(x.method_id)]), kasir_nama: str(users[str(x.kasir_id)]) })),
     payment_methods: c.s.all('payment_methods').filter((m) => bool(m.aktif)).map((m) => ({ id: m.id, nama: m.nama, jenis: m.jenis })),
@@ -318,6 +319,7 @@ function createOrder(c: Ctx, p: any) {
     const nominal = Math.min(Math.round(Number(pay.nominal)), total);
     c.s.insert('payments', { id: `${id}-p1`, order_id: id, tanggal, nominal, method_id: (method as Row).id, kasir_id: str(c.user!.id), catatan: 'Bayar saat order', ...stamp(c, true) });
     recalcOrder(c, id);
+    ext.hooks.onPayment(c, id);
   }
   log(c, 'nota_baru', 'orders', id, `Nota ${nomor} ${(cust as Row).nama}: ${items.length} item, total ${total.toLocaleString('id-ID')}${offline ? ' — dibuat offline' : ''}${renomor ? ` — nomor diganti dari ${formatNota(prefix, kodeDev, tanggal, Math.round(Number(p.no_urut)))}` : ''}`);
   return { ...orderDetail(c, id), renomor, nomor_awal: renomor ? formatNota(prefix, kodeDev, tanggal, Math.round(Number(p.no_urut))) : '' };
@@ -518,6 +520,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
           if (rows.some((x) => str(x.kode) === str(r.kode) && x.id !== r.id)) fail('VALIDATION', `Kode konsumen ${r.kode} sudah dipakai.`);
           r.tipe = r.tipe === 'reseller' ? 'reseller' : 'enduser';
         }
+        if (p.table === 'machines' && r.biaya_klik !== undefined) r.biaya_klik = Math.max(0, Number(String(r.biaya_klik).replace(',', '.')) || 0);
         delete r.created_at; delete r.created_by;
         Object.keys(r).forEach((k) => { if (typeof r[k] === 'string') r[k] = r[k].trim(); });
         let row: Row | null;
@@ -777,6 +780,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
         const tanggal = offline && isYmd(str(p.tanggal)) && str(p.tanggal) <= c.env.today() ? str(p.tanggal) : c.env.today();
         c.s.insert('payments', { id: pid, order_id: (o as Row).id, tanggal, nominal, method_id: (method as Row).id, kasir_id: str(c.user!.id), catatan: str(p.catatan), ...stamp(c, true) });
         recalcOrder(c, str((o as Row).id));
+        ext.hooks.onPayment(c, str((o as Row).id));
         log(c, 'bayar', 'orders', str((o as Row).id), `Pembayaran ${nominal.toLocaleString('id-ID')} (${(method as Row).nama}) untuk ${(o as Row).id}${offline ? ' — dibuat offline' : ''}`);
         return orderDetail(c, str((o as Row).id));
       });
@@ -791,6 +795,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
         const ambil = p.diambil !== false;
         if (ambil && Number((o as Row).sisa) > 0 && !str(p.alasan)) fail('NEED_REASON', 'Nota masih ada sisa tagihan. Isi alasan bila tetap diserahkan.');
         c.s.update('orders', 'id', str((o as Row).id), { status_ambil: ambil ? 'diambil' : 'belum', tgl_ambil: ambil ? iso(c.env) : '', ...stamp(c, false) });
+        if (ambil) ext.hooks.onPickup(c, str((o as Row).id));
         log(c, ambil ? 'ambil' : 'batal_ambil', 'orders', str((o as Row).id), `${ambil ? 'Diambil' : 'Batal diambil'}: ${(o as Row).id}`, str(p.alasan));
         return orderDetail(c, str((o as Row).id));
       });
@@ -856,6 +861,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
             status_produksi: to, operator_id: to === 'antrian' ? '' : str(i.operator_id) || str(c.user!.id), selesai_at: to === 'selesai' ? iso(c.env) : '', ...stamp(c, false),
           });
         });
+        if (to === 'selesai') ext.hooks.onProductionDone(c, ids);
         log(c, 'produksi', 'order_items', ids.join(','), `${items.map((i) => i.nama_produk).join(', ')} → ${to}`);
         return { ok: true, count: items.length };
       });
@@ -1035,7 +1041,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
       need(c, 'pengeluaran', 'ubah');
       const r = p.category || {};
       if (!str(r.nama)) fail('VALIDATION', 'Nama kategori wajib diisi.');
-      const jenis = ['bahan', 'operasional', 'gaji', 'aset', 'lain'].includes(r.jenis) ? r.jenis : 'operasional';
+      const jenis = ['bahan', 'operasional', 'gaji', 'aset', 'klik', 'lain'].includes(r.jenis) ? r.jenis : 'operasional';
       return c.s.withLock(() => {
         if (c.s.all('expense_categories').some((x) => str(x.nama).toLowerCase() === str(r.nama).toLowerCase() && x.id !== r.id)) fail('VALIDATION', 'Kategori sudah ada.');
         const data = { nama: str(r.nama), jenis, aktif: r.aktif !== false };
@@ -1108,6 +1114,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
       if (!str(p.alasan)) fail('VALIDATION', 'Isi alasan penghapusan.');
       return c.s.withLock(() => {
         const x = c.s.all('expenses').find((r) => r.id === p.id) || fail('NOT_FOUND', 'Data tidak ditemukan.');
+        if (str((x as Row).purchase_id)) fail('VALIDATION', 'Pengeluaran ini berasal dari Pembelian Bahan. Hapus lewat menu Pembelian Bahan supaya stoknya ikut dikoreksi.');
         if ((x as Row).bill_id) {
           const b = c.s.all('supplier_bills').find((r) => r.id === (x as Row).bill_id);
           if (b && Number(b.terbayar) > 0) fail('VALIDATION', 'Hutang dari pembelian ini sudah dicicil. Hapus tidak diizinkan.');
@@ -1197,7 +1204,13 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
       const costs = c.s.all('cost_history');
       // harga beli per item: snapshot di item, atau harga beli yang berlaku saat tanggal nota (kalau belum ada saat nota dibuat)
       const oDate = Object.fromEntries(orders.map((o) => [o.id, o.tanggal]));
+      // total HPP item: dari stok (bahan + klik) bila stok sudah dipotong, atau harga beli × qty (cara lama)
       const costOf = (i: Row) => {
+        if (str(i.stok_at)) return Number(i.hpp_bahan || 0) + Number(i.hpp_klik || 0);
+        const u = unitCost(i);
+        return u == null ? null : u * Number(i.qty);
+      };
+      const unitCost = (i: Row) => {
         if (i.harga_beli != null && i.harga_beli !== '') return Number(i.harga_beli);
         const t = str(oDate[str(i.order_id)]);
         const r = costs.filter((x) => x.product_id === i.product_id && str(x.berlaku_mulai) <= t).sort((a, b) => str(b.berlaku_mulai).localeCompare(str(a.berlaku_mulai)))[0];
@@ -1212,7 +1225,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
         const r = (perProduk[k] ||= { product_id: k, nama: i.nama_produk, qty: 0, klik: 0, omzet: 0, hpp: 0, hpp_lengkap: true, nota: new Set<string>() });
         r.qty = Number(r.qty) + Number(i.qty); r.klik = Number(r.klik) + Number(i.klik || 0); r.omzet = Number(r.omzet) + Number(i.subtotal);
         (r.nota as Set<string>).add(str(i.order_id));
-        if (cst != null) { const h = cst * Number(i.qty); r.hpp = Number(r.hpp) + h; hpp += h; omzetBerHpp += Number(i.subtotal); } else r.hpp_lengkap = false;
+        if (cst != null) { const h = cst; r.hpp = Number(r.hpp) + h; hpp += h; omzetBerHpp += Number(i.subtotal); } else r.hpp_lengkap = false;
       });
       const groupSum = <T extends string>(rows: Row[], key: (r: Row) => T, val: (r: Row) => number) => {
         const m: Record<string, number> = {}; rows.forEach((r) => { const k = key(r); m[k] = (m[k] || 0) + val(r); }); return m;
@@ -1328,11 +1341,18 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
         const top: Record<string, { nama: string; omzet: number; qty: number }> = {};
         const cur = new Set(orders.filter((o) => str(o.tanggal) >= m0).map((o) => o.id));
         items.forEach((i) => { if (!cur.has(i.order_id)) return; const t = (top[str(i.product_id)] ||= { nama: str(i.nama_produk), omzet: 0, qty: 0 }); t.omzet += Number(i.subtotal); t.qty += Number(i.qty); });
-        bulan = { omzet: sumO(m0, today), omzet_bulan_lalu_sd: sumO(prev0, prevSame), omzet_bulan_lalu: sumO(prev0, prevEnd),
-          top_produk: Object.values(top).sort((a, b) => b.omzet - a.omzet).slice(0, 5) };
+        const omzetBulan = sumO(m0, today);
+        const nDays = Number(addDays(addDays(m0, 32).slice(0, 8) + '01', -1).slice(8, 10));
+        const target = Number(settingsMap(c.s)['target_' + today.slice(0, 7).replace('-', '')]) || 0;
+        bulan = { omzet: omzetBulan, omzet_bulan_lalu_sd: sumO(prev0, prevSame), omzet_bulan_lalu: sumO(prev0, prevEnd),
+          top_produk: Object.values(top).sort((a, b) => b.omzet - a.omzet).slice(0, 5),
+          target, hari_ke: dayN, jumlah_hari: nDays, proyeksi: Math.round((omzetBulan / dayN) * nDays),
+          perlu_per_hari: target && dayN < nDays ? Math.max(0, Math.round((target - omzetBulan) / (nDays - dayN))) : 0,
+          bisa_atur_target: !!c.perms?.['pengaturan.umum']?.ubah };
       }
+      const stok = c.perms?.stok?.lihat ? { menipis: ext.lowStock(c).slice(0, 8), jumlah: ext.lowStock(c).length } : null;
       return {
-        trx, produksi, hutang, bulan,
+        trx, produksi, hutang, bulan, stok,
         produk_aktif: products.filter((p) => bool(p.aktif)).length,
         produk_tanpa_harga: tanpaHarga,
         konsumen: customers.length,
@@ -1351,6 +1371,9 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
       need(c, 'pengaturan.umum', 'ubah');
       const s = p.settings || {};
       if (s.min_qty_banyak !== undefined && !(Number(s.min_qty_banyak) >= 2)) fail('VALIDATION', 'Minimal qty harga banyak harus angka ≥ 2.');
+      if (s.stok_kurang_saat !== undefined && !['selesai', 'bayar'].includes(str(s.stok_kurang_saat))) fail('VALIDATION', 'Pilihan potong stok tidak dikenal.');
+      if (s.margin_min !== undefined && !(Number(s.margin_min) >= 0 && Number(s.margin_min) <= 90)) fail('VALIDATION', 'Margin minimum 0–90%.');
+      Object.keys(s).filter((k) => /^target_\d{6}$/.test(k)).forEach((k) => { if (str(s[k]) !== '' && !(Number(s[k]) >= 0)) fail('VALIDATION', 'Target omzet harus angka.'); });
       if (s.sesi_jam !== undefined && !(Number(s.sesi_jam) >= 1 && Number(s.sesi_jam) <= 72)) fail('VALIDATION', 'Lama sesi 1–72 jam.');
       if (s.maks_perangkat !== undefined && str(s.maks_perangkat) !== '' && !(Number.isInteger(Number(s.maks_perangkat)) && Number(s.maks_perangkat) >= 1 && Number(s.maks_perangkat) <= 99)) fail('VALIDATION', 'Batas perangkat 1–99, atau kosongkan untuk tanpa batas.');
       c.s.withLock(() => {
@@ -1380,6 +1403,10 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
 };
 
 /** Titik masuk semua request. */
+// ----- v1.1: stok, pembelian, opname, HPP, buku besar, laba rugi, margin (src/server/ext.ts) -----
+const ext = makeExt({ fail, str, bool, newId, iso, addDays, isYmd, settingsMap, need, stamp, log });
+Object.keys(ext.handlers).forEach((k) => { if (handlers[k]) throw new Error('Handler ganda: ' + k); handlers[k] = ext.handlers[k]; });
+
 export function handle(s: Store, env: Env, req: Request): Response {
   try {
     const h = handlers[req.action];
@@ -1400,10 +1427,11 @@ export const BASE_METHODS: [string, string][] = [
 ];
 export const BASE_CATEGORIES: [string, string][] = [
   ['Bahan baku (kertas, stiker, film)', 'bahan'], ['Bahan finishing (laminating, plastik)', 'bahan'], ['Operasional', 'operasional'], ['Listrik, air & internet', 'operasional'],
-  ['Perawatan & sparepart mesin', 'operasional'], ['Gaji, upah & cashbon', 'gaji'], ['Sewa tempat', 'operasional'], ['Pengembalian uang konsumen', 'lain'], ['Aset & peralatan', 'aset'], ['Lain-lain', 'lain'],
+  ['Tagihan biaya klik mesin', 'klik'], ['Perawatan & sparepart mesin', 'operasional'], ['Gaji, upah & cashbon', 'gaji'], ['Sewa tempat', 'operasional'], ['Pengembalian uang konsumen', 'lain'], ['Aset & peralatan', 'aset'], ['Lain-lain', 'lain'],
 ];
 export const BASE_SETTINGS: Record<string, string> = {
   nama_usaha: 'Fortuner Digital Printing', alamat: '', telp: '', min_qty_banyak: '26', sesi_jam: '12', prefix_nota: 'FT', maks_perangkat: '',
+  stok_kurang_saat: 'selesai', margin_min: '20',
   catatan_struk: 'Terima kasih. Barang yang tidak diambil lebih dari 30 hari di luar tanggung jawab kami.',
 };
 
@@ -1415,6 +1443,7 @@ export function seedBase(s: Store, env: Env, owner: { username: string; password
   Object.entries(BASE_SETTINGS).forEach(([k, v]) => { if (!(k in cur)) s.insert('settings', { key: k, value: v }); });
   if (!s.all('machines').length) BASE_MACHINES.forEach((n) => s.insert('machines', { id: newId(env, 'mes'), nama: n, pakai_counter: ['versant', 'Mahogani', 'Dopo'].includes(n), aktif: true, ...st }));
   if (!s.all('expense_categories').length) BASE_CATEGORIES.forEach(([n, j]) => s.insert('expense_categories', { id: newId(env, 'cat'), nama: n, jenis: j, aktif: true, ...st }));
+  if (!s.all('expense_categories').some((x) => x.jenis === 'klik')) s.insert('expense_categories', { id: newId(env, 'cat'), nama: 'Tagihan biaya klik mesin', jenis: 'klik', aktif: true, ...st });
   if (!s.all('payment_methods').length) BASE_METHODS.forEach(([n, j]) => s.insert('payment_methods', { id: newId(env, 'pay'), nama: n, jenis: j, rekening: '', aktif: true, ...st }));
   if (!s.all('users').some((u) => u.role === 'owner')) {
     const salt = env.uuid();
@@ -1427,4 +1456,4 @@ export function seedBase(s: Store, env: Env, owner: { username: string; password
 
 /** Dipakai seed demo. */
 export function _hashPasswordForSeed(password: string, salt: string) { return hashPassword(password, salt); }
-export { newId as _newId };
+export { newId as _newId, ext as _ext, permsFor as _permsFor };

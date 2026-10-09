@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.1.0",
+    "tanggal": "2026-10-10",
+    "catatan": [
+      "Menu baru Stok Bahan: daftar bahan baku, kartu stok per bahan, stok opname, dan daftar belanja dari stok minimum.",
+      "Menu baru Pembelian Bahan: form pembelian banyak bahan sekaligus (lunas atau tempo), otomatis menambah stok dan mencatat pengeluaran/hutang.",
+      "Resep & HPP di setiap produk: stok bahan dipotong otomatis saat item selesai dicetak (atau saat dibayar), HPP = bahan + biaya klik mesin.",
+      "Laporan baru: Laba Rugi dengan komponen HPP, Buku Besar (neraca saldo, buku besar per akun, jurnal), dan Margin Produk.",
+      "Dashboard: peringatan stok menipis dan target omzet bulanan dengan proyeksi akhir bulan.",
+      "Biaya per klik bisa diisi di Master Mesin."
+    ]
+  },
+  {
     "version": "1.0.3",
     "tanggal": "2026-10-10",
     "catatan": [

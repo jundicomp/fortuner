@@ -172,6 +172,8 @@ var FortunerServer = (() => {
     { key: "hutang", label: "Hutang Supplier", group: "Keuangan" },
     { key: "kas", label: "Kas", group: "Keuangan" },
     { key: "mesin", label: "Mesin & Operator", group: "Operasional" },
+    { key: "stok", label: "Stok bahan & opname", group: "Operasional" },
+    { key: "pembelian", label: "Pembelian bahan", group: "Operasional" },
     { key: "master.produk", label: "Produk & Harga", group: "Master Data" },
     { key: "master.harga_beli", label: "Lihat harga beli", group: "Master Data" },
     { key: "master.konsumen", label: "Konsumen", group: "Master Data" },
@@ -211,10 +213,12 @@ var FortunerServer = (() => {
       case "operator":
         set(["dashboard", "order"], view);
         set(["produksi", "mesin"], { lihat: true, tambah: true, ubah: true });
+        set(["stok"], { lihat: true, tambah: true });
         break;
       case "keuangan":
         set(["dashboard", "order", "piutang", "master.produk", "master.harga_beli", "master.supplier"], { lihat: true, ekspor: true });
-        set(["pengeluaran", "hutang", "kas", "laporan"], all);
+        set(["pengeluaran", "hutang", "kas", "laporan", "pembelian"], all);
+        set(["stok"], { lihat: true, tambah: true, ubah: true, ekspor: true });
         break;
     }
     return p;
@@ -264,6 +268,656 @@ var FortunerServer = (() => {
     const ok = rows.filter((r) => r.berlaku_mulai <= tanggal && (!r.berlaku_sampai || r.berlaku_sampai >= tanggal));
     ok.sort((a, b) => b.berlaku_mulai.localeCompare(a.berlaku_mulai));
     return ok[0] || null;
+  }
+
+  // src/server/ext.ts
+  var num = (v) => Number(v) || 0;
+  var r2 = (n) => Math.round(n * 100) / 100;
+  var debitNormal = (t) => t === "aset" || t === "hpp" || t === "beban";
+  var BASE_ACCOUNTS = [
+    { kode: "1110", nama: "Kas kecil", tipe: "aset" },
+    { kode: "1200", nama: "Piutang usaha", tipe: "aset" },
+    { kode: "1300", nama: "Persediaan bahan", tipe: "aset" },
+    { kode: "1400", nama: "Aset tetap & peralatan", tipe: "aset" },
+    { kode: "2100", nama: "Hutang usaha (supplier)", tipe: "kewajiban" },
+    { kode: "2110", nama: "Hutang biaya klik mesin", tipe: "kewajiban" },
+    { kode: "3100", nama: "Modal / saldo awal", tipe: "modal" },
+    { kode: "3200", nama: "Prive (ambil pribadi)", tipe: "modal" },
+    { kode: "4100", nama: "Pendapatan penjualan", tipe: "pendapatan" },
+    { kode: "4900", nama: "Pendapatan lain", tipe: "pendapatan" },
+    { kode: "5100", nama: "HPP bahan baku", tipe: "hpp" },
+    { kode: "5110", nama: "HPP biaya klik mesin", tipe: "hpp" },
+    { kode: "5120", nama: "Bahan di luar stok", tipe: "hpp" },
+    { kode: "5130", nama: "Selisih persediaan (opname)", tipe: "hpp" },
+    { kode: "6900", nama: "Beban kas kecil", tipe: "beban" },
+    { kode: "6910", nama: "Selisih kas", tipe: "beban" }
+  ];
+  function makeExt(h) {
+    const { fail: fail2, str: str2, bool: bool2, newId: newId2, iso: iso2, addDays: addDays2, isYmd: isYmd2, settingsMap: settingsMap2, need: need2, stamp: stamp2, log: log2 } = h;
+    const can = (c, key, op = "lihat") => {
+      var _a, _b;
+      return !!((_b = (_a = c.perms) == null ? void 0 : _a[key]) == null ? void 0 : _b[op]);
+    };
+    const needAny = (c, keys) => {
+      if (!keys.some(([k, o]) => can(c, k, o))) fail2("FORBIDDEN", "Anda tidak punya akses untuk tindakan ini.");
+    };
+    const today = (c) => c.env.today();
+    const seeCost = (c) => can(c, "pembelian") || can(c, "laporan.laba") || can(c, "master.harga_beli");
+    const hideCost = (c, r, keys) => {
+      if (seeCost(c)) return r;
+      const o = { ...r };
+      keys.forEach((k) => {
+        o[k] = null;
+      });
+      return o;
+    };
+    const byId = (rows) => Object.fromEntries(rows.map((r) => [str2(r.id), r]));
+    function move(c, mat, qty, jenis, harga, tanggal, refTabel, refId, ket) {
+      const stokLama = num(mat.stok);
+      const stok = r2(stokLama + qty);
+      const patch = { stok, ...stamp2(c, false) };
+      if (jenis === "beli" || jenis === "awal") {
+        patch.harga_rata = stokLama > 0 && num(mat.harga_rata) > 0 ? r2((stokLama * num(mat.harga_rata) + qty * harga) / stok) : r2(harga);
+        patch.harga_terakhir = r2(harga);
+      } else if (jenis === "batal_beli" && stok > 0) {
+        const v = (stokLama * num(mat.harga_rata) + qty * harga) / stok;
+        if (v > 0) patch.harga_rata = r2(v);
+      }
+      c.s.update("materials", "id", str2(mat.id), patch);
+      Object.assign(mat, patch);
+      return c.s.insert("stock_moves", {
+        id: newId2(c.env, "stm"),
+        tanggal,
+        material_id: str2(mat.id),
+        jenis,
+        qty: r2(qty),
+        harga: r2(harga),
+        nilai: Math.round(qty * harga),
+        saldo: stok,
+        ref_tabel: refTabel,
+        ref_id: refId,
+        keterangan: ket.slice(0, 200),
+        ...stamp2(c, true)
+      });
+    }
+    const stokMode = (c) => settingsMap2(c.s).stok_kurang_saat === "bayar" ? "bayar" : "selesai";
+    function deductItem(c, item, tanggal, cache) {
+      var _a;
+      if (str2(item.stok_at) || str2(item.status_produksi) === "batal") return false;
+      const mats = (cache == null ? void 0 : cache.mats) || byId(c.s.all("materials"));
+      const recipes = ((cache == null ? void 0 : cache.recipes) || c.s.all("recipes")).filter((r) => r.product_id === item.product_id);
+      const machines = (cache == null ? void 0 : cache.machines) || byId(c.s.all("machines"));
+      const o = ((cache == null ? void 0 : cache.orders) || byId(c.s.all("orders")))[str2(item.order_id)];
+      let hppB = 0;
+      recipes.forEach((r) => {
+        const m = mats[str2(r.material_id)];
+        if (!m) return;
+        const q = r2(num(r.qty) * (r.per === "klik" ? num(item.klik) : num(item.qty)));
+        if (!(q > 0)) return;
+        const hr = num(m.harga_rata);
+        move(c, m, -q, "pakai", hr, tanggal, "order_items", str2(item.id), `${str2(o == null ? void 0 : o.nomor)} ${str2(item.nama_produk)}`);
+        hppB += q * hr;
+      });
+      const hppK = num(item.klik) * num((_a = machines[str2(item.mesin_id)]) == null ? void 0 : _a.biaya_klik);
+      const patch = { hpp_bahan: Math.round(hppB), hpp_klik: Math.round(hppK), stok_at: tanggal + "T" + iso2(c.env).slice(11) };
+      c.s.update("order_items", "id", str2(item.id), patch);
+      Object.assign(item, patch);
+      return true;
+    }
+    function deductOrder(c, orderId, tanggal = today(c)) {
+      c.s.all("order_items").filter((i) => i.order_id === orderId).forEach((i) => deductItem(c, i, tanggal));
+    }
+    const hooks = {
+      onProductionDone(c, itemIds) {
+        if (stokMode(c) !== "selesai") return;
+        c.s.all("order_items").filter((i) => itemIds.includes(str2(i.id))).forEach((i) => deductItem(c, i, today(c)));
+      },
+      onPayment(c, orderId) {
+        if (stokMode(c) === "bayar") deductOrder(c, orderId);
+      },
+      onPickup(c, orderId) {
+        deductOrder(c, orderId);
+      }
+    };
+    function productCost(c, productId, sisi, cache) {
+      var _a;
+      const p = ((cache == null ? void 0 : cache.products) || byId(c.s.all("products")))[productId];
+      const mats = (cache == null ? void 0 : cache.mats) || byId(c.s.all("materials"));
+      const machines = (cache == null ? void 0 : cache.machines) || byId(c.s.all("machines"));
+      const recipes = ((cache == null ? void 0 : cache.recipes) || c.s.all("recipes")).filter((r) => r.product_id === productId);
+      const klik = (p == null ? void 0 : p.jenis_harga) === "matriks" ? sisi : 1;
+      let bahan = 0;
+      const rincian = recipes.map((r) => {
+        const m = mats[str2(r.material_id)];
+        const q = num(r.qty) * (r.per === "klik" ? klik : 1);
+        const nilai = q * num(m == null ? void 0 : m.harga_rata);
+        bahan += nilai;
+        return { material_id: str2(r.material_id), nama: str2(m == null ? void 0 : m.nama), satuan: str2(m == null ? void 0 : m.satuan), qty: r2(q), harga: num(m == null ? void 0 : m.harga_rata), nilai: r2(nilai) };
+      });
+      const tarif = num((_a = machines[str2(p == null ? void 0 : p.mesin_id)]) == null ? void 0 : _a.biaya_klik);
+      return { bahan: r2(bahan), klik: r2(klik * tarif), total: r2(bahan + klik * tarif), klik_per_unit: klik, tarif_klik: tarif, resep: recipes.length > 0, rincian };
+    }
+    function buildJournal(c) {
+      const accounts = Object.fromEntries(BASE_ACCOUNTS.map((a) => [a.kode, a]));
+      const methods = c.s.all("payment_methods");
+      methods.forEach((m) => {
+        accounts["1100:" + m.id] = { kode: "1100:" + str2(m.id), nama: `Kas & bank: ${str2(m.nama)}`, tipe: "aset" };
+      });
+      const kas = (methodId) => {
+        const k = "1100:" + str2(methodId);
+        if (!accounts[k]) accounts[k] = { kode: k, nama: "Kas & bank: (metode tidak dikenal)", tipe: "aset" };
+        return k;
+      };
+      const tunai = methods.find((m) => m.jenis === "tunai");
+      const cats = byId(c.s.all("expense_categories"));
+      c.s.all("expense_categories").forEach((x) => {
+        if (!["bahan", "aset", "klik"].includes(str2(x.jenis))) accounts["6100:" + x.id] = { kode: "6100:" + str2(x.id), nama: `Beban ${str2(x.nama)}`, tipe: "beban" };
+      });
+      const E = [];
+      const add = (tanggal, ref, sumber, keterangan, lines) => {
+        const ls = lines.filter((l) => Math.round(l.d) || Math.round(l.k)).map((l) => ({ akun: l.akun, d: Math.round(l.d), k: Math.round(l.k) }));
+        if (ls.length) E.push({ tanggal: str2(tanggal).slice(0, 10), ref, sumber, keterangan, lines: ls });
+      };
+      const orders = c.s.all("orders");
+      const oById = byId(orders);
+      orders.forEach((o) => {
+        if (!bool2(o.batal) && num(o.total)) add(str2(o.tanggal), str2(o.nomor), "nota", `Penjualan ${str2(o.nomor)}`, [{ akun: "1200", d: num(o.total), k: 0 }, { akun: "4100", d: 0, k: num(o.total) }]);
+      });
+      c.s.all("payments").forEach((p) => {
+        var _a, _b;
+        return add(str2(p.tanggal), str2((_a = oById[str2(p.order_id)]) == null ? void 0 : _a.nomor), "pembayaran", `Pembayaran ${str2((_b = oById[str2(p.order_id)]) == null ? void 0 : _b.nomor)}`, [{ akun: kas(p.method_id), d: num(p.nominal), k: 0 }, { akun: "1200", d: 0, k: num(p.nominal) }]);
+      });
+      const mats = byId(c.s.all("materials"));
+      c.s.all("stock_moves").forEach((m) => {
+        var _a;
+        const v = Math.abs(num(m.nilai));
+        const nm = str2((_a = mats[str2(m.material_id)]) == null ? void 0 : _a.nama);
+        if (m.jenis === "pakai") add(str2(m.tanggal), str2(m.keterangan).split(" ")[0], "stok", `Pemakaian ${nm}`, [{ akun: "5100", d: v, k: 0 }, { akun: "1300", d: 0, k: v }]);
+        else if (m.jenis === "opname") add(str2(m.tanggal), "OPNAME", "stok", `Selisih opname ${nm}`, num(m.qty) < 0 ? [{ akun: "5130", d: v, k: 0 }, { akun: "1300", d: 0, k: v }] : [{ akun: "1300", d: v, k: 0 }, { akun: "5130", d: 0, k: v }]);
+        else if (m.jenis === "awal") add(str2(m.tanggal), "STOK AWAL", "stok", `Stok awal ${nm}`, [{ akun: "1300", d: v, k: 0 }, { akun: "3100", d: 0, k: v }]);
+      });
+      c.s.all("order_items").forEach((i) => {
+        var _a;
+        if (num(i.hpp_klik) && str2(i.stok_at)) add(str2(i.stok_at), str2((_a = oById[str2(i.order_id)]) == null ? void 0 : _a.nomor), "stok", `Biaya klik ${str2(i.nama_produk)}`, [{ akun: "5110", d: num(i.hpp_klik), k: 0 }, { akun: "2110", d: 0, k: num(i.hpp_klik) }]);
+      });
+      c.s.all("purchases").forEach((p) => {
+        if (bool2(p.deleted)) return;
+        add(str2(p.tanggal), str2(p.nota) || "PEMBELIAN", "pembelian", `Pembelian bahan ${str2(p.nota)}`, [{ akun: "1300", d: num(p.total), k: 0 }, p.cara_bayar === "hutang" ? { akun: "2100", d: 0, k: num(p.total) } : { akun: kas(p.method_id), d: 0, k: num(p.total) }]);
+      });
+      c.s.all("expenses").forEach((x) => {
+        var _a;
+        if (bool2(x.deleted) || str2(x.purchase_id)) return;
+        const j = str2((_a = cats[str2(x.kategori_id)]) == null ? void 0 : _a.jenis);
+        const dr = j === "bahan" ? "5120" : j === "aset" ? "1400" : j === "klik" ? "2110" : accounts["6100:" + x.kategori_id] ? "6100:" + str2(x.kategori_id) : "6100:lain";
+        if (!accounts[dr]) accounts[dr] = { kode: dr, nama: "Beban lain-lain", tipe: "beban" };
+        add(str2(x.tanggal), str2(x.nota) || "PENGELUARAN", "pengeluaran", str2(x.item), [{ akun: dr, d: num(x.total), k: 0 }, x.cara_bayar === "hutang" ? { akun: "2100", d: 0, k: num(x.total) } : { akun: kas(x.method_id), d: 0, k: num(x.total) }]);
+      });
+      c.s.all("bill_payments").forEach((b) => add(str2(b.tanggal), "BAYAR HUTANG", "hutang", str2(b.keterangan) || "Pembayaran hutang supplier", [{ akun: "2100", d: num(b.nominal), k: 0 }, { akun: kas(b.method_id), d: 0, k: num(b.nominal) }]));
+      c.s.all("petty_cash").forEach((p) => {
+        if (bool2(p.deleted)) return;
+        if (num(p.masuk)) add(str2(p.tanggal), "KAS KECIL", "kas kecil", str2(p.item) || "Isi kas kecil", [{ akun: "1110", d: num(p.masuk), k: 0 }, { akun: tunai ? kas(tunai.id) : "3100", d: 0, k: num(p.masuk) }]);
+        if (num(p.keluar)) add(str2(p.tanggal), "KAS KECIL", "kas kecil", str2(p.item), [{ akun: "6900", d: num(p.keluar), k: 0 }, { akun: "1110", d: 0, k: num(p.keluar) }]);
+      });
+      c.s.all("cash_deposits").forEach((d) => {
+        const sel = num(d.selisih);
+        if (!sel) return;
+        add(str2(d.tanggal), "TUTUP KAS", "kas", str2(d.keterangan) || "Selisih tutup kas", sel < 0 ? [{ akun: "6910", d: -sel, k: 0 }, { akun: kas(d.method_id), d: 0, k: -sel }] : [{ akun: kas(d.method_id), d: sel, k: 0 }, { akun: "6910", d: 0, k: sel }]);
+      });
+      c.s.all("journals").forEach((j) => {
+        if (bool2(j.deleted)) return;
+        const lines = Array.isArray(j.lines) ? j.lines : [];
+        lines.forEach((l) => {
+          if (!accounts[l.akun]) accounts[l.akun] = { kode: l.akun, nama: l.akun, tipe: "beban" };
+        });
+        add(str2(j.tanggal), "JURNAL", "manual", str2(j.keterangan), lines.map((l) => ({ akun: str2(l.akun), d: num(l.debit), k: num(l.kredit) })));
+      });
+      E.sort((a, b) => a.tanggal.localeCompare(b.tanggal));
+      return { accounts, entries: E };
+    }
+    function trial(c, from, to) {
+      const { accounts, entries } = buildJournal(c);
+      const agg = {};
+      entries.forEach((e) => {
+        if (e.tanggal > to) return;
+        e.lines.forEach((l) => {
+          var _a;
+          const a = agg[_a = l.akun] || (agg[_a] = { awal: 0, d: 0, k: 0 });
+          if (e.tanggal < from) a.awal += l.d - l.k;
+          else {
+            a.d += l.d;
+            a.k += l.k;
+          }
+        });
+      });
+      const rows = Object.entries(agg).map(([kode, a]) => {
+        const acc = accounts[kode] || { kode, nama: kode, tipe: "beban" };
+        const sign = debitNormal(acc.tipe) ? 1 : -1;
+        return { kode, nama: acc.nama, tipe: acc.tipe, saldo_awal: sign * a.awal, debit: a.d, kredit: a.k, saldo_akhir: sign * (a.awal + a.d - a.k) };
+      }).sort((x, y) => x.kode.localeCompare(y.kode));
+      return { rows, total_debit: rows.reduce((s, r) => s + r.debit, 0), total_kredit: rows.reduce((s, r) => s + r.kredit, 0) };
+    }
+    function pnl(c, from, to) {
+      const { accounts, entries } = buildJournal(c);
+      const sum = {};
+      entries.forEach((e) => {
+        if (e.tanggal >= from && e.tanggal <= to) e.lines.forEach((l) => {
+          sum[l.akun] = (sum[l.akun] || 0) + l.d - l.k;
+        });
+      });
+      const val = (k) => {
+        const a = accounts[k];
+        return a && !debitNormal(a.tipe) ? -(sum[k] || 0) : sum[k] || 0;
+      };
+      const pendapatan = val("4100");
+      const lain = val("4900");
+      const hpp = [
+        { kode: "5100", nama: "Bahan baku (kertas, stiker, film)", nilai: val("5100") },
+        { kode: "5110", nama: "Biaya klik mesin", nilai: val("5110") },
+        { kode: "5120", nama: "Bahan di luar stok", nilai: val("5120") },
+        { kode: "5130", nama: "Selisih persediaan (opname)", nilai: val("5130") }
+      ];
+      const totalHpp = hpp.reduce((s, x) => s + x.nilai, 0);
+      const beban = Object.keys(accounts).filter((k) => accounts[k].tipe === "beban" && val(k)).map((k) => ({ kode: k, nama: accounts[k].nama, nilai: val(k) })).sort((a, b) => b.nilai - a.nilai);
+      const totalBeban = beban.reduce((s, x) => s + x.nilai, 0);
+      return { pendapatan, pendapatan_lain: lain, hpp, total_hpp: totalHpp, laba_kotor: pendapatan + lain - totalHpp, beban, total_beban: totalBeban, laba_bersih: pendapatan + lain - totalHpp - totalBeban };
+    }
+    const handlers2 = {
+      "stock.meta": {
+        auth: true,
+        fn: (c) => {
+          needAny(c, [["stok", "lihat"], ["pembelian", "lihat"], ["master.produk", "lihat"]]);
+          const mats = c.s.all("materials");
+          return {
+            materials: mats.map((m) => hideCost(c, { ...m, nilai: Math.round(num(m.stok) * num(m.harga_rata)), status: !bool2(m.aktif) ? "nonaktif" : num(m.stok) <= 0 ? "habis" : num(m.stok) <= num(m.stok_min) ? "menipis" : "aman" }, ["harga_rata", "harga_terakhir", "nilai"])),
+            lihat_harga: seeCost(c),
+            suppliers: c.s.all("suppliers").filter((x) => bool2(x.aktif)).map((x) => ({ id: x.id, nama: x.nama })),
+            payment_methods: c.s.all("payment_methods").filter((x) => bool2(x.aktif)).map((x) => ({ id: x.id, nama: x.nama, jenis: x.jenis })),
+            mode: stokMode(c)
+          };
+        }
+      },
+      "material.save": {
+        auth: true,
+        fn: (c, p) => {
+          const m = p.material || {};
+          need2(c, "stok", "ubah");
+          const nama = str2(m.nama), satuan = str2(m.satuan) || "lembar", kode = str2(m.kode).toUpperCase();
+          if (!nama) fail2("VALIDATION", "Nama bahan wajib diisi.");
+          return c.s.withLock(() => {
+            const all2 = c.s.all("materials");
+            if (kode && all2.some((x) => str2(x.kode).toUpperCase() === kode && x.id !== m.id)) fail2("VALIDATION", `Kode ${kode} sudah dipakai.`);
+            if (all2.some((x) => str2(x.nama).toLowerCase() === nama.toLowerCase() && x.id !== m.id)) fail2("VALIDATION", `Bahan "${nama}" sudah ada.`);
+            const data = { kode, nama, satuan, kategori: str2(m.kategori), stok_min: Math.max(0, num(m.stok_min)), aktif: m.aktif !== false, catatan: str2(m.catatan).slice(0, 200) };
+            if (m.id) {
+              const cur = all2.find((x) => x.id === m.id) || fail2("NOT_FOUND", "Bahan tidak ditemukan.");
+              const row2 = c.s.update("materials", "id", str2(cur.id), { ...data, ...stamp2(c, false) });
+              log2(c, "ubah_bahan", "materials", str2(m.id), nama);
+              return row2;
+            }
+            const row = c.s.insert("materials", { id: newId2(c.env, "mat"), ...data, stok: 0, harga_rata: 0, harga_terakhir: 0, ...stamp2(c, true) });
+            const awal = num(m.stok_awal), hAwal = num(m.harga_awal);
+            if (awal > 0) move(c, row, awal, "awal", hAwal, today(c), "materials", str2(row.id), "Stok awal");
+            log2(c, "tambah_bahan", "materials", str2(row.id), `${nama}${awal ? ` stok awal ${awal} ${satuan}` : ""}`);
+            return c.s.all("materials").find((x) => x.id === row.id);
+          });
+        }
+      },
+      "recipe.get": {
+        auth: true,
+        fn: (c, p) => {
+          needAny(c, [["master.produk", "lihat"], ["stok", "lihat"]]);
+          const pid = str2(p.product_id);
+          const lines = c.s.all("recipes").filter((r) => r.product_id === pid);
+          return { lines, satu_sisi: productCost(c, pid, 1), bolak_balik: productCost(c, pid, 2), lihat_harga: can(c, "master.harga_beli") || can(c, "laporan.laba") };
+        }
+      },
+      "recipe.save": {
+        auth: true,
+        fn: (c, p) => {
+          needAny(c, [["master.produk", "ubah"], ["stok", "ubah"]]);
+          const pid = str2(p.product_id);
+          if (!c.s.all("products").some((x) => x.id === pid)) fail2("NOT_FOUND", "Produk tidak ditemukan.");
+          const mats = byId(c.s.all("materials"));
+          const lines = (Array.isArray(p.lines) ? p.lines : []).map((l) => ({ material_id: str2(l.material_id), qty: num(l.qty), per: l.per === "klik" ? "klik" : "unit" }));
+          lines.forEach((l) => {
+            if (!mats[l.material_id]) fail2("VALIDATION", "Ada bahan yang tidak dikenal.");
+            if (!(l.qty > 0)) fail2("VALIDATION", "Jumlah pemakaian harus lebih dari 0.");
+          });
+          if (new Set(lines.map((l) => l.material_id)).size !== lines.length) fail2("VALIDATION", "Bahan yang sama tercantum dua kali.");
+          return c.s.withLock(() => {
+            c.s.all("recipes").filter((r) => r.product_id === pid).forEach((r) => c.s.remove("recipes", "id", str2(r.id)));
+            lines.forEach((l) => c.s.insert("recipes", { id: newId2(c.env, "rcp"), product_id: pid, ...l, ...stamp2(c, true) }));
+            log2(c, "resep", "products", pid, `Resep: ${lines.map((l) => `${mats[l.material_id].nama} ${l.qty}/${l.per}`).join(", ") || "(kosong)"}`);
+            return { lines: c.s.all("recipes").filter((r) => r.product_id === pid), satu_sisi: productCost(c, pid, 1), bolak_balik: productCost(c, pid, 2) };
+          });
+        }
+      },
+      "stock.card": {
+        auth: true,
+        fn: (c, p) => {
+          need2(c, "stok");
+          const mid = str2(p.material_id);
+          const m = c.s.all("materials").find((x) => x.id === mid) || fail2("NOT_FOUND", "Bahan tidak ditemukan.");
+          const from = isYmd2(str2(p.from)) ? str2(p.from) : "0000-01-01", to = isYmd2(str2(p.to)) ? str2(p.to) : "9999-12-31";
+          const moves = c.s.all("stock_moves").filter((x) => x.material_id === mid).sort((a, b) => str2(a.tanggal).localeCompare(str2(b.tanggal)));
+          const before = moves.filter((x) => str2(x.tanggal) < from);
+          const saldoAwal = r2(before.reduce((s, x) => s + num(x.qty), 0));
+          let saldo = saldoAwal;
+          const rows = moves.filter((x) => str2(x.tanggal) >= from && str2(x.tanggal) <= to).map((x) => {
+            saldo = r2(saldo + num(x.qty));
+            return hideCost(c, { ...x, saldo_berjalan: saldo }, ["harga", "nilai"]);
+          });
+          return { material: hideCost(c, m, ["harga_rata", "harga_terakhir"]), saldo_awal: saldoAwal, rows, masuk: r2(rows.filter((r) => num(r.qty) > 0).reduce((s, r) => s + num(r.qty), 0)), keluar: r2(-rows.filter((r) => num(r.qty) < 0).reduce((s, r) => s + num(r.qty), 0)), saldo_akhir: saldo };
+        }
+      },
+      "opname.save": {
+        auth: true,
+        fn: (c, p) => {
+          need2(c, "stok", "tambah");
+          const lines = (Array.isArray(p.lines) ? p.lines : []).filter((l) => l.stok_fisik !== "" && l.stok_fisik != null);
+          if (!lines.length) fail2("VALIDATION", "Isi jumlah fisik minimal satu bahan.");
+          return c.s.withLock(() => {
+            const mats = byId(c.s.all("materials"));
+            const id = newId2(c.env, "opn");
+            const t = today(c);
+            let nilai = 0, n = 0;
+            lines.forEach((l) => {
+              const m = mats[str2(l.material_id)] || fail2("VALIDATION", "Bahan tidak dikenal.");
+              const fisik = num(l.stok_fisik);
+              if (fisik < 0) fail2("VALIDATION", `Jumlah fisik ${str2(m.nama)} tidak boleh minus.`);
+              const sistem = num(m.stok);
+              const sel = r2(fisik - sistem);
+              const hr = num(m.harga_rata);
+              if (sel) move(c, m, sel, "opname", hr, t, "opnames", id, `Opname: ${str2(l.keterangan) || "selisih hitung fisik"}`);
+              c.s.insert("opname_items", { id: newId2(c.env, "opi"), opname_id: id, material_id: m.id, stok_sistem: sistem, stok_fisik: fisik, selisih: sel, harga: hr, nilai: Math.round(sel * hr), keterangan: str2(l.keterangan).slice(0, 200) });
+              nilai += Math.round(sel * hr);
+              n++;
+            });
+            c.s.insert("opnames", { id, tanggal: t, keterangan: str2(p.keterangan).slice(0, 200), jumlah_item: n, nilai_selisih: nilai, ...stamp2(c, true) });
+            log2(c, "opname", "opnames", id, `Stok opname ${n} bahan, selisih ${nilai.toLocaleString("id-ID")}`);
+            return { id, jumlah_item: n, nilai_selisih: seeCost(c) ? nilai : null };
+          });
+        }
+      },
+      "opname.list": {
+        auth: true,
+        fn: (c) => {
+          need2(c, "stok");
+          const mats = byId(c.s.all("materials"));
+          const users = byId(c.s.all("users"));
+          const items = c.s.all("opname_items");
+          return c.s.all("opnames").map((o) => {
+            var _a;
+            return { ...o, oleh: str2((_a = users[str2(o.created_by)]) == null ? void 0 : _a.nama), nilai_selisih: seeCost(c) ? o.nilai_selisih : null, items: items.filter((i) => i.opname_id === o.id).map((i) => {
+              var _a2, _b;
+              return hideCost(c, { ...i, nama: str2((_a2 = mats[str2(i.material_id)]) == null ? void 0 : _a2.nama), satuan: str2((_b = mats[str2(i.material_id)]) == null ? void 0 : _b.satuan) }, ["harga", "nilai"]);
+            }) };
+          }).sort((a, b) => str2(b.created_at).localeCompare(str2(a.created_at)));
+        }
+      },
+      "purchase.save": {
+        auth: true,
+        fn: (c, p) => {
+          need2(c, "pembelian", "tambah");
+          const r = p.purchase || {};
+          const t = str2(r.tanggal);
+          if (!isYmd2(t) || t > today(c)) fail2("VALIDATION", "Tanggal tidak valid.");
+          const cara = r.cara_bayar === "hutang" ? "hutang" : "lunas";
+          if (cara === "hutang" && !r.supplier_id) fail2("VALIDATION", "Pembelian tempo harus memilih supplier.");
+          if (cara === "lunas" && !c.s.all("payment_methods").some((m) => m.id === r.method_id)) fail2("VALIDATION", "Pilih metode pembayaran.");
+          const items = (Array.isArray(r.items) ? r.items : []).map((i) => ({ material_id: str2(i.material_id), qty_beli: num(i.qty_beli), satuan_beli: str2(i.satuan_beli), isi: num(i.isi) || 1, harga_beli: Math.round(num(i.harga_beli)) }));
+          if (!items.length) fail2("VALIDATION", "Tambahkan minimal satu bahan.");
+          return c.s.withLock(() => {
+            const mats = byId(c.s.all("materials"));
+            items.forEach((i) => {
+              if (!mats[i.material_id]) fail2("VALIDATION", "Ada bahan yang tidak dikenal.");
+              if (!(i.qty_beli > 0) || !(i.harga_beli > 0)) fail2("VALIDATION", `Isi jumlah dan harga untuk ${str2(mats[i.material_id].nama)}.`);
+            });
+            const total = items.reduce((s, i) => s + Math.round(i.qty_beli * i.harga_beli), 0);
+            const id = newId2(c.env, "pur");
+            const cat = c.s.all("expense_categories").find((x) => x.jenis === "bahan");
+            const ringkas = items.map((i) => `${str2(mats[i.material_id].nama)} ${i.qty_beli} ${i.satuan_beli || mats[i.material_id].satuan}`).join(", ");
+            const eid = newId2(c.env, "exp");
+            let billId = "";
+            if (cara === "hutang") {
+              billId = newId2(c.env, "bil");
+              const jt = isYmd2(str2(r.jatuh_tempo)) ? str2(r.jatuh_tempo) : addDays2(t, 30);
+              c.s.insert("supplier_bills", { id: billId, tanggal: t, nota: str2(r.nota), supplier_id: str2(r.supplier_id), expense_id: eid, total, terbayar: 0, sisa: total, jatuh_tempo: jt, keterangan: `Pembelian bahan: ${ringkas}`.slice(0, 300), ...stamp2(c, true) });
+            }
+            c.s.insert("expenses", {
+              id: eid,
+              tanggal: t,
+              nota: str2(r.nota).slice(0, 80),
+              supplier_id: str2(r.supplier_id),
+              kategori_id: str2(cat == null ? void 0 : cat.id),
+              product_id: "",
+              item: `Pembelian bahan: ${ringkas}`.slice(0, 200),
+              qty: 1,
+              satuan: "nota",
+              harga: total,
+              total,
+              isi_per_satuan: null,
+              mesin_id: "",
+              cara_bayar: cara,
+              method_id: cara === "lunas" ? str2(r.method_id) : "",
+              bill_id: billId,
+              keterangan: str2(r.keterangan).slice(0, 300),
+              deleted: false,
+              purchase_id: id,
+              ...stamp2(c, true)
+            });
+            c.s.insert("purchases", { id, tanggal: t, nota: str2(r.nota).slice(0, 80), supplier_id: str2(r.supplier_id), total, cara_bayar: cara, method_id: cara === "lunas" ? str2(r.method_id) : "", bill_id: billId, expense_id: eid, jatuh_tempo: cara === "hutang" ? isYmd2(str2(r.jatuh_tempo)) ? str2(r.jatuh_tempo) : addDays2(t, 30) : "", keterangan: str2(r.keterangan).slice(0, 300), deleted: false, ...stamp2(c, true) });
+            items.forEach((i) => {
+              const m = mats[i.material_id];
+              const qtyStok = r2(i.qty_beli * i.isi), hargaStok = r2(i.harga_beli / i.isi);
+              c.s.insert("purchase_items", { id: newId2(c.env, "pui"), purchase_id: id, ...i, satuan_beli: i.satuan_beli || str2(m.satuan), subtotal: Math.round(i.qty_beli * i.harga_beli), qty_stok: qtyStok, harga_stok: hargaStok });
+              move(c, m, qtyStok, "beli", hargaStok, t, "purchases", id, `Pembelian ${str2(r.nota)}`.trim());
+            });
+            log2(c, "pembelian", "purchases", id, `Pembelian ${total.toLocaleString("id-ID")} (${cara}): ${ringkas}`);
+            return { id, total };
+          });
+        }
+      },
+      "purchase.list": {
+        auth: true,
+        fn: (c, p) => {
+          need2(c, "pembelian");
+          const from = isYmd2(str2(p.from)) ? str2(p.from) : "0000-01-01", to = isYmd2(str2(p.to)) ? str2(p.to) : "9999-12-31";
+          const sup = byId(c.s.all("suppliers")), met = byId(c.s.all("payment_methods")), mats = byId(c.s.all("materials")), bills = byId(c.s.all("supplier_bills")), users = byId(c.s.all("users"));
+          const items = c.s.all("purchase_items");
+          return c.s.all("purchases").filter((x) => !bool2(x.deleted) && str2(x.tanggal) >= from && str2(x.tanggal) <= to).map((x) => {
+            var _a, _b, _c, _d;
+            return {
+              ...x,
+              supplier: str2((_a = sup[str2(x.supplier_id)]) == null ? void 0 : _a.nama),
+              metode: str2((_b = met[str2(x.method_id)]) == null ? void 0 : _b.nama),
+              oleh: str2((_c = users[str2(x.created_by)]) == null ? void 0 : _c.nama),
+              sisa_hutang: x.bill_id ? num((_d = bills[str2(x.bill_id)]) == null ? void 0 : _d.sisa) : 0,
+              items: items.filter((i) => i.purchase_id === x.id).map((i) => {
+                var _a2, _b2;
+                return { ...i, nama: str2((_a2 = mats[str2(i.material_id)]) == null ? void 0 : _a2.nama), satuan: str2((_b2 = mats[str2(i.material_id)]) == null ? void 0 : _b2.satuan) };
+              })
+            };
+          });
+        }
+      },
+      "purchase.delete": {
+        auth: true,
+        fn: (c, p) => {
+          need2(c, "pembelian", "hapus");
+          if (!str2(p.alasan)) fail2("VALIDATION", "Isi alasan penghapusan.");
+          return c.s.withLock(() => {
+            const x = c.s.all("purchases").find((r) => r.id === p.id && !bool2(r.deleted)) || fail2("NOT_FOUND", "Pembelian tidak ditemukan.");
+            const pr = x;
+            if (pr.bill_id) {
+              const b = c.s.all("supplier_bills").find((r) => r.id === pr.bill_id);
+              if (b && num(b.terbayar) > 0) fail2("VALIDATION", "Hutang pembelian ini sudah dicicil. Hapus tidak diizinkan.");
+              if (b) c.s.update("supplier_bills", "id", str2(b.id), { sisa: 0, total: 0, keterangan: `DIHAPUS: ${str2(b.keterangan)}`.slice(0, 300), ...stamp2(c, false) });
+            }
+            const mats = byId(c.s.all("materials"));
+            c.s.all("purchase_items").filter((i) => i.purchase_id === pr.id).forEach((i) => {
+              const m = mats[str2(i.material_id)];
+              if (m) move(c, m, -num(i.qty_stok), "batal_beli", num(i.harga_stok), today(c), "purchases", str2(pr.id), `Hapus pembelian ${str2(pr.nota)}`);
+            });
+            if (pr.expense_id) c.s.update("expenses", "id", str2(pr.expense_id), { deleted: true, ...stamp2(c, false) });
+            c.s.update("purchases", "id", str2(pr.id), { deleted: true, ...stamp2(c, false) });
+            log2(c, "hapus_pembelian", "purchases", str2(pr.id), `Hapus pembelian ${str2(pr.nota)} ${num(pr.total).toLocaleString("id-ID")}`, str2(p.alasan));
+            return { ok: true };
+          });
+        }
+      },
+      "margin.list": {
+        auth: true,
+        fn: (c) => {
+          need2(c, "laporan.laba");
+          const cache = { mats: byId(c.s.all("materials")), recipes: c.s.all("recipes"), machines: byId(c.s.all("machines")), products: byId(c.s.all("products")) };
+          const prices = c.s.all("price_history");
+          const minMargin = num(settingsMap2(c.s).margin_min || 20);
+          const t = today(c);
+          return {
+            margin_min: minMargin,
+            rows: c.s.all("products").filter((x) => bool2(x.aktif) && x.jenis_harga !== "manual").map((x) => {
+              var _a;
+              const h2 = hargaBerlaku(prices.filter((r) => r.product_id === x.id), t);
+              const c1 = productCost(c, str2(x.id), 1, cache), c2 = productCost(c, str2(x.id), 2, cache);
+              const pr = (k, cost) => {
+                const v = h2 ? num(h2[k]) : 0;
+                return v ? { harga: v, margin: Math.round((v - cost) / v * 1e3) / 10 } : null;
+              };
+              const cells = { es: pr("es", c1.total), rb: pr("rb", c1.total), es_bb: x.jenis_harga === "matriks" ? pr("es_bb", c2.total) : null, rb_bb: x.jenis_harga === "matriks" ? pr("rb_bb", c2.total) : null };
+              const margins = Object.values(cells).filter(Boolean).map((v) => v.margin);
+              const terendah = margins.length ? Math.min(...margins) : null;
+              return {
+                id: x.id,
+                kode: x.kode,
+                nama: x.nama,
+                kategori: x.kategori,
+                jenis_harga: x.jenis_harga,
+                mesin: str2((_a = cache.machines[str2(x.mesin_id)]) == null ? void 0 : _a.nama),
+                resep: c1.resep,
+                hpp_bahan: c1.bahan,
+                hpp_klik: c1.klik,
+                hpp: c1.total,
+                hpp_bb: x.jenis_harga === "matriks" ? c2.total : null,
+                ...cells,
+                margin_terendah: terendah,
+                status: !c1.resep ? "tanpa_resep" : terendah == null ? "tanpa_harga" : terendah < 0 ? "rugi" : terendah < minMargin ? "tipis" : "aman"
+              };
+            })
+          };
+        }
+      },
+      "report.pnl": {
+        auth: true,
+        fn: (c, p) => {
+          need2(c, "laporan.laba");
+          const to = isYmd2(str2(p.to)) ? str2(p.to) : today(c);
+          const from = isYmd2(str2(p.from)) ? str2(p.from) : to.slice(0, 8) + "01";
+          const days = Math.round((Date.parse(to) - Date.parse(from)) / 864e5) + 1;
+          const pFrom = addDays2(from, -days), pTo = addDays2(from, -1);
+          const orders = byId(c.s.all("orders").filter((o) => !bool2(o.batal) && str2(o.tanggal) >= from && str2(o.tanggal) <= to));
+          const belum = c.s.all("order_items").filter((i) => orders[str2(i.order_id)] && !str2(i.stok_at) && i.status_produksi !== "batal");
+          const klikCat = new Set(c.s.all("expense_categories").filter((x) => x.jenis === "klik").map((x) => str2(x.id)));
+          const tagihanKlik = c.s.all("expenses").filter((x) => !bool2(x.deleted) && klikCat.has(str2(x.kategori_id)) && str2(x.tanggal) >= from && str2(x.tanggal) <= to).reduce((s, x) => s + num(x.total), 0);
+          return { from, to, sekarang: pnl(c, from, to), sebelumnya: { from: pFrom, to: pTo, ...pnl(c, pFrom, pTo) }, belum_hpp: { item: belum.length, nilai_jual: belum.reduce((s, i) => s + num(i.subtotal), 0) }, tagihan_klik: tagihanKlik };
+        }
+      },
+      "ledger.trial": {
+        auth: true,
+        fn: (c, p) => {
+          need2(c, "laporan.laba");
+          const to = isYmd2(str2(p.to)) ? str2(p.to) : today(c);
+          const from = isYmd2(str2(p.from)) ? str2(p.from) : to.slice(0, 8) + "01";
+          return { from, to, ...trial(c, from, to) };
+        }
+      },
+      "ledger.get": {
+        auth: true,
+        fn: (c, p) => {
+          need2(c, "laporan.laba");
+          const to = isYmd2(str2(p.to)) ? str2(p.to) : today(c);
+          const from = isYmd2(str2(p.from)) ? str2(p.from) : to.slice(0, 8) + "01";
+          const akun = str2(p.akun);
+          const { accounts, entries } = buildJournal(c);
+          const acc = accounts[akun] || fail2("NOT_FOUND", "Akun tidak ditemukan.");
+          const sign = debitNormal(acc.tipe) ? 1 : -1;
+          let awal = 0;
+          const rows = [];
+          entries.forEach((e) => e.lines.forEach((l) => {
+            if (l.akun !== akun || e.tanggal > to) return;
+            if (e.tanggal < from) {
+              awal += sign * (l.d - l.k);
+              return;
+            }
+            rows.push({ tanggal: e.tanggal, ref: e.ref, sumber: e.sumber, keterangan: e.keterangan, debit: l.d, kredit: l.k });
+          }));
+          let saldo = awal;
+          rows.forEach((r) => {
+            saldo += sign * (num(r.debit) - num(r.kredit));
+            r.saldo = saldo;
+          });
+          return { akun: acc, from, to, saldo_awal: awal, rows, saldo_akhir: saldo, accounts: Object.values(accounts).sort((a, b) => a.kode.localeCompare(b.kode)) };
+        }
+      },
+      "journal.list": {
+        auth: true,
+        fn: (c, p) => {
+          need2(c, "laporan.laba");
+          const to = isYmd2(str2(p.to)) ? str2(p.to) : today(c);
+          const from = isYmd2(str2(p.from)) ? str2(p.from) : to.slice(0, 8) + "01";
+          const { accounts, entries } = buildJournal(c);
+          const users = byId(c.s.all("users"));
+          return {
+            accounts: Object.values(accounts).sort((a, b) => a.kode.localeCompare(b.kode)),
+            entries: entries.filter((e) => e.tanggal >= from && e.tanggal <= to),
+            manual: c.s.all("journals").filter((j) => !bool2(j.deleted)).map((j) => {
+              var _a;
+              return { ...j, oleh: str2((_a = users[str2(j.created_by)]) == null ? void 0 : _a.nama) };
+            })
+          };
+        }
+      },
+      "journal.save": {
+        auth: true,
+        fn: (c, p) => {
+          need2(c, "laporan.laba", "tambah");
+          const j = p.journal || {};
+          const t = str2(j.tanggal);
+          if (!isYmd2(t)) fail2("VALIDATION", "Tanggal tidak valid.");
+          if (!str2(j.keterangan)) fail2("VALIDATION", "Isi keterangan jurnal.");
+          const lines = (Array.isArray(j.lines) ? j.lines : []).map((l) => ({ akun: str2(l.akun), debit: Math.round(num(l.debit)), kredit: Math.round(num(l.kredit)) })).filter((l) => l.akun && (l.debit || l.kredit));
+          if (lines.length < 2) fail2("VALIDATION", "Jurnal minimal dua baris.");
+          const d = lines.reduce((s, l) => s + l.debit, 0), k = lines.reduce((s, l) => s + l.kredit, 0);
+          if (d !== k) fail2("VALIDATION", `Debit (${d.toLocaleString("id-ID")}) dan kredit (${k.toLocaleString("id-ID")}) harus sama.`);
+          const known = buildJournal(c).accounts;
+          lines.forEach((l) => {
+            if (!known[l.akun]) fail2("VALIDATION", `Akun ${l.akun} tidak dikenal.`);
+          });
+          return c.s.withLock(() => {
+            const row = c.s.insert("journals", { id: newId2(c.env, "jrn"), tanggal: t, keterangan: str2(j.keterangan).slice(0, 200), lines, deleted: false, ...stamp2(c, true) });
+            log2(c, "jurnal", "journals", str2(row.id), `${str2(j.keterangan)} ${d.toLocaleString("id-ID")}`);
+            return row;
+          });
+        }
+      },
+      "journal.delete": {
+        auth: true,
+        fn: (c, p) => {
+          need2(c, "laporan.laba", "hapus");
+          if (!str2(p.alasan)) fail2("VALIDATION", "Isi alasan penghapusan.");
+          return c.s.withLock(() => {
+            const j = c.s.all("journals").find((x) => x.id === p.id && !bool2(x.deleted)) || fail2("NOT_FOUND", "Jurnal tidak ditemukan.");
+            c.s.update("journals", "id", str2(j.id), { deleted: true, ...stamp2(c, false) });
+            log2(c, "hapus_jurnal", "journals", str2(j.id), str2(j.keterangan), str2(p.alasan));
+            return { ok: true };
+          });
+        }
+      }
+    };
+    function lowStock(c) {
+      return c.s.all("materials").filter((m) => bool2(m.aktif) && num(m.stok) <= num(m.stok_min)).map((m) => ({ id: m.id, nama: m.nama, satuan: m.satuan, stok: num(m.stok), stok_min: num(m.stok_min) })).sort((a, b) => a.stok / Math.max(1, a.stok_min) - b.stok / Math.max(1, b.stok_min));
+    }
+    return { handlers: handlers2, hooks, deductItem, move, productCost, buildJournal, pnl, trial, lowStock };
   }
 
   // src/server/core.ts
@@ -462,7 +1116,7 @@ var FortunerServer = (() => {
     const jenis = Object.fromEntries(c.s.all("products").map((x) => [x.id, x.jenis_harga]));
     return {
       order: { ...o, customer_nama: str(cu.nama), customer_telp: str(cu.telp), customer_tipe: str(cu.tipe), customer_kode: str(cu.kode), cs_nama: str(users[str(o.cs_id)]) },
-      items: c.s.all("order_items").filter((i) => i.order_id === id).map((i) => ({ ...i, harga_beli: canCost ? i.harga_beli : null, mesin_nama: str(machines[str(i.mesin_id)]), jenis_harga: str(jenis[str(i.product_id)]) })),
+      items: c.s.all("order_items").filter((i) => i.order_id === id).map((i) => ({ ...i, harga_beli: canCost ? i.harga_beli : null, hpp_bahan: canCost ? i.hpp_bahan : null, hpp_klik: canCost ? i.hpp_klik : null, mesin_nama: str(machines[str(i.mesin_id)]), jenis_harga: str(jenis[str(i.product_id)]) })),
       payments: c.s.all("payments").filter((x) => x.order_id === id).sort((a, b) => str(a.created_at).localeCompare(str(b.created_at))).map((x) => ({ ...x, method_nama: str(methods[str(x.method_id)]), kasir_nama: str(users[str(x.kasir_id)]) })),
       payment_methods: c.s.all("payment_methods").filter((m) => bool(m.aktif)).map((m) => ({ id: m.id, nama: m.nama, jenis: m.jenis }))
     };
@@ -596,6 +1250,7 @@ var FortunerServer = (() => {
       const nominal = Math.min(Math.round(Number(pay.nominal)), total);
       c.s.insert("payments", { id: `${id}-p1`, order_id: id, tanggal, nominal, method_id: method.id, kasir_id: str(c.user.id), catatan: "Bayar saat order", ...stamp(c, true) });
       recalcOrder(c, id);
+      ext.hooks.onPayment(c, id);
     }
     log(c, "nota_baru", "orders", id, `Nota ${nomor} ${cust.nama}: ${items.length} item, total ${total.toLocaleString("id-ID")}${offline ? " \u2014 dibuat offline" : ""}${renomor ? ` \u2014 nomor diganti dari ${formatNota(prefix, kodeDev, tanggal, Math.round(Number(p.no_urut)))}` : ""}`);
     return { ...orderDetail(c, id), renomor, nomor_awal: renomor ? formatNota(prefix, kodeDev, tanggal, Math.round(Number(p.no_urut))) : "" };
@@ -808,6 +1463,7 @@ var FortunerServer = (() => {
             if (rows.some((x) => str(x.kode) === str(r.kode) && x.id !== r.id)) fail("VALIDATION", `Kode konsumen ${r.kode} sudah dipakai.`);
             r.tipe = r.tipe === "reseller" ? "reseller" : "enduser";
           }
+          if (p.table === "machines" && r.biaya_klik !== void 0) r.biaya_klik = Math.max(0, Number(String(r.biaya_klik).replace(",", ".")) || 0);
           delete r.created_at;
           delete r.created_by;
           Object.keys(r).forEach((k) => {
@@ -1111,6 +1767,7 @@ var FortunerServer = (() => {
           const tanggal = offline && isYmd(str(p.tanggal)) && str(p.tanggal) <= c.env.today() ? str(p.tanggal) : c.env.today();
           c.s.insert("payments", { id: pid, order_id: o.id, tanggal, nominal, method_id: method.id, kasir_id: str(c.user.id), catatan: str(p.catatan), ...stamp(c, true) });
           recalcOrder(c, str(o.id));
+          ext.hooks.onPayment(c, str(o.id));
           log(c, "bayar", "orders", str(o.id), `Pembayaran ${nominal.toLocaleString("id-ID")} (${method.nama}) untuk ${o.id}${offline ? " \u2014 dibuat offline" : ""}`);
           return orderDetail(c, str(o.id));
         });
@@ -1125,6 +1782,7 @@ var FortunerServer = (() => {
           const ambil = p.diambil !== false;
           if (ambil && Number(o.sisa) > 0 && !str(p.alasan)) fail("NEED_REASON", "Nota masih ada sisa tagihan. Isi alasan bila tetap diserahkan.");
           c.s.update("orders", "id", str(o.id), { status_ambil: ambil ? "diambil" : "belum", tgl_ambil: ambil ? iso(c.env) : "", ...stamp(c, false) });
+          if (ambil) ext.hooks.onPickup(c, str(o.id));
           log(c, ambil ? "ambil" : "batal_ambil", "orders", str(o.id), `${ambil ? "Diambil" : "Batal diambil"}: ${o.id}`, str(p.alasan));
           return orderDetail(c, str(o.id));
         });
@@ -1213,6 +1871,7 @@ var FortunerServer = (() => {
               ...stamp(c, false)
             });
           });
+          if (to === "selesai") ext.hooks.onProductionDone(c, ids);
           log(c, "produksi", "order_items", ids.join(","), `${items.map((i) => i.nama_produk).join(", ")} \u2192 ${to}`);
           return { ok: true, count: items.length };
         });
@@ -1424,7 +2083,7 @@ var FortunerServer = (() => {
         need(c, "pengeluaran", "ubah");
         const r = p.category || {};
         if (!str(r.nama)) fail("VALIDATION", "Nama kategori wajib diisi.");
-        const jenis = ["bahan", "operasional", "gaji", "aset", "lain"].includes(r.jenis) ? r.jenis : "operasional";
+        const jenis = ["bahan", "operasional", "gaji", "aset", "klik", "lain"].includes(r.jenis) ? r.jenis : "operasional";
         return c.s.withLock(() => {
           if (c.s.all("expense_categories").some((x) => str(x.nama).toLowerCase() === str(r.nama).toLowerCase() && x.id !== r.id)) fail("VALIDATION", "Kategori sudah ada.");
           const data = { nama: str(r.nama), jenis, aktif: r.aktif !== false };
@@ -1520,6 +2179,7 @@ var FortunerServer = (() => {
         if (!str(p.alasan)) fail("VALIDATION", "Isi alasan penghapusan.");
         return c.s.withLock(() => {
           const x = c.s.all("expenses").find((r) => r.id === p.id) || fail("NOT_FOUND", "Data tidak ditemukan.");
+          if (str(x.purchase_id)) fail("VALIDATION", "Pengeluaran ini berasal dari Pembelian Bahan. Hapus lewat menu Pembelian Bahan supaya stoknya ikut dikoreksi.");
           if (x.bill_id) {
             const b = c.s.all("supplier_bills").find((r) => r.id === x.bill_id);
             if (b && Number(b.terbayar) > 0) fail("VALIDATION", "Hutang dari pembelian ini sudah dicicil. Hapus tidak diizinkan.");
@@ -1620,6 +2280,11 @@ var FortunerServer = (() => {
         const costs = c.s.all("cost_history");
         const oDate = Object.fromEntries(orders.map((o) => [o.id, o.tanggal]));
         const costOf = (i) => {
+          if (str(i.stok_at)) return Number(i.hpp_bahan || 0) + Number(i.hpp_klik || 0);
+          const u = unitCost(i);
+          return u == null ? null : u * Number(i.qty);
+        };
+        const unitCost = (i) => {
           if (i.harga_beli != null && i.harga_beli !== "") return Number(i.harga_beli);
           const t = str(oDate[str(i.order_id)]);
           const r = costs.filter((x) => x.product_id === i.product_id && str(x.berlaku_mulai) <= t).sort((a, b) => str(b.berlaku_mulai).localeCompare(str(a.berlaku_mulai)))[0];
@@ -1637,7 +2302,7 @@ var FortunerServer = (() => {
           r.omzet = Number(r.omzet) + Number(i.subtotal);
           r.nota.add(str(i.order_id));
           if (cst != null) {
-            const h = cst * Number(i.qty);
+            const h = cst;
             r.hpp = Number(r.hpp) + h;
             hpp += h;
             omzetBerHpp += Number(i.subtotal);
@@ -1735,7 +2400,7 @@ var FortunerServer = (() => {
     "dashboard.summary": {
       auth: true,
       fn: (c) => {
-        var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n;
+        var _a, _b, _c, _d, _e, _f, _g, _h, _i, _j, _k, _l, _m, _n, _o, _p, _q, _r;
         need(c, "dashboard");
         const today = c.env.today();
         const from = addDays(today, -30);
@@ -1830,18 +2495,29 @@ var FortunerServer = (() => {
             t.omzet += Number(i.subtotal);
             t.qty += Number(i.qty);
           });
+          const omzetBulan = sumO(m0, today);
+          const nDays = Number(addDays(addDays(m0, 32).slice(0, 8) + "01", -1).slice(8, 10));
+          const target = Number(settingsMap(c.s)["target_" + today.slice(0, 7).replace("-", "")]) || 0;
           bulan = {
-            omzet: sumO(m0, today),
+            omzet: omzetBulan,
             omzet_bulan_lalu_sd: sumO(prev0, prevSame),
             omzet_bulan_lalu: sumO(prev0, prevEnd),
-            top_produk: Object.values(top).sort((a, b) => b.omzet - a.omzet).slice(0, 5)
+            top_produk: Object.values(top).sort((a, b) => b.omzet - a.omzet).slice(0, 5),
+            target,
+            hari_ke: dayN,
+            jumlah_hari: nDays,
+            proyeksi: Math.round(omzetBulan / dayN * nDays),
+            perlu_per_hari: target && dayN < nDays ? Math.max(0, Math.round((target - omzetBulan) / (nDays - dayN))) : 0,
+            bisa_atur_target: !!((_p = (_o = c.perms) == null ? void 0 : _o["pengaturan.umum"]) == null ? void 0 : _p.ubah)
           };
         }
+        const stok = ((_r = (_q = c.perms) == null ? void 0 : _q.stok) == null ? void 0 : _r.lihat) ? { menipis: ext.lowStock(c).slice(0, 8), jumlah: ext.lowStock(c).length } : null;
         return {
           trx,
           produksi,
           hutang,
           bulan,
+          stok,
           produk_aktif: products.filter((p) => bool(p.aktif)).length,
           produk_tanpa_harga: tanpaHarga,
           konsumen: customers.length,
@@ -1859,6 +2535,11 @@ var FortunerServer = (() => {
         need(c, "pengaturan.umum", "ubah");
         const s = p.settings || {};
         if (s.min_qty_banyak !== void 0 && !(Number(s.min_qty_banyak) >= 2)) fail("VALIDATION", "Minimal qty harga banyak harus angka \u2265 2.");
+        if (s.stok_kurang_saat !== void 0 && !["selesai", "bayar"].includes(str(s.stok_kurang_saat))) fail("VALIDATION", "Pilihan potong stok tidak dikenal.");
+        if (s.margin_min !== void 0 && !(Number(s.margin_min) >= 0 && Number(s.margin_min) <= 90)) fail("VALIDATION", "Margin minimum 0\u201390%.");
+        Object.keys(s).filter((k) => /^target_\d{6}$/.test(k)).forEach((k) => {
+          if (str(s[k]) !== "" && !(Number(s[k]) >= 0)) fail("VALIDATION", "Target omzet harus angka.");
+        });
         if (s.sesi_jam !== void 0 && !(Number(s.sesi_jam) >= 1 && Number(s.sesi_jam) <= 72)) fail("VALIDATION", "Lama sesi 1\u201372 jam.");
         if (s.maks_perangkat !== void 0 && str(s.maks_perangkat) !== "" && !(Number.isInteger(Number(s.maks_perangkat)) && Number(s.maks_perangkat) >= 1 && Number(s.maks_perangkat) <= 99)) fail("VALIDATION", "Batas perangkat 1\u201399, atau kosongkan untuk tanpa batas.");
         c.s.withLock(() => {
@@ -1884,6 +2565,11 @@ var FortunerServer = (() => {
       }
     }
   };
+  var ext = makeExt({ fail, str, bool, newId, iso, addDays, isYmd, settingsMap, need, stamp, log });
+  Object.keys(ext.handlers).forEach((k) => {
+    if (handlers[k]) throw new Error("Handler ganda: " + k);
+    handlers[k] = ext.handlers[k];
+  });
   function handle(s, env, req) {
     try {
       const h = handlers[req.action];
@@ -1910,6 +2596,7 @@ var FortunerServer = (() => {
     ["Bahan finishing (laminating, plastik)", "bahan"],
     ["Operasional", "operasional"],
     ["Listrik, air & internet", "operasional"],
+    ["Tagihan biaya klik mesin", "klik"],
     ["Perawatan & sparepart mesin", "operasional"],
     ["Gaji, upah & cashbon", "gaji"],
     ["Sewa tempat", "operasional"],
@@ -1925,6 +2612,8 @@ var FortunerServer = (() => {
     sesi_jam: "12",
     prefix_nota: "FT",
     maks_perangkat: "",
+    stok_kurang_saat: "selesai",
+    margin_min: "20",
     catatan_struk: "Terima kasih. Barang yang tidak diambil lebih dari 30 hari di luar tanggung jawab kami."
   };
   function seedBase(s, env, owner) {
@@ -1936,6 +2625,7 @@ var FortunerServer = (() => {
     });
     if (!s.all("machines").length) BASE_MACHINES.forEach((n) => s.insert("machines", { id: newId(env, "mes"), nama: n, pakai_counter: ["versant", "Mahogani", "Dopo"].includes(n), aktif: true, ...st }));
     if (!s.all("expense_categories").length) BASE_CATEGORIES.forEach(([n, j]) => s.insert("expense_categories", { id: newId(env, "cat"), nama: n, jenis: j, aktif: true, ...st }));
+    if (!s.all("expense_categories").some((x) => x.jenis === "klik")) s.insert("expense_categories", { id: newId(env, "cat"), nama: "Tagihan biaya klik mesin", jenis: "klik", aktif: true, ...st });
     if (!s.all("payment_methods").length) BASE_METHODS.forEach(([n, j]) => s.insert("payment_methods", { id: newId(env, "pay"), nama: n, jenis: j, rekening: "", aktif: true, ...st }));
     if (!s.all("users").some((u) => u.role === "owner")) {
       const salt = env.uuid();
@@ -2019,7 +2709,7 @@ var FortunerServer = (() => {
     cost_history: { id: "s", product_id: "s", berlaku_mulai: "s", harga_beli: "n", supplier_id: "s", sumber: "s", ...audit },
     customers: { id: "s", kode: "s", nama: "s", telp: "s", tipe: "s", alamat: "s", catatan: "s", aktif: "b", ...audit },
     suppliers: { id: "s", nama: "s", telp: "s", bahan: "s", aktif: "b", ...audit },
-    machines: { id: "s", nama: "s", pakai_counter: "b", aktif: "b", ...audit },
+    machines: { id: "s", nama: "s", pakai_counter: "b", aktif: "b", biaya_klik: "n", ...audit },
     payment_methods: { id: "s", nama: "s", jenis: "s", rekening: "s", aktif: "b", ...audit },
     // ---------- Transaksi (dipakai mulai Tahap 2, sheet sudah disiapkan) ----------
     orders: {
@@ -2064,7 +2754,10 @@ var FortunerServer = (() => {
       operator_id: "s",
       selesai_at: "s",
       price_version_id: "s",
-      ...audit
+      ...audit,
+      hpp_bahan: "n",
+      hpp_klik: "n",
+      stok_at: "s"
     },
     payments: { id: "s", order_id: "s", tanggal: "s", nominal: "n", method_id: "s", kasir_id: "s", catatan: "s", ...audit },
     // ---------- Operasional (Tahap 4) ----------
@@ -2104,10 +2797,20 @@ var FortunerServer = (() => {
       bill_id: "s",
       keterangan: "s",
       deleted: "b",
-      ...audit
+      ...audit,
+      purchase_id: "s"
     },
     supplier_bills: { id: "s", tanggal: "s", nota: "s", supplier_id: "s", expense_id: "s", total: "n", terbayar: "n", sisa: "n", jatuh_tempo: "s", keterangan: "s", ...audit },
-    bill_payments: { id: "s", bill_id: "s", tanggal: "s", nominal: "n", method_id: "s", keterangan: "s", ...audit }
+    bill_payments: { id: "s", bill_id: "s", tanggal: "s", nominal: "n", method_id: "s", keterangan: "s", ...audit },
+    // ---------- Stok bahan & akuntansi (v1.1) ----------
+    materials: { id: "s", kode: "s", nama: "s", satuan: "s", kategori: "s", stok: "n", stok_min: "n", harga_rata: "n", harga_terakhir: "n", aktif: "b", catatan: "s", ...audit },
+    recipes: { id: "s", product_id: "s", material_id: "s", qty: "n", per: "s", ...audit },
+    stock_moves: { id: "s", tanggal: "s", material_id: "s", jenis: "s", qty: "n", harga: "n", nilai: "n", saldo: "n", ref_tabel: "s", ref_id: "s", keterangan: "s", ...audit },
+    purchases: { id: "s", tanggal: "s", nota: "s", supplier_id: "s", total: "n", cara_bayar: "s", method_id: "s", bill_id: "s", expense_id: "s", jatuh_tempo: "s", keterangan: "s", deleted: "b", ...audit },
+    purchase_items: { id: "s", purchase_id: "s", material_id: "s", qty_beli: "n", satuan_beli: "s", isi: "n", harga_beli: "n", subtotal: "n", qty_stok: "n", harga_stok: "n" },
+    opnames: { id: "s", tanggal: "s", keterangan: "s", jumlah_item: "n", nilai_selisih: "n", ...audit },
+    opname_items: { id: "s", opname_id: "s", material_id: "s", stok_sistem: "n", stok_fisik: "n", selisih: "n", harga: "n", nilai: "n", keterangan: "s" },
+    journals: { id: "s", tanggal: "s", keterangan: "s", lines: "j", deleted: "b", ...audit }
   };
 
   // src/server/gasStore.ts

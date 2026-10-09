@@ -25,6 +25,11 @@ import { LaporanPage } from '@/pages/laporan/LaporanPage';
 import { PrinterPage } from '@/pages/desktop/PrinterPage';
 import { PcPage } from '@/pages/desktop/PcPage';
 import { AboutPage } from '@/pages/AboutPage';
+import { StokPage } from '@/pages/stok/StokPage';
+import { PembelianPage } from '@/pages/stok/PembelianPage';
+import { LabaRugiPage } from '@/pages/laporan/LabaRugiPage';
+import { BukuBesarPage } from '@/pages/laporan/BukuBesarPage';
+import { MarginPage } from '@/pages/laporan/MarginPage';
 import { isDesktop } from '@/platform/desktop';
 import type { ReactElement } from 'react';
 
@@ -40,6 +45,11 @@ const PAGES: Record<string, () => ReactElement | null> = {
   '/pengeluaran': PengeluaranPage,
   '/hutang': HutangPage,
   '/laporan': LaporanPage,
+  '/laporan/laba-rugi': LabaRugiPage,
+  '/laporan/buku-besar': BukuBesarPage,
+  '/laporan/margin': MarginPage,
+  '/stok': StokPage,
+  '/pembelian': PembelianPage,
   '/master/produk': ProductsPage,
   '/master/konsumen': CustomersPage,
   '/master/supplier': SuppliersPage,

@@ -2,12 +2,14 @@ import { handle, type Request } from '@/server/core';
 import { MockStore, browserEnv } from '@/server/mockStore';
 import { seedDemo } from '@/server/demoSeed';
 
-const KEY = 'fortuner-demo-db-v1';
+const KEY = 'fortuner-demo-db-v2'; // v2: data contoh stok, pembelian, buku besar (v1.1)
+try { localStorage.removeItem('fortuner-demo-db-v1'); } catch { /* abaikan */ }
 let store: MockStore | null = null;
 function getStore() {
   if (!store) {
     store = new MockStore(KEY);
-    if (store.isEmpty) seedDemo(store, browserEnv);
+    const st = store;
+    if (st.isEmpty) st.batch(() => seedDemo(st, browserEnv));
   }
   return store;
 }
@@ -19,6 +21,7 @@ export async function mockHandle(req: Request) {
 }
 
 export function resetDemo() {
-  getStore().reset();
-  seedDemo(getStore(), browserEnv);
+  const st = getStore();
+  st.reset();
+  st.batch(() => seedDemo(st, browserEnv));
 }

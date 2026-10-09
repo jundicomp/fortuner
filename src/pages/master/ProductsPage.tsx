@@ -13,6 +13,7 @@ import { useMachines, useSettings } from '@/lib/queries';
 import { CUT_SIZES, JENIS_HARGA, TIERS, hitungHarga, type TierKey } from '@/lib/pricing';
 import { nf, rp, tgl, tglJam, ymd } from '@/lib/format';
 import { PriceGrid, priceSummary } from './PriceGrid';
+import { RecipeTab } from './RecipeTab';
 import type { JenisHarga, PriceRow, Product } from '@/types';
 
 type Tiers = Partial<Record<TierKey, number | null>>;
@@ -76,9 +77,9 @@ export function ProductsPage() {
 // ---------------- detail produk ----------------
 function ProductModal({ product, onClose, minQty }: { product: Product; onClose: () => void; minQty: number }) {
   const { can } = useAuth();
-  const [tab, setTab] = useState<'harga' | 'riwayat' | 'simulasi' | 'data'>('harga');
+  const [tab, setTab] = useState<'harga' | 'riwayat' | 'simulasi' | 'resep' | 'data'>('harga');
   const hist = useQuery({ queryKey: ['price-history', product.id], queryFn: () => api<PriceRow[]>('price.history', { product_id: product.id }) });
-  const tabs = [['harga', 'Harga'], ['riwayat', 'Riwayat'], ['simulasi', 'Simulasi'], ...(can('master.produk', 'ubah') ? [['data', 'Data produk']] : [])] as const;
+  const tabs = [['harga', 'Harga'], ['riwayat', 'Riwayat'], ['simulasi', 'Simulasi'], ...(product.jenis_harga !== 'manual' ? [['resep', 'Resep & HPP']] : []), ...(can('master.produk', 'ubah') ? [['data', 'Data produk']] : [])] as const;
 
   return (
     <Modal open onClose={onClose} size="lg" title={product.nama} subtitle={<>Kode <span className="font-mono">{product.kode}</span> · {JENIS_HARGA.find((j) => j.value === product.jenis_harga)?.label}</>}>
@@ -90,6 +91,7 @@ function ProductModal({ product, onClose, minQty }: { product: Product; onClose:
       {tab === 'harga' && <PriceTab product={product} minQty={minQty} />}
       {tab === 'riwayat' && <HistoryTab rows={hist.data || []} loading={hist.isLoading} product={product} minQty={minQty} />}
       {tab === 'simulasi' && <SimTab product={product} minQty={minQty} />}
+      {tab === 'resep' && <RecipeTab product={product} />}
       {tab === 'data' && <ProductForm product={product} onClose={onClose} minQty={minQty} embedded />}
     </Modal>
   );

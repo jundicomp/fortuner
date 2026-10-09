@@ -10,7 +10,10 @@ export class MockStore implements Store {
     this.db = parsed && typeof parsed === 'object' ? parsed : {};
   }
   get isEmpty() { return !this.db.users || this.db.users.length === 0; }
-  private save() { try { localStorage.setItem(this.key, JSON.stringify(this.db)); } catch { /* penyimpanan penuh/diblokir: data hanya di memori */ } }
+  private hold = 0;
+  private dirty = false;
+  private save() { if (this.hold) { this.dirty = true; return; } this.flush(); }
+  private flush() { this.dirty = false; try { localStorage.setItem(this.key, JSON.stringify(this.db)); } catch { /* penyimpanan penuh/diblokir: data hanya di memori */ } }
   private t(table: string) { return (this.db[table] ||= []); }
   all(table: string) { return this.t(table).map((r) => ({ ...r })); }
   insert(table: string, row: Row) { this.t(table).push({ ...row }); this.save(); return { ...row }; }
@@ -22,7 +25,12 @@ export class MockStore implements Store {
   remove(table: string, keyCol: string, keyVal: string) {
     this.db[table] = this.t(table).filter((x) => String(x[keyCol]) !== String(keyVal)); this.save();
   }
-  withLock<T>(fn: () => T) { return fn(); }
+  /** Tulis ke localStorage sekali di akhir (seed demo & handler dengan banyak baris jauh lebih cepat). */
+  batch<T>(fn: () => T): T {
+    this.hold++;
+    try { return fn(); } finally { if (--this.hold === 0 && this.dirty) this.flush(); }
+  }
+  withLock<T>(fn: () => T) { return this.batch(fn); }
   reset() { this.db = {}; this.save(); }
 }
 

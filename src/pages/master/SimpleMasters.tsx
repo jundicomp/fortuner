@@ -1,4 +1,5 @@
 import { MasterPage } from './MasterPage';
+import { nf } from '@/lib/format';
 import type { Customer, Machine, PaymentMethod, Supplier } from '@/types';
 
 export function CustomersPage() {
@@ -55,9 +56,11 @@ export function MachinesPage() {
       columns={[
         { accessorKey: 'nama', header: 'Nama', cell: (c) => <span className="font-semibold">{c.getValue()}</span> },
         { id: 'counter', accessorFn: (r) => (r.pakai_counter ? 'Ya' : 'Tidak'), header: 'Pakai counter', meta: { filter: 'select' } },
+        { accessorKey: 'biaya_klik', header: 'Biaya per klik', meta: { align: 'right' }, cell: (c) => (Number(c.getValue()) ? <span className="num">{nf(Number(c.getValue()))}</span> : <span className="text-muted">–</span>) },
       ]}
       fields={[
         { key: 'nama', label: 'Nama mesin', required: true, full: true },
+        { key: 'biaya_klik', label: 'Biaya per klik (Rp)', type: 'number', hint: 'Tarif klik/sewa mesin per lembar cetak per sisi. Masuk ke HPP produk. Kosongkan bila tidak ada.' },
         { key: 'pakai_counter', label: 'Catat counter klik harian (versant, Mahogani, Dopo)', type: 'switch' },
       ]}
     />

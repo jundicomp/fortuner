@@ -20,9 +20,9 @@ export interface ExpenseMeta {
 }
 interface Expense {
   id: string; tanggal: string; nota: string; supplier_id: string; supplier: string; kategori_id: string; kategori: string; kategori_jenis: string; product_id: string; item: string;
-  qty: number; satuan: string; harga: number; total: number; isi_per_satuan: number | null; cara_bayar: 'lunas' | 'hutang'; metode: string; sisa_hutang: number; keterangan: string; oleh: string; created_at: string;
+  qty: number; satuan: string; harga: number; total: number; isi_per_satuan: number | null; cara_bayar: 'lunas' | 'hutang'; purchase_id?: string; metode: string; sisa_hutang: number; keterangan: string; oleh: string; created_at: string;
 }
-const JENIS: Record<string, string> = { bahan: 'Bahan', operasional: 'Operasional', gaji: 'Gaji', aset: 'Aset', lain: 'Lain-lain' };
+const JENIS: Record<string, string> = { bahan: 'Bahan', operasional: 'Operasional', gaji: 'Gaji', aset: 'Aset', klik: 'Klik mesin', lain: 'Lain-lain' };
 const numIn = (s: string) => Number(String(s).replace(/[^\d.,]/g, '').replace(/\./g, '').replace(',', '.')) || 0;
 
 export const useExpenseMeta = () => useQuery({ queryKey: ['expense-meta'], queryFn: () => api<ExpenseMeta>('expense.meta'), staleTime: 60e3 });
@@ -50,7 +50,7 @@ export function PengeluaranPage() {
 
   const cols: ColumnDef<Expense, any>[] = [
     { accessorKey: 'tanggal', header: 'Tanggal', cell: (c) => <span className="num whitespace-nowrap">{tgl(c.getValue())}</span> },
-    { accessorKey: 'item', header: 'Barang / keperluan', cell: (c) => <span className="font-semibold">{c.getValue()}{c.row.original.nota && <span className="block font-mono text-[11px] font-normal text-muted">{c.row.original.nota}</span>}</span>, meta: { hideOnCard: true } },
+    { accessorKey: 'item', header: 'Barang / keperluan', cell: (c) => <span className="font-semibold">{c.getValue()}{c.row.original.purchase_id && <span className="pill pill-brand ml-1.5 align-middle">Pembelian bahan</span>}{c.row.original.nota && <span className="block font-mono text-[11px] font-normal text-muted">{c.row.original.nota}</span>}</span>, meta: { hideOnCard: true } },
     { accessorKey: 'kategori', header: 'Kategori', meta: { filter: 'select' } },
     { accessorKey: 'supplier', header: 'Supplier', meta: { filter: 'select' } },
     { id: 'jumlah', accessorFn: (r) => `${nf(r.qty)} ${r.satuan}`, header: 'Jumlah', meta: { align: 'right' } },
@@ -61,7 +61,7 @@ export function PengeluaranPage() {
         ? <span className={`pill ${c.row.original.sisa_hutang > 0 ? 'pill-warn' : 'pill-ok'}`}>{c.row.original.sisa_hutang > 0 ? `Hutang · sisa ${nf(c.row.original.sisa_hutang)}` : 'Hutang lunas'}</span>
         : <span className="text-xs">{c.getValue()}</span> },
     { accessorKey: 'oleh', header: 'Dicatat', meta: { filter: 'select', hideOnCard: true } },
-    ...(can('pengeluaran', 'hapus') ? [{ id: 'aksi', header: '', enableSorting: false, meta: { noExport: true, hideOnCard: true }, cell: (c: { row: { original: Expense } }) => <button className="btn btn-ghost btn-sm px-1.5 text-bad" aria-label="Hapus" onClick={(e) => { e.stopPropagation(); setDel(c.row.original); }}><Trash2 size={14} /></button> } as ColumnDef<Expense, any>] : []),
+    ...(can('pengeluaran', 'hapus') ? [{ id: 'aksi', header: '', enableSorting: false, meta: { noExport: true, hideOnCard: true }, cell: (c: { row: { original: Expense } }) => c.row.original.purchase_id ? null : <button className="btn btn-ghost btn-sm px-1.5 text-bad" aria-label="Hapus" onClick={(e) => { e.stopPropagation(); setDel(c.row.original); }}><Trash2 size={14} /></button> } as ColumnDef<Expense, any>] : []),
   ];
 
   return (
@@ -133,6 +133,8 @@ function ExpenseForm({ meta, onClose }: { meta: ExpenseMeta; onClose: () => void
         <Field label="Satuan" className="sm:col-span-1"><input id="ex-satuan" className="input" value={f.satuan} onChange={(e) => set('satuan', e.target.value)} placeholder="rim" /></Field>
         <Field label="Harga per satuan" className="sm:col-span-3"><input id="ex-harga" className="input num text-right" inputMode="numeric" value={f.harga ? nf(numIn(f.harga)) : ''} onChange={(e) => set('harga', e.target.value)} /></Field>
 
+        {jenis === 'bahan' && <p className="rounded-lg bg-sunk px-3 py-2 text-xs text-muted sm:col-span-6">Bahan yang dihitung stoknya (kertas, stiker, film) sebaiknya dicatat lewat menu <b className="text-ink">Pembelian Bahan</b> supaya stok dan HPP ikut terhitung. Yang dicatat di sini masuk HPP sebagai "bahan di luar stok".</p>}
+        {jenis === 'klik' && <p className="rounded-lg bg-sunk px-3 py-2 text-xs text-muted sm:col-span-6">Tagihan klik/sewa mesin dari vendor. Biaya klik sudah masuk HPP per nota (dari tarif di Master Mesin), jadi tagihan ini melunasi hutang biaya klik, tidak dihitung dua kali.</p>}
         {jenis === 'bahan' && (
           <div className="rounded-xl border border-brand/30 bg-brand/5 p-4 sm:col-span-6">
             <div className="text-sm font-bold">Perbarui harga beli produk (opsional)</div>
@@ -173,7 +175,7 @@ function CategoryModal({ cats, onClose }: { cats: ExpenseMeta['categories']; onC
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['expense-meta'] }); setEdit(null); },
   });
   return (
-    <Modal open onClose={onClose} title="Kategori pengeluaran" subtitle="Jenis menentukan cara laporan: bahan masuk HPP, operasional & gaji jadi biaya, aset tidak mengurangi laba.">
+    <Modal open onClose={onClose} title="Kategori pengeluaran" subtitle="Jenis menentukan cara laporan: bahan masuk HPP, operasional & gaji jadi beban, klik mesin melunasi hutang biaya klik, aset tidak mengurangi laba.">
       <ul className="divide-y divide-line rounded-xl border border-line">
         {cats.map((c) => (
           <li key={c.id} className="flex items-center gap-3 px-3 py-2 text-sm">

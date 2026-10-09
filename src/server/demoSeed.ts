@@ -1,4 +1,4 @@
-import { _hashPasswordForSeed, _newId, seedBase, formatNota, counterKey } from './core';
+import { _hashPasswordForSeed, _newId, _ext, seedBase, formatNota, counterKey } from './core';
 import { hargaBerlaku, hitungHarga } from '../lib/pricing';
 import type { Env, Store } from './store';
 
@@ -178,51 +178,148 @@ function seedOrders(s: Store, env: Env) {
   seedFinance(s, env, rnd, pick, shift);
 }
 
-/** Contoh pembelian bahan (mengisi harga beli), biaya operasional, dan hutang supplier. */
+/**
+ * Contoh keuangan & stok (v1.1): bahan baku + resep, pembelian harian (lunas/tempo), pemakaian bahan dari item yang selesai,
+ * stok opname, tagihan klik mesin, biaya operasional, jurnal saldo awal, dan target omzet bulan ini.
+ * Diproses urut per hari supaya harga rata-rata dan saldo kartu stok masuk akal.
+ */
 function seedFinance(s: Store, env: Env, rnd: () => number, pick: <T>(a: T[]) => T, shift: (n: number) => string) {
   const now = env.now().toISOString();
   const keu = s.all('users').find((u) => u.role === 'keuangan')!;
   const st = { created_at: now, created_by: keu.id, updated_at: now, updated_by: keu.id };
-  const cat = (j: string, n?: string) => s.all('expense_categories').find((c) => c.jenis === j && (!n || String(c.nama).startsWith(n)))!.id;
-  const sup = (n: string) => s.all('suppliers').find((x) => String(x.nama).startsWith(n))!.id;
+  const c = { s, env, user: keu, perms: { pembelian: { lihat: true, tambah: true }, stok: { lihat: true, tambah: true, ubah: true } } } as any;
+  const cat = (j: string, n?: string) => s.all('expense_categories').find((x) => x.jenis === j && (!n || String(x.nama).startsWith(n)))!.id;
+  const sup = (n: string) => String(s.all('suppliers').find((x) => String(x.nama).startsWith(n))!.id);
   const prod = (kode: string) => s.all('products').find((p) => p.kode === kode);
-  const tunai = s.all('payment_methods').find((m) => m.jenis === 'tunai')!.id;
-  const bca = s.all('payment_methods').find((m) => String(m.nama).startsWith('BCA'))!.id;
+  const tunai = String(s.all('payment_methods').find((m) => m.jenis === 'tunai')!.id);
+  const bca = String(s.all('payment_methods').find((m) => String(m.nama).startsWith('BCA'))!.id);
   const id = (p: string) => p + '_' + env.uuid().replace(/-/g, '').slice(0, 12);
-  // [kode produk, barang, satuan, harga per satuan beli, isi lembar per satuan, supplier]
-  const bahan: [string, string, string, number, number, string][] = [
-    ['7', 'Art carton 260 A3+', 'rim', 520000, 500, 'Toko Kertas'], ['5', 'Art carton 210 A3+', 'rim', 450000, 500, 'Toko Kertas'],
-    ['2', 'Art paper 120 A3+', 'rim', 330000, 500, 'Toko Kertas'], ['9', 'Stiker kromo A3+', 'pack', 95000, 100, 'Mitra Stiker'],
-    ['12', 'Stiker glossy A3+', 'pack', 260000, 100, 'Mitra Stiker'], ['22', 'HVS 80 A3+', 'rim', 78000, 500, 'Toko Kertas'],
-    ['16', 'Linen A3+', 'pack', 85000, 50, 'Toko Kertas'], ['81', 'Film DTF 60cm', 'roll', 620000, 100, 'Sumber Film'],
-  ];
-  // harga beli awal 60 hari lalu supaya laba kotor nota lama ikut terhitung
-  bahan.forEach(([kode, , , harga, isi, sp]) => { const p = prod(kode); if (p) s.insert('cost_history', { id: id('cst'), product_id: p.id, berlaku_mulai: shift(-60), harga_beli: Math.round((harga * 0.97 / isi) * 100) / 100, supplier_id: sup(sp), sumber: 'harga awal', ...st }); });
-  for (let off = -40; off <= 0; off++) {
-    const t = shift(off);
-    if (rnd() < 0.35) {
-      const [kode, item, satuan, harga, isi, sp] = pick(bahan);
-      const p = prod(kode);
-      const qty = 1 + Math.floor(rnd() * 4);
-      const hutang = rnd() < 0.35;
-      const eid = id('exp');
-      let billId = '';
-      if (hutang) {
-        billId = id('bil');
-        const paid = off < -20 && rnd() < 0.7 ? harga * qty : off < -10 && rnd() < 0.5 ? Math.round(harga * qty / 2) : 0;
-        s.insert('supplier_bills', { id: billId, tanggal: t, nota: `INV-${100 + Math.floor(rnd() * 900)}`, supplier_id: sup(sp), expense_id: eid, total: harga * qty, terbayar: paid, sisa: harga * qty - paid, jatuh_tempo: shift(off + 30), keterangan: `${item} ${qty} ${satuan}`, ...st });
-        if (paid) s.insert('bill_payments', { id: id('bpy'), bill_id: billId, tanggal: shift(Math.min(0, off + 14)), nominal: paid, method_id: bca, keterangan: '', ...st });
-      }
-      s.insert('expenses', { id: eid, tanggal: t, nota: `NT-${1000 + Math.floor(rnd() * 9000)}`, supplier_id: sup(sp), kategori_id: cat('bahan', 'Bahan baku'), product_id: p?.id || '', item, qty, satuan, harga,
-        total: harga * qty, isi_per_satuan: isi, mesin_id: p?.mesin_id || '', cara_bayar: hutang ? 'hutang' : 'lunas', method_id: hutang ? '' : pick([tunai, bca]), bill_id: billId, keterangan: '', deleted: false, ...st });
-      if (p) s.insert('cost_history', { id: id('cst'), product_id: p.id, berlaku_mulai: t, harga_beli: Math.round((harga / isi) * 100) / 100, supplier_id: sup(sp), sumber: `pembelian ${eid}`, ...st });
-    }
-    if (rnd() < 0.15) s.insert('expenses', { id: id('exp'), tanggal: t, nota: '', supplier_id: sup('Plastik'), kategori_id: cat('bahan', 'Bahan finishing'), product_id: '', item: 'Film laminating doff', qty: 1, satuan: 'roll', harga: 285000, total: 285000, isi_per_satuan: null, mesin_id: '', cara_bayar: 'lunas', method_id: tunai, bill_id: '', keterangan: '', deleted: false, ...st });
-  }
-  const ops: [number, string, number, string][] = [[-38, 'Listrik', 1250000, 'Listrik'], [-35, 'Internet kantor', 450000, 'Listrik'], [-30, 'Servis roller versant', 750000, 'Perawatan'], [-25, 'Upah lembur', 300000, 'Gaji'],
-    [-8, 'Listrik', 1310000, 'Listrik'], [-5, 'Internet kantor', 450000, 'Listrik'], [-3, 'Toner hitam Mahogani', 980000, 'Perawatan']];
-  ops.forEach(([off, item, n, c]) => {
-    const k = s.all('expense_categories').find((x) => String(x.nama).startsWith(c))!.id;
-    s.insert('expenses', { id: id('exp'), tanggal: shift(off), nota: '', supplier_id: '', kategori_id: k, product_id: '', item, qty: 1, satuan: 'bulan', harga: n, total: n, isi_per_satuan: null, mesin_id: '', cara_bayar: 'lunas', method_id: bca, bill_id: '', keterangan: '', deleted: false, ...st });
+  const START = -46;
+
+  // tarif klik mesin (ilustrasi)
+  ([['versant', 350], ['Mahogani', 60], ['DTF', 2000]] as [string, number][]).forEach(([n, v]) => {
+    const m = s.all('machines').find((x) => x.nama === n); if (m) s.update('machines', 'id', String(m.id), { biaya_klik: v });
   });
+
+  // [kode, nama, satuan stok, kategori, stok min, satuan beli, isi, harga beli, supplier, stok awal (satuan beli)]
+  type M = [string, string, string, string, number, string, number, number, string, number];
+  const bahan: M[] = [
+    ['HVS80', 'HVS 80 gr A3+', 'lembar', 'Kertas', 500, 'rim', 500, 78000, 'Toko Kertas', 4],
+    ['AP120', 'Art paper 120 A3+', 'lembar', 'Kertas', 250, 'rim', 500, 330000, 'Toko Kertas', 2],
+    ['AP150', 'Art paper 150 A3+', 'lembar', 'Kertas', 250, 'rim', 500, 380000, 'Toko Kertas', 2],
+    ['AC210', 'Art carton 210 A3+', 'lembar', 'Kertas', 250, 'rim', 500, 450000, 'Toko Kertas', 2],
+    ['AC260', 'Art carton 260 A3+', 'lembar', 'Kertas', 250, 'rim', 500, 520000, 'Toko Kertas', 2],
+    ['LIN', 'Linen A3+', 'lembar', 'Kertas', 60, 'pack', 50, 95000, 'Toko Kertas', 3],
+    ['SKR', 'Stiker kromo A3+', 'lembar', 'Stiker', 120, 'pack', 100, 95000, 'Mitra Stiker', 4],
+    ['SGL', 'Stiker glossy A3+', 'lembar', 'Stiker', 120, 'pack', 100, 260000, 'Mitra Stiker', 3],
+    ['LAM', 'Film laminating doff A3+', 'lembar', 'Finishing', 120, 'roll', 400, 285000, 'Plastik', 2],
+    ['DTF', 'Film DTF 60 cm', 'meter', 'Film DTF', 10, 'roll', 100, 620000, 'Sumber Film', 1],
+  ];
+  const mat: Record<string, any> = {};
+  bahan.forEach(([kode, nama, satuan, kategori, min]) => {
+    mat[kode] = s.insert('materials', { id: id('mat'), kode, nama, satuan, kategori, stok: 0, stok_min: min, harga_rata: 0, harga_terakhir: 0, aktif: true, catatan: '', ...st });
+  });
+  const spec = Object.fromEntries(bahan.map((b) => [b[0], b]));
+  // resep: [kode produk, kode bahan, qty, per]
+  const resep: [string, string, number, 'unit' | 'klik'][] = [
+    ['1', 'HVS80', 1, 'unit'], ['22', 'HVS80', 1, 'unit'], ['2', 'AP120', 1, 'unit'], ['3', 'AP150', 1, 'unit'], ['5', 'AC210', 1, 'unit'], ['7', 'AC260', 1, 'unit'],
+    ['16', 'LIN', 1, 'unit'], ['9', 'SKR', 1, 'unit'], ['12', 'SGL', 1, 'unit'], ['44', 'LAM', 1, 'unit'], ['81', 'DTF', 0.25, 'unit'], ['80', 'DTF', 0.45, 'unit'],
+  ];
+  resep.forEach(([pk, mk, qty, per]) => { const p = prod(pk); if (p) s.insert('recipes', { id: id('rcp'), product_id: p.id, material_id: mat[mk].id, qty, per, ...st }); });
+  const ext = _ext;
+
+  // saldo awal: kas & bank + stok awal
+  s.insert('journals', { id: id('jrn'), tanggal: shift(START), keterangan: 'Saldo awal kas & bank', lines: [
+    { akun: '1100:' + tunai, debit: 3000000, kredit: 0 }, { akun: '1100:' + bca, debit: 40000000, kredit: 0 }, { akun: '3100', debit: 0, kredit: 43000000 }], deleted: false, ...st });
+  bahan.forEach(([kode, , , , , , isi, harga, , awal]) => ext.move(c, mat[kode], awal * isi, 'awal', Math.round((harga * 0.97 / isi) * 100) / 100, shift(START), 'materials', String(mat[kode].id), 'Stok awal'));
+
+  // kebutuhan bahan per hari dari item yang selesai (mode potong stok: saat selesai)
+  const orders = Object.fromEntries(s.all('orders').map((o) => [o.id, o]));
+  const recipes = s.all('recipes');
+  const machines = Object.fromEntries(s.all('machines').map((m) => [m.id, m]));
+  const byDay: Record<string, any[]> = {};
+  s.all('order_items').forEach((i) => { if (i.status_produksi === 'selesai') (byDay[String(orders[String(i.order_id)]?.tanggal)] ||= []).push(i); });
+  const lowAtEnd = new Set(['SGL', 'DTF', 'LIN']); // contoh stok menipis di dashboard
+
+  for (let off = START + 1; off <= 0; off++) {
+    const t = shift(off);
+    const items = byDay[t] || [];
+    const need: Record<string, number> = {};
+    items.forEach((i) => recipes.filter((r) => r.product_id === i.product_id).forEach((r) => {
+      need[String(r.material_id)] = (need[String(r.material_id)] || 0) + Number(r.qty) * (r.per === 'klik' ? Number(i.klik) : Number(i.qty));
+    }));
+    // belanja: bila stok setelah dipakai hari ini di bawah batas minimum
+    const buy: Record<string, any[]> = {};
+    const fresh = () => Object.fromEntries(s.all('materials').map((m) => [m.id, m])) as Record<string, any>;
+    Object.values(fresh()).forEach((m: any) => {
+      const [kode, , , , min, satBeli, isi, harga, sp] = spec[m.kode];
+      const after = Number(m.stok) - (need[m.id] || 0);
+      const late = off > -6 && lowAtEnd.has(kode); // sengaja telat belanja
+      if (after >= (late ? 0 : 1.3 * min)) return;
+      const targetStok = late ? 0.5 * min : 3 * min + (need[m.id] || 0);
+      const n = Math.max(1, Math.ceil((targetStok - after) / isi));
+      const naik = 1 + (off > -20 && ['AC260', 'AC210', 'SGL'].includes(kode) ? 0.04 : 0); // contoh kenaikan harga supplier
+      (buy[sp] ||= []).push({ material_id: m.id, qty_beli: n, satuan_beli: satBeli, isi, harga_beli: Math.round((harga * naik) / 500) * 500 });
+    });
+    Object.entries(buy).forEach(([sp, its]) => {
+      const total = its.reduce((a, x) => a + x.qty_beli * x.harga_beli, 0);
+      const tempo = total >= 700000 && rnd() < 0.6;
+      ext.handlers['purchase.save'].fn(c, { purchase: { tanggal: t, nota: `INV-${1000 + Math.floor(rnd() * 9000)}`, supplier_id: sup(sp), cara_bayar: tempo ? 'hutang' : 'lunas', method_id: rnd() < 0.5 ? tunai : bca, jatuh_tempo: shift(off + 30), items: its, keterangan: '' } });
+    });
+    // stok opname 7 hari lalu (pagi, sebelum produksi): beberapa selisih kecil
+    if (off === -7) {
+      const tOp = shift(-7);
+      const opId = id('opn');
+      let nilai = 0, n = 0;
+      ([['HVS80', -12, 'rusak kena air'], ['AP120', -3, 'salah potong'], ['SKR', 2, 'sisa pack lama'], ['AC260', 0, '']] as [string, number, string][]).forEach(([k, sel, ket]) => {
+        const m = s.all('materials').find((x) => x.id === mat[k].id)!;
+        const sistem = Number(m.stok);
+        if (sel) ext.move(c, m, sel, 'opname', Number(m.harga_rata), tOp, 'opnames', opId, `Opname: ${ket}`);
+        s.insert('opname_items', { id: id('opi'), opname_id: opId, material_id: m.id, stok_sistem: sistem, stok_fisik: sistem + sel, selisih: sel, harga: m.harga_rata, nilai: Math.round(sel * Number(m.harga_rata)), keterangan: ket });
+        nilai += Math.round(sel * Number(m.harga_rata)); n++;
+      });
+      s.insert('opnames', { id: opId, tanggal: tOp, keterangan: 'Cek mingguan gudang kertas', jumlah_item: n, nilai_selisih: nilai, ...st, created_at: `${tOp}T10:00:00.000Z` });
+    }
+    // pemakaian bahan + HPP item yang selesai hari ini
+    const mats = fresh();
+    items.forEach((i) => ext.deductItem(c, i, t, { mats, recipes, machines, orders }));
+  }
+
+  // contoh peringatan: batas minimum bahan ini baru dinaikkan owner, stok sekarang di bawahnya
+  lowAtEnd.forEach((k) => {
+    const m = s.all('materials').find((x) => x.id === mat[k].id)!;
+    s.update('materials', 'id', String(m.id), { stok_min: Math.max(Number(m.stok_min), Math.ceil((Number(m.stok) * 1.4 + 1) / 10) * 10) });
+  });
+
+  // cicilan hutang supplier lama
+  s.all('supplier_bills').forEach((b) => {
+    const age = Math.round((Date.parse(shift(0)) - Date.parse(String(b.tanggal))) / 864e5);
+    const paid = age > 20 && rnd() < 0.75 ? Number(b.total) : age > 10 && rnd() < 0.5 ? Math.round(Number(b.total) / 2) : 0;
+    if (!paid) return;
+    s.update('supplier_bills', 'id', String(b.id), { terbayar: paid, sisa: Number(b.total) - paid });
+    s.insert('bill_payments', { id: id('bpy'), bill_id: b.id, tanggal: shift(Math.min(0, -age + 14)), nominal: paid, method_id: bca, keterangan: '', ...st });
+  });
+
+  // tagihan klik mesin (vendor versant) dibayar tiap ~30 hari
+  const klikItems = s.all('order_items').filter((i) => i.stok_at && Number(i.hpp_klik));
+  const tagih = (a: string, b: string) => klikItems.filter((i) => String(i.stok_at).slice(0, 10) >= a && String(i.stok_at).slice(0, 10) <= b).reduce((x, i) => x + Number(i.hpp_klik), 0);
+  [[START, -16], [-15, -2]].forEach(([a, b]) => {
+    const total = Math.round(tagih(shift(a), shift(b)) / 1000) * 1000;
+    if (total > 0) s.insert('expenses', { id: id('exp'), tanggal: shift(b + 1), nota: `KLIK-${shift(b).slice(5, 7)}${shift(b).slice(8, 10)}`, supplier_id: '', kategori_id: cat('klik'), product_id: '', item: `Tagihan klik mesin ${shift(a)} s/d ${shift(b)}`, qty: 1, satuan: 'tagihan', harga: total, total, isi_per_satuan: null, mesin_id: '', cara_bayar: 'lunas', method_id: bca, bill_id: '', keterangan: '', deleted: false, ...st });
+  });
+
+  const ops: [number, string, number, string][] = [[-38, 'Listrik', 1250000, 'Listrik'], [-35, 'Internet kantor', 450000, 'Listrik'], [-30, 'Servis roller versant', 750000, 'Perawatan'], [-25, 'Upah lembur', 300000, 'Gaji'],
+    [-28, 'Gaji karyawan', 9500000, 'Gaji'], [-27, 'Sewa ruko', 4000000, 'Sewa'], [-8, 'Listrik', 1310000, 'Listrik'], [-5, 'Internet kantor', 450000, 'Listrik'], [-3, 'Toner hitam Mahogani', 980000, 'Perawatan']];
+  ops.forEach(([off, item, nn, cc]) => {
+    const k = s.all('expense_categories').find((x) => String(x.nama).startsWith(cc))!.id;
+    s.insert('expenses', { id: id('exp'), tanggal: shift(off), nota: '', supplier_id: '', kategori_id: k, product_id: '', item, qty: 1, satuan: 'bulan', harga: nn, total: nn, isi_per_satuan: null, mesin_id: '', cara_bayar: 'lunas', method_id: bca, bill_id: '', keterangan: '', deleted: false, ...st });
+  });
+
+  // target omzet bulan ini ≈ 10% di atas laju 30 hari terakhir
+  const os = s.all('orders').filter((o) => !o.batal && String(o.tanggal) >= shift(-30));
+  const perHari = os.reduce((a, o) => a + Number(o.total), 0) / 31;
+  const t0 = shift(0);
+  const nDays = new Date(Date.UTC(Number(t0.slice(0, 4)), Number(t0.slice(5, 7)), 0)).getUTCDate();
+  s.insert('settings', { key: 'target_' + t0.slice(0, 7).replace('-', ''), value: String(Math.round((perHari * nDays * 1.1) / 500000) * 500000) });
+  void pick;
 }

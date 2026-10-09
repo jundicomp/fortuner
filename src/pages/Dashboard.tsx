@@ -1,9 +1,11 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { BarChart3, AlertTriangle, ArrowDownRight, ArrowUpRight, CalendarClock, MonitorSmartphone, Package, Users, Receipt, Wallet, HandCoins, ShoppingCart } from 'lucide-react';
+import { BarChart3, AlertTriangle, ArrowDownRight, ArrowUpRight, CalendarClock, Boxes, Target, MonitorSmartphone, Package, Users, Receipt, Wallet, HandCoins, ShoppingCart } from 'lucide-react';
 import { TrendBars } from '@/components/TrendBars';
 import { PageHeader } from '@/components/ui/Field';
 import { api } from '@/lib/api';
+import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth/AuthContext';
 import { nf, rp, tgl, ymd } from '@/lib/format';
 
@@ -12,7 +14,11 @@ interface Summary {
   trx: Trx | null;
   produksi: { mesin_id: string; mesin: string; antrian: number; proses: number }[] | null;
   hutang: { total: number; tagihan: number; jatuh_tempo: { id: string; supplier: string; sisa: number; jatuh_tempo: string; nota: string }[] } | null;
-  bulan: { omzet: number; omzet_bulan_lalu_sd: number; omzet_bulan_lalu: number; top_produk: { nama: string; omzet: number; qty: number }[] } | null;
+  bulan: {
+    omzet: number; omzet_bulan_lalu_sd: number; omzet_bulan_lalu: number; top_produk: { nama: string; omzet: number; qty: number }[];
+    target: number; hari_ke: number; jumlah_hari: number; proyeksi: number; perlu_per_hari: number; bisa_atur_target: boolean;
+  } | null;
+  stok: { menipis: { id: string; nama: string; satuan: string; stok: number; stok_min: number }[]; jumlah: number } | null;
   produk_aktif: number; produk_tanpa_harga: number; konsumen: number; reseller: number; perangkat_menunggu: number | null;
   perubahan_harga: { product_id: string; kode: string; nama: string; berlaku_mulai: string; sebelum: number | null; sesudah: number | null; persen: number | null; terjadwal: boolean; catatan: string }[];
 }
@@ -22,7 +28,8 @@ const STAGES = [
   { n: 2, label: 'Transaksi inti: front office, kasir, order, piutang, mode offline', status: 'selesai' },
   { n: 4, label: 'Operasional: produksi, mesin, kas', status: 'selesai' },
   { n: 5, label: 'Keuangan & laporan: pengeluaran, hutang supplier, laporan & laba', status: 'selesai' },
-  { n: 3, label: 'Aplikasi desktop FO & kasir: installer, printer struk, laci, update otomatis', status: 'jalan' },
+  { n: 3, label: 'Aplikasi desktop FO & kasir: installer, printer struk, laci, update otomatis', status: 'selesai' },
+  { n: 7, label: 'Stok bahan, pembelian, HPP, laba rugi & buku besar (v1.1)', status: 'selesai' },
   { n: 6, label: 'Migrasi data & go-live', status: 'berikutnya' },
 ];
 
@@ -45,6 +52,7 @@ export function Dashboard() {
       <PageHeader title={`${greet}, ${user?.nama?.split(' ')[0] || ''}`} desc="Ringkasan hari ini dibanding kemarin, bulan berjalan dibanding bulan lalu di tanggal yang sama." />
       {d?.trx && <TrxPanel t={d.trx} />}
       {(d?.bulan || d?.hutang) && <BulanPanel b={d.bulan} h={d.hutang} />}
+      {(d?.bulan || d?.stok) && <TargetStokPanel b={d.bulan} st={d.stok} />}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {kpis.map((k) => (
           <Link key={k.label} to={k.to} className={`card tint tint-${k.tint} group p-4 transition hover:border-brand/50`}>
@@ -176,6 +184,72 @@ function BulanPanel({ b, h }: { b: Summary['bulan']; h: Summary['hutang'] }) {
                   </li>
                 );
               })}
+            </ul>
+          )}
+        </section>
+      )}
+    </div>
+  );
+}
+
+const bulanKey = () => { const n = new Date(); return `target_${n.getFullYear()}${String(n.getMonth() + 1).padStart(2, '0')}`; };
+
+function TargetStokPanel({ b, st }: { b: Summary['bulan']; st: Summary['stok'] }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const [edit, setEdit] = useState(false);
+  const [val, setVal] = useState('');
+  const save = useMutation({
+    mutationFn: () => api('settings.save', { settings: { [bulanKey()]: val.replace(/\D/g, '') } }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['dashboard'] }); qc.invalidateQueries({ queryKey: ['settings'] }); toast('Target omzet disimpan'); setEdit(false); },
+  });
+  const pct = b?.target ? (b.omzet / b.target) * 100 : 0;
+  const waktu = b ? (b.hari_ke / b.jumlah_hari) * 100 : 0;
+  const onTrack = b && b.target ? b.proyeksi >= b.target : null;
+  return (
+    <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-2">
+      {b && (
+        <section className="card tint tint-teal p-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-muted">Target omzet bulan ini</span>
+            <span className="flex items-center gap-2">{b.bisa_atur_target && !edit && <button id="target-edit" className="text-xs font-semibold text-brand" onClick={() => { setVal(b.target ? String(b.target) : ''); setEdit(true); }}>{b.target ? 'Ubah' : 'Atur target'}</button>}<span className="tint-chip flex h-8 w-8 items-center justify-center rounded-lg"><Target size={17} /></span></span>
+          </div>
+          {edit ? (
+            <div className="mt-3 flex flex-wrap gap-2">
+              <input id="target-input" className="input num w-48" inputMode="numeric" autoFocus value={val ? Number(val.replace(/\D/g, '')).toLocaleString('id-ID') : ''} onChange={(e) => setVal(e.target.value)} placeholder="mis. 75.000.000" />
+              <button id="target-save" className="btn btn-primary" disabled={save.isPending} onClick={() => save.mutate()}>Simpan</button>
+              <button className="btn" onClick={() => setEdit(false)}>Batal</button>
+            </div>
+          ) : !b.target ? (
+            <p className="mt-3 text-sm text-muted">Belum ada target untuk bulan ini.{b.bisa_atur_target ? ' Tetapkan target supaya terlihat apakah laju penjualan sudah cukup.' : ''} Proyeksi akhir bulan dengan laju sekarang: <b className="num text-ink">{rp(b.proyeksi)}</b>.</p>
+          ) : (
+            <>
+              <div className="mt-2 flex flex-wrap items-baseline gap-x-2"><span className="num text-3xl font-extrabold">{pct.toFixed(0)}%</span><span className="num text-sm text-muted">{rp(b.omzet)} dari {rp(b.target)}</span></div>
+              <div className="relative mt-3 h-3 overflow-hidden rounded-full bg-sunk">
+                <div className={`h-full rounded-full ${onTrack ? 'bg-ok' : 'bg-brand'}`} style={{ width: `${Math.min(100, pct)}%` }} />
+                <div className="absolute top-0 h-full w-0.5 bg-ink/60" style={{ left: `${waktu}%` }} title={`Hari ke-${b.hari_ke} dari ${b.jumlah_hari}`} />
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2 text-xs">
+                <div><span className="text-muted">Proyeksi akhir bulan</span><div className={`num font-bold ${onTrack ? 'text-ok' : 'text-warn'}`}>{rp(b.proyeksi)}</div></div>
+                <div><span className="text-muted">{b.omzet >= b.target ? 'Target tercapai' : 'Perlu per hari (sisa bulan)'}</span><div className="num font-bold">{b.omzet >= b.target ? '✓' : rp(b.perlu_per_hari)}</div></div>
+              </div>
+            </>
+          )}
+          <div className="mt-2 text-[11px] text-muted">Garis tipis = posisi hari ini (hari ke-{b.hari_ke} dari {b.jumlah_hari}).</div>
+        </section>
+      )}
+      {st && (
+        <section className="card p-4">
+          <div className="flex items-center justify-between"><h2 className="flex items-center gap-2 text-sm font-bold"><Boxes size={16} />Stok bahan menipis</h2><Link to="/stok" className="text-xs font-semibold text-brand">Buka stok</Link></div>
+          {!st.jumlah ? <p className="mt-3 text-sm text-muted">Semua bahan di atas stok minimum.</p> : (
+            <ul className="mt-3 flex flex-col gap-2">
+              {st.menipis.map((m) => (
+                <li key={m.id} className="text-sm">
+                  <div className="flex justify-between gap-2"><span className="truncate font-semibold">{m.nama}</span><span className={`num shrink-0 text-xs font-bold ${m.stok <= 0 ? 'text-bad' : 'text-warn'}`}>{nf(m.stok)} / min {nf(m.stok_min)} {m.satuan}</span></div>
+                  <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-sunk"><div className={`h-full rounded-full ${m.stok <= 0 ? 'bg-bad' : 'bg-warn'}`} style={{ width: `${Math.max(3, Math.min(100, (m.stok / Math.max(1, m.stok_min)) * 100))}%` }} /></div>
+                </li>
+              ))}
+              {st.jumlah > st.menipis.length && <li className="text-xs text-muted">+{st.jumlah - st.menipis.length} bahan lain</li>}
             </ul>
           )}
         </section>

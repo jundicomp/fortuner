@@ -14,7 +14,7 @@ import { useToast } from '@/components/ui/Toast';
 export function Header({ onBurger, onChangePassword }: { onBurger: () => void; onChangePassword: () => void }) {
   const { user, logout } = useAuth();
   const loc = useLocation();
-  const item = ALL_ITEMS.find((i) => (i.path === '/' ? loc.pathname === '/' : loc.pathname.startsWith(i.path)));
+  const item = ALL_ITEMS.filter((i) => (i.path === '/' ? loc.pathname === '/' : loc.pathname.startsWith(i.path))).sort((a, b) => b.path.length - a.path.length)[0];
   const [theme, setTheme] = useState<ThemePref>(getThemePref());
   const [open, setOpen] = useState(false);
   const toast = useToast();

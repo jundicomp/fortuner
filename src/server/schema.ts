@@ -34,7 +34,7 @@ export const SCHEMA: Record<string, TableSchema> = {
   cost_history: { id: 's', product_id: 's', berlaku_mulai: 's', harga_beli: 'n', supplier_id: 's', sumber: 's', ...audit },
   customers: { id: 's', kode: 's', nama: 's', telp: 's', tipe: 's', alamat: 's', catatan: 's', aktif: 'b', ...audit },
   suppliers: { id: 's', nama: 's', telp: 's', bahan: 's', aktif: 'b', ...audit },
-  machines: { id: 's', nama: 's', pakai_counter: 'b', aktif: 'b', ...audit },
+  machines: { id: 's', nama: 's', pakai_counter: 'b', aktif: 'b', biaya_klik: 'n', ...audit },
   payment_methods: { id: 's', nama: 's', jenis: 's', rekening: 's', aktif: 'b', ...audit },
 
   // ---------- Transaksi (dipakai mulai Tahap 2, sheet sudah disiapkan) ----------
@@ -46,6 +46,7 @@ export const SCHEMA: Record<string, TableSchema> = {
     id: 's', order_id: 's', product_id: 's', nama_produk: 's', keterangan: 's', qty: 'n', sisi: 'n', ukuran_cutting: 'n', klik: 'n',
     tier: 's', harga_satuan: 'n', harga_beli: 'n', harga_manual: 'b', subtotal: 'n', mesin_id: 's', status_produksi: 's',
     operator_id: 's', selesai_at: 's', price_version_id: 's', ...audit,
+    hpp_bahan: 'n', hpp_klik: 'n', stok_at: 's',
   },
   payments: { id: 's', order_id: 's', tanggal: 's', nominal: 'n', method_id: 's', kasir_id: 's', catatan: 's', ...audit },
 
@@ -61,9 +62,20 @@ export const SCHEMA: Record<string, TableSchema> = {
   expenses: {
     id: 's', tanggal: 's', nota: 's', supplier_id: 's', kategori_id: 's', product_id: 's', item: 's', qty: 'n', satuan: 's', harga: 'n', total: 'n', isi_per_satuan: 'n',
     mesin_id: 's', cara_bayar: 's', method_id: 's', bill_id: 's', keterangan: 's', deleted: 'b', ...audit,
+    purchase_id: 's',
   },
   supplier_bills: { id: 's', tanggal: 's', nota: 's', supplier_id: 's', expense_id: 's', total: 'n', terbayar: 'n', sisa: 'n', jatuh_tempo: 's', keterangan: 's', ...audit },
   bill_payments: { id: 's', bill_id: 's', tanggal: 's', nominal: 'n', method_id: 's', keterangan: 's', ...audit },
+
+  // ---------- Stok bahan & akuntansi (v1.1) ----------
+  materials: { id: 's', kode: 's', nama: 's', satuan: 's', kategori: 's', stok: 'n', stok_min: 'n', harga_rata: 'n', harga_terakhir: 'n', aktif: 'b', catatan: 's', ...audit },
+  recipes: { id: 's', product_id: 's', material_id: 's', qty: 'n', per: 's', ...audit },
+  stock_moves: { id: 's', tanggal: 's', material_id: 's', jenis: 's', qty: 'n', harga: 'n', nilai: 'n', saldo: 'n', ref_tabel: 's', ref_id: 's', keterangan: 's', ...audit },
+  purchases: { id: 's', tanggal: 's', nota: 's', supplier_id: 's', total: 'n', cara_bayar: 's', method_id: 's', bill_id: 's', expense_id: 's', jatuh_tempo: 's', keterangan: 's', deleted: 'b', ...audit },
+  purchase_items: { id: 's', purchase_id: 's', material_id: 's', qty_beli: 'n', satuan_beli: 's', isi: 'n', harga_beli: 'n', subtotal: 'n', qty_stok: 'n', harga_stok: 'n' },
+  opnames: { id: 's', tanggal: 's', keterangan: 's', jumlah_item: 'n', nilai_selisih: 'n', ...audit },
+  opname_items: { id: 's', opname_id: 's', material_id: 's', stok_sistem: 'n', stok_fisik: 'n', selisih: 'n', harga: 'n', nilai: 'n', keterangan: 's' },
+  journals: { id: 's', tanggal: 's', keterangan: 's', lines: 'j', deleted: 'b', ...audit },
 };
 
 export type Row = Record<string, unknown>;
