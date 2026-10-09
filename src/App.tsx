@@ -24,6 +24,7 @@ import { HutangPage } from '@/pages/keuangan/HutangPage';
 import { LaporanPage } from '@/pages/laporan/LaporanPage';
 import { PrinterPage } from '@/pages/desktop/PrinterPage';
 import { PcPage } from '@/pages/desktop/PcPage';
+import { AboutPage } from '@/pages/AboutPage';
 import { isDesktop } from '@/platform/desktop';
 import type { ReactElement } from 'react';
 
@@ -51,6 +52,7 @@ const PAGES: Record<string, () => ReactElement | null> = {
   '/pengaturan/log': LogPage,
   '/pengaturan/printer': PrinterPage,
   '/pengaturan/pc': PcPage,
+  '/pengaturan/tentang': AboutPage,
 };
 
 function Guard({ perm, children }: { perm: string; children: ReactElement }) {
@@ -61,7 +63,7 @@ function Guard({ perm, children }: { perm: string; children: ReactElement }) {
 export default function App() {
   const { user, ready } = useAuth();
   if (!ready) return <div className="flex h-full items-center justify-center text-sm text-muted">Memuat…</div>;
-  // HashRouter: URL jadi /#/master/produk sehingga tidak 404 di GitHub Pages.
+  // HashRouter: URL jadi /#/master/produk sehingga tidak 404 di hosting statis.
   // Build demo satu-file memakai MemoryRouter supaya bisa jalan di halaman pratinjau yang membatasi perubahan URL.
   const Router = import.meta.env.MODE === 'demo' ? MemoryRouter : HashRouter;
   return (

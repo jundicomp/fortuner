@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, ShoppingCart, FilePlus2, ClipboardList, Factory, HandCoins, Receipt, Truck, Wallet, Gauge, Package, Users, Store, Cog,
-  CreditCard, BarChart3, UserCog, ShieldCheck, MonitorSmartphone, SlidersHorizontal, History, ArrowLeftRight, Landmark, Database, Settings, Printer, MonitorCog, type LucideIcon,
+  CreditCard, BarChart3, UserCog, ShieldCheck, MonitorSmartphone, SlidersHorizontal, History, ArrowLeftRight, Landmark, Database, Settings, Printer, MonitorCog, Info, type LucideIcon,
 } from 'lucide-react';
 
 /** `desktop` = hanya muncul di aplikasi desktop (Tauri). */
@@ -54,6 +54,7 @@ export const MENU: MenuGroup[] = [
       { path: '/pengaturan/log', label: 'Log Aktivitas', icon: History, perm: 'pengaturan.log' },
       { path: '/pengaturan/printer', label: 'Printer & Laci', icon: Printer, perm: 'dashboard', desktop: true },
       { path: '/pengaturan/pc', label: 'Aplikasi PC Ini', icon: MonitorCog, perm: 'dashboard', desktop: true },
+      { path: '/pengaturan/tentang', label: 'Tentang Aplikasi', icon: Info, perm: 'dashboard' },
     ],
   },
 ];

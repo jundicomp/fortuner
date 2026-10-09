@@ -1,4 +1,4 @@
-/** Pembaruan aplikasi desktop dari rilis GitHub (plugin updater Tauri). Saat simulasi: pembaruan tiruan. */
+/** Pembaruan aplikasi desktop dari server rilis (plugin updater Tauri). Saat simulasi: pembaruan tiruan. */
 import { APP_VERSION, isTauri, simDesktop } from './desktop';
 
 export interface UpdateInfo {
@@ -42,4 +42,13 @@ export async function checkUpdate(): Promise<UpdateInfo | null> {
     };
   }
   return null;
+}
+
+/** Pesan kesalahan pembaruan yang ramah untuk pengguna. */
+export function updateErrorText(e: unknown): string {
+  const m = String((e as Error)?.message || e || '');
+  if (/endpoints|pubkey/i.test(m)) return 'Pembaruan otomatis belum aktif di versi ini. Minta admin memasang versi terbaru sekali secara manual.';
+  if (/network|connect|dns|timed? ?out|fetch|offline|request/i.test(m)) return 'Tidak bisa mengecek pembaruan. Periksa koneksi internet.';
+  if (/signature/i.test(m)) return 'File pembaruan tidak lolos pemeriksaan keamanan, jadi tidak dipasang.';
+  return 'Tidak bisa mengecek pembaruan: ' + m;
 }

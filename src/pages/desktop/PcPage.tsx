@@ -1,14 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
-import { CheckCircle2, CloudDownload, Link2, MonitorCog, Plug, RotateCcw, Server } from 'lucide-react';
+import { CheckCircle2, CloudDownload, Info, Link2, MonitorCog, Plug, RotateCcw, Server } from 'lucide-react';
+import { Link } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { ErrorBox, Field, PageHeader, Switch } from '@/components/ui/Field';
-import { UpdateDialog } from '@/components/UpdateDialog';
 import { useAuth } from '@/auth/AuthContext';
 import { api, API_URL, apiUrlOverride, BUILD_API_URL, IS_DEMO, isValidApiUrl, pingServer } from '@/lib/api';
 import { useSync } from '@/lib/offline';
 import { getDeviceId } from '@/platform/device';
-import { autostartGet, autostartSet, isTauri, machineInfo, simDesktop } from '@/platform/desktop';
-import { checkUpdate, type UpdateInfo } from '@/platform/updater';
+import { autostartGet, autostartSet, machineInfo, simDesktop } from '@/platform/desktop';
 import { ROLES } from '@/types';
 
 const STATUS: Record<string, [string, string]> = { menunggu: ['Menunggu persetujuan', 'pill-warn'], disetujui: ['Disetujui', 'pill-ok'], dicabut: ['Dicabut', 'pill-bad'] };
@@ -20,18 +19,9 @@ export function PcPage() {
   const m = useQuery({ queryKey: ['machine'], queryFn: machineInfo, staleTime: Infinity });
   const dev = useQuery({ queryKey: ['device-status'], queryFn: () => api<{ terdaftar: boolean; status?: string; kode_pc?: string; nama?: string; lokasi?: string; role_izin?: string[] }>('device.status'), retry: 0 });
   const [auto, setAuto] = useState<boolean | null>(null);
-  const [upd, setUpd] = useState<UpdateInfo | null>(null);
-  const [updMsg, setUpdMsg] = useState('');
-  const [checking, setChecking] = useState(false);
   useEffect(() => { void autostartGet().then(setAuto); }, []);
   const st = dev.data?.status ? STATUS[dev.data.status] : null;
 
-  const cek = async () => {
-    setChecking(true); setUpdMsg('');
-    try { const u = await checkUpdate(); if (u) setUpd(u); else setUpdMsg('Sudah versi terbaru.'); }
-    catch (e) { const m = String((e as Error)?.message || e); setUpdMsg(/endpoints|pubkey/i.test(m) ? 'Pembaruan otomatis belum diatur di versi ini (dibuat tanpa GitHub Actions).' : 'Tidak bisa mengecek pembaruan: ' + m); }
-    finally { setChecking(false); }
-  };
 
   return (
     <>
@@ -56,18 +46,14 @@ export function PcPage() {
         </section>
 
         <section className="card p-5">
-          <h2 className="mb-3 flex items-center gap-2 text-sm font-bold"><CloudDownload size={16} />Pembaruan</h2>
-          <p className="text-sm text-muted">Aplikasi mengecek versi baru sendiri setiap dibuka. Pembaruan ditahan selama masih ada data offline yang belum terkirim.</p>
-          <div className="mt-3 flex items-center gap-3">
-            <button id="pc-cek-update" className="btn" disabled={checking || (!isTauri && !simDesktop.get())} onClick={cek}><CloudDownload size={15} />{checking ? 'Mengecek…' : 'Cek pembaruan'}</button>
-            {updMsg && <span id="pc-update-msg" className="text-sm text-muted">{updMsg}</span>}
-          </div>
+          <h2 className="mb-3 flex items-center gap-2 text-sm font-bold"><CloudDownload size={16} />Versi &amp; pembaruan</h2>
+          <p className="text-sm text-muted">Versi aplikasi, catatan pembaruan, dan tombol cek pembaruan ada di menu <b className="text-ink">Tentang Aplikasi</b>.</p>
+          <Link to="/pengaturan/tentang" className="btn mt-3"><Info size={15} />Buka Tentang Aplikasi</Link>
         </section>
 
         {can('pengaturan.umum', 'ubah') && <ServerCard />}
       </div>
-      {upd && <UpdateDialog info={upd} onClose={() => setUpd(null)} />}
-    </>
+          </>
   );
 }
 

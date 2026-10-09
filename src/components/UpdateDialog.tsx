@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { CloudDownload, Loader2, Rocket } from 'lucide-react';
 import { Modal } from '@/components/ui/Modal';
 import { useSync } from '@/lib/offline';
-import { checkUpdate, type UpdateInfo } from '@/platform/updater';
+import { checkUpdate, updateErrorText, type UpdateInfo } from '@/platform/updater';
 import { isTauri } from '@/platform/desktop';
 
 /** Dialog pembaruan. Pembaruan ditahan selama masih ada data offline yang belum terkirim. */
@@ -14,7 +14,7 @@ export function UpdateDialog({ info, onClose }: { info: UpdateInfo; onClose: () 
   const busy = pct !== undefined;
   const go = async () => {
     setErr(''); setPct(null);
-    try { await info.install(setPct); } catch (e) { setErr((e as Error)?.message || String(e)); setPct(undefined); }
+    try { await info.install(setPct); } catch (e) { setErr(updateErrorText(e)); setPct(undefined); }
   };
   return (
     <Modal open onClose={busy ? () => {} : onClose} size="sm" title="Pembaruan tersedia"
@@ -35,7 +35,7 @@ export function UpdateDialog({ info, onClose }: { info: UpdateInfo; onClose: () 
             <div className="mt-1 text-xs text-muted">{pct == null ? 'Mengunduh…' : `Mengunduh ${pct}%`} · aplikasi akan terbuka ulang sendiri</div>
           </div>
         )}
-        {err && <div className="rounded-lg bg-bad/5 px-3 py-2 text-xs text-bad">Gagal memperbarui: {err}</div>}
+        {err && <div className="rounded-lg bg-bad/5 px-3 py-2 text-xs text-bad">{err}</div>}
       </div>
     </Modal>
   );

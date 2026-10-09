@@ -1,0 +1,20 @@
+[
+  {
+    "version": "1.0.3",
+    "tanggal": "2026-10-10",
+    "catatan": [
+      "Menu baru Tentang Aplikasi: versi, catatan pembaruan, dan cek pembaruan.",
+      "Kartu angka di Dashboard, Laporan, Kas, Hutang, Pengeluaran, dan Piutang berwarna lembut supaya mudah dibedakan.",
+      "Pembaruan otomatis aplikasi PC diaktifkan."
+    ]
+  },
+  {
+    "version": "1.0.0",
+    "tanggal": "2026-10-09",
+    "catatan": [
+      "Rilis pertama aplikasi PC untuk Front Office dan Kasir.",
+      "Cetak SPK dan kwitansi langsung ke printer struk USB atau LAN, laci uang otomatis saat bayar tunai.",
+      "Pendaftaran PC, pembatasan role per PC, dan batas jumlah perangkat."
+    ]
+  }
+]
