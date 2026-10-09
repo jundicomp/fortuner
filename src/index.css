@@ -1,0 +1,78 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Token warna brand Fortuner: oranye #F26B1D, hitam, putih. Nilai dalam "R G B" supaya bisa diberi opacity di Tailwind. */
+:root {
+  --brand: 242 107 29;      /* #F26B1D */
+  --brand-soft: 253 235 221;
+  --brand-ink: 255 255 255;
+  --ink: 17 17 17;
+  --muted: 102 102 102;
+  --line: 229 229 229;
+  --surface: 255 255 255;
+  --canvas: 246 246 246;
+  --sunk: 240 240 240;
+  --side: 17 17 17;         /* sidebar hitam di mode terang */
+  --side-ink: 235 235 235;
+  --ok: 34 128 74;
+  --warn: 176 112 0;
+  --bad: 200 40 40;
+  /* warna grafik (sudah lolos uji buta warna & kontras) */
+  --chart-1: #D9590F;
+  --chart-2: #2E6DB4;
+  color-scheme: light;
+}
+[data-theme='dark'] {
+  --brand: 255 138 61;
+  --brand-soft: 66 36 18;
+  --brand-ink: 20 10 4;
+  --ink: 240 240 240;
+  --muted: 160 160 160;
+  --line: 48 48 48;
+  --surface: 26 26 26;
+  --canvas: 15 15 15;
+  --sunk: 34 34 34;
+  --side: 10 10 10;
+  --side-ink: 220 220 220;
+  --ok: 92 197 140;
+  --warn: 226 181 69;
+  --bad: 240 110 110;
+  --chart-1: #E06C22;
+  --chart-2: #4A88CF;
+  color-scheme: dark;
+}
+
+html, body, #root { height: 100%; }
+body { @apply bg-canvas text-ink font-sans antialiased; font-size: 14px; }
+.num { font-variant-numeric: tabular-nums; }
+
+@layer components {
+  .btn { @apply inline-flex items-center justify-center gap-2 rounded-lg border border-line bg-surface px-3.5 py-2 text-sm font-semibold text-ink transition hover:border-muted disabled:cursor-not-allowed disabled:opacity-50 whitespace-nowrap; }
+  .btn-primary { @apply border-brand bg-brand text-brand-ink hover:brightness-110 hover:border-brand; }
+  .btn-dark { @apply border-ink bg-ink text-canvas hover:opacity-90 hover:border-ink; }
+  .btn-ghost { @apply border-transparent bg-transparent text-muted hover:bg-sunk hover:text-ink; }
+  .btn-danger { @apply border-bad/40 text-bad hover:border-bad; }
+  .btn-sm { @apply px-2.5 py-1.5 text-xs; }
+  .input { @apply w-full min-w-0 rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink placeholder:text-muted/70 focus:border-brand focus:outline-none focus:ring-4 focus:ring-brand/15; }
+  .label { @apply flex flex-col gap-1.5 text-xs font-semibold text-muted; }
+  .card { @apply rounded-xl border border-line bg-surface; }
+  .chip { @apply inline-flex items-center gap-1.5 rounded-full border border-line bg-surface px-3 py-1 text-xs font-semibold text-muted; }
+  .pill { @apply inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-bold whitespace-nowrap; }
+  .pill-ok { @apply bg-ok/10 text-ok; }
+  .pill-warn { @apply bg-warn/10 text-warn; }
+  .pill-bad { @apply bg-bad/10 text-bad; }
+  .pill-brand { @apply bg-brand/10 text-brand; }
+  .pill-mute { @apply bg-sunk text-muted; }
+}
+
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* ---- cetak struk ---- */
+#print-root { position: fixed; left: -10000px; top: 0; background: #fff; }
+@media print {
+  body * { visibility: hidden !important; }
+  #print-root, #print-root * { visibility: visible !important; }
+  #print-root { position: absolute; left: 0; top: 0; }
+  html, body { background: #fff !important; }
+}

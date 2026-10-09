@@ -1,0 +1,65 @@
+# Membuat installer Windows (Fortuner-POS_x.y.z_x64-setup.exe) dan menerbitkannya di halaman Releases.
+# Jalankan dari tab Actions → "Rilis aplikasi desktop" → Run workflow, setelah menaikkan "version" di package.json.
+#
+# Variabel/secret (Settings → Secrets and variables → Actions):
+#   Variables: VITE_API_URL            alamat /exec Apps Script. Kosong = installer mode demo.
+#              TAURI_UPDATER_PUBKEY    isi file kunci publik (fortuner.key.pub). Kosong = tanpa pembaruan otomatis.
+#   Secrets:   TAURI_SIGNING_PRIVATE_KEY           isi file kunci rahasia (fortuner.key)
+#              TAURI_SIGNING_PRIVATE_KEY_PASSWORD  password kunci (boleh kosong)
+name: Rilis aplikasi desktop
+on:
+  workflow_dispatch:
+  push:
+    tags: ['v*']
+permissions:
+  contents: write
+concurrency:
+  group: release-desktop
+  cancel-in-progress: false
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+      - run: npm ci
+      - name: Siapkan konfigurasi pembaruan otomatis
+        shell: bash
+        env:
+          PUBKEY: ${{ vars.TAURI_UPDATER_PUBKEY }}
+          HAS_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY != '' }}
+          REPO: ${{ github.repository }}
+        run: |
+          node -e '
+            const fs = require("fs");
+            const pub = (process.env.PUBKEY || "").trim();
+            const on = pub && process.env.HAS_KEY === "true";
+            const cfg = on
+              ? { plugins: { updater: { pubkey: pub, endpoints: [`https://github.com/${process.env.REPO}/releases/latest/download/latest.json`] } } }
+              : { bundle: { createUpdaterArtifacts: false } };
+            fs.writeFileSync("src-tauri/tauri.ci.json", JSON.stringify(cfg, null, 2));
+            console.log(on ? "Pembaruan otomatis: AKTIF" : "Pembaruan otomatis: TIDAK AKTIF (kunci belum diatur)");
+          '
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_APP_NAME: ${{ vars.VITE_APP_NAME }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: v__VERSION__
+          releaseName: Fortuner POS v__VERSION__
+          releaseBody: |
+            Unduh file **Fortuner-POS_..._x64-setup.exe** di bawah, lalu jalankan di PC Front Office / Kasir.
+            PC yang sudah terpasang akan menawarkan pembaruan sendiri.
+          releaseDraft: false
+          prerelease: false
+          args: --config src-tauri/tauri.ci.json

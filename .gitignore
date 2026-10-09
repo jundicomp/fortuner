@@ -1,0 +1,11 @@
+node_modules
+dist
+dist-demo
+.env.local
+private/
+*.local
+src-tauri/target
+src-tauri/gen
+src-tauri/tauri.ci.json
+*.key
+*.key.pub
