@@ -72,7 +72,7 @@ export function PiutangPage() {
     <>
       <PageHeader title="Piutang" desc="Semua nota yang belum lunas, dari tanggal berapa pun. Klik nota untuk mencatat pelunasan." />
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-[280px_1fr]">
-        <section className="card p-4">
+        <section className="card tint tint-rose p-4">
           <div className="text-xs font-bold uppercase tracking-wider text-muted">Total piutang</div>
           <div className="num mt-1 text-3xl font-extrabold text-bad">{q.isLoading ? '…' : rp(total)}</div>
           <div className="mt-1 text-sm text-muted">{nf(rows.length)} nota · {nf(new Set(rows.map((r) => r.customer_id)).size)} konsumen</div>

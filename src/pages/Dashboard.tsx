@@ -34,10 +34,10 @@ export function Dashboard() {
   const greet = hour < 11 ? 'Selamat pagi' : hour < 15 ? 'Selamat siang' : hour < 18 ? 'Selamat sore' : 'Selamat malam';
 
   const kpis = [
-    { label: 'Produk aktif', value: d?.produk_aktif, icon: Package, to: '/master/produk', note: d?.produk_tanpa_harga ? `${d.produk_tanpa_harga} belum punya harga` : 'Semua sudah berharga', warn: !!d?.produk_tanpa_harga, show: can('master.produk') },
-    { label: 'Konsumen aktif', value: d?.konsumen, icon: Users, to: '/master/konsumen', note: d ? `${nf(d.reseller)} reseller · ${nf(d.konsumen - d.reseller)} end user` : '', show: can('master.konsumen') },
-    { label: 'Harga berubah (30 hari)', value: d?.perubahan_harga.filter((x) => !x.terjadwal).length, icon: ArrowUpRight, to: '/master/produk', note: d ? `${d.perubahan_harga.filter((x) => x.terjadwal).length} terjadwal ke depan` : '', show: can('master.produk') },
-    { label: 'Perangkat menunggu', value: d?.perangkat_menunggu ?? undefined, icon: MonitorSmartphone, to: '/pengaturan/perangkat', note: d?.perangkat_menunggu ? 'Perlu disetujui admin' : 'Tidak ada permintaan', warn: !!d?.perangkat_menunggu, show: d?.perangkat_menunggu != null },
+    { label: 'Produk aktif', value: d?.produk_aktif, icon: Package, to: '/master/produk', note: d?.produk_tanpa_harga ? `${d.produk_tanpa_harga} belum punya harga` : 'Semua sudah berharga', warn: !!d?.produk_tanpa_harga, show: can('master.produk'), tint: 'teal' },
+    { label: 'Konsumen aktif', value: d?.konsumen, icon: Users, to: '/master/konsumen', note: d ? `${nf(d.reseller)} reseller · ${nf(d.konsumen - d.reseller)} end user` : '', show: can('master.konsumen'), tint: 'green' },
+    { label: 'Harga berubah (30 hari)', value: d?.perubahan_harga.filter((x) => !x.terjadwal).length, icon: ArrowUpRight, to: '/master/produk', note: d ? `${d.perubahan_harga.filter((x) => x.terjadwal).length} terjadwal ke depan` : '', show: can('master.produk'), tint: 'amber' },
+    { label: 'Perangkat menunggu', value: d?.perangkat_menunggu ?? undefined, icon: MonitorSmartphone, to: '/pengaturan/perangkat', note: d?.perangkat_menunggu ? 'Perlu disetujui admin' : 'Tidak ada permintaan', warn: !!d?.perangkat_menunggu, show: d?.perangkat_menunggu != null, tint: 'purple' },
   ].filter((k) => k.show);
 
   return (
@@ -47,10 +47,10 @@ export function Dashboard() {
       {(d?.bulan || d?.hutang) && <BulanPanel b={d.bulan} h={d.hutang} />}
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {kpis.map((k) => (
-          <Link key={k.label} to={k.to} className="card group p-4 transition hover:border-brand/50">
+          <Link key={k.label} to={k.to} className={`card tint tint-${k.tint} group p-4 transition hover:border-brand/50`}>
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold uppercase tracking-wider text-muted">{k.label}</span>
-              <k.icon size={18} className="text-muted group-hover:text-brand" />
+              <span className="tint-chip flex h-8 w-8 items-center justify-center rounded-lg"><k.icon size={17} /></span>
             </div>
             <div className="num mt-2 text-3xl font-extrabold">{q.isLoading ? '…' : nf(k.value ?? 0)}</div>
             <div className={`mt-1 text-xs ${k.warn ? 'font-semibold text-warn' : 'text-muted'}`}>{k.note}</div>
@@ -131,8 +131,8 @@ function BulanPanel({ b, h }: { b: Summary['bulan']; h: Summary['hutang'] }) {
   return (
     <div className="mb-4 grid grid-cols-1 gap-4 xl:grid-cols-3">
       {b && (
-        <Link to="/laporan" className="card group p-4 transition hover:border-brand/50">
-          <div className="flex items-center justify-between"><span className="text-xs font-bold uppercase tracking-wider text-muted">Omzet bulan ini</span><BarChart3 size={18} className="text-muted group-hover:text-brand" /></div>
+        <Link to="/laporan" className="card tint tint-amber group p-4 transition hover:border-brand/50">
+          <div className="flex items-center justify-between"><span className="text-xs font-bold uppercase tracking-wider text-muted">Omzet bulan ini</span><span className="tint-chip flex h-8 w-8 items-center justify-center rounded-lg"><BarChart3 size={17} /></span></div>
           <div className="num mt-2 text-3xl font-extrabold">{rp(b.omzet)}</div>
           <div className="mt-1 text-xs">
             {pctB == null ? <span className="text-muted">Belum ada pembanding bulan lalu</span> :
@@ -193,17 +193,17 @@ function Delta({ now, before }: { now: number; before: number }) {
 
 function TrxPanel({ t }: { t: Trx }) {
   const tiles = [
-    { label: 'Omzet hari ini', value: rp(t.omzet_hari_ini), icon: Receipt, to: '/order', sub: <Delta now={t.omzet_hari_ini} before={t.omzet_kemarin} /> },
-    { label: 'Uang masuk hari ini', value: rp(t.masuk_hari_ini), icon: Wallet, to: '/order', sub: <Delta now={t.masuk_hari_ini} before={t.masuk_kemarin} /> },
-    { label: 'Nota hari ini', value: nf(t.nota_hari_ini), icon: ShoppingCart, to: '/order', sub: <Delta now={t.nota_hari_ini} before={t.nota_kemarin} /> },
-    { label: 'Piutang berjalan', value: rp(t.piutang_total), icon: HandCoins, to: '/piutang', sub: <span className="text-xs text-muted">{nf(t.piutang_nota)} nota belum lunas</span>, bad: true },
+    { label: 'Omzet hari ini', value: rp(t.omzet_hari_ini), icon: Receipt, to: '/order', sub: <Delta now={t.omzet_hari_ini} before={t.omzet_kemarin} />, tint: 'orange' },
+    { label: 'Uang masuk hari ini', value: rp(t.masuk_hari_ini), icon: Wallet, to: '/order', sub: <Delta now={t.masuk_hari_ini} before={t.masuk_kemarin} />, tint: 'blue' },
+    { label: 'Nota hari ini', value: nf(t.nota_hari_ini), icon: ShoppingCart, to: '/order', sub: <Delta now={t.nota_hari_ini} before={t.nota_kemarin} />, tint: 'purple' },
+    { label: 'Piutang berjalan', value: rp(t.piutang_total), icon: HandCoins, to: '/piutang', sub: <span className="text-xs text-muted">{nf(t.piutang_nota)} nota belum lunas</span>, bad: true, tint: 'rose' },
   ];
   return (
     <div className="mb-4 flex flex-col gap-3">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {tiles.map((k) => (
-          <Link key={k.label} to={k.to} className="card group p-4 transition hover:border-brand/50">
-            <div className="flex items-center justify-between"><span className="text-xs font-bold uppercase tracking-wider text-muted">{k.label}</span><k.icon size={18} className="text-muted group-hover:text-brand" /></div>
+          <Link key={k.label} to={k.to} className={`card tint tint-${k.tint} group p-4 transition hover:border-brand/50`}>
+            <div className="flex items-center justify-between"><span className="text-xs font-bold uppercase tracking-wider text-muted">{k.label}</span><span className="tint-chip flex h-8 w-8 items-center justify-center rounded-lg"><k.icon size={17} /></span></div>
             <div className={`num mt-2 text-2xl font-extrabold ${k.bad ? 'text-bad' : ''}`}>{k.value}</div>
             <div className="mt-1">{k.sub}</div>
           </Link>

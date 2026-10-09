@@ -94,11 +94,11 @@ export function LaporanPage() {
       {d && <p className="-mt-2 mb-4 text-xs text-muted">Periode {tgl(d.from)} – {tgl(d.to)}</p>}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <Kpi label="Omzet" value={rp(r?.omzet)} sub={`${nf(r?.nota)} nota`} loading={q.isLoading} strong />
-        <Kpi label="Rata-rata nota" value={rp(r?.rata_nota)} sub={`${nf(r?.klik)} klik`} loading={q.isLoading} />
-        <Kpi label="Uang masuk" value={rp(r?.masuk)} sub={r ? `${pct(r.masuk, r.omzet)} dari omzet` : ''} loading={q.isLoading} />
-        <Kpi label="Piutang periode ini" value={rp(r?.piutang_periode)} sub="sisa dari nota periode ini" loading={q.isLoading} bad={!!r?.piutang_periode} />
-        <Kpi label="Total pengeluaran" value={rp(r?.pengeluaran_total)} sub="lunas + hutang" loading={q.isLoading} />
+        <Kpi tint="orange" label="Omzet" value={rp(r?.omzet)} sub={`${nf(r?.nota)} nota`} loading={q.isLoading} />
+        <Kpi tint="purple" label="Rata-rata nota" value={rp(r?.rata_nota)} sub={`${nf(r?.klik)} klik`} loading={q.isLoading} />
+        <Kpi tint="blue" label="Uang masuk" value={rp(r?.masuk)} sub={r ? `${pct(r.masuk, r.omzet)} dari omzet` : ''} loading={q.isLoading} />
+        <Kpi tint="rose" label="Piutang periode ini" value={rp(r?.piutang_periode)} sub="sisa dari nota periode ini" loading={q.isLoading} bad={!!r?.piutang_periode} />
+        <Kpi tint="amber" label="Total pengeluaran" value={rp(r?.pengeluaran_total)} sub="lunas + hutang" loading={q.isLoading} />
       </div>
 
       <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-3">
@@ -126,9 +126,9 @@ export function LaporanPage() {
   );
 }
 
-function Kpi({ label, value, sub, loading, strong, bad }: { label: string; value: string; sub?: string; loading?: boolean; strong?: boolean; bad?: boolean }) {
+function Kpi({ label, value, sub, loading, bad, tint = 'orange' }: { label: string; value: string; sub?: string; loading?: boolean; bad?: boolean; tint?: string }) {
   return (
-    <div className={`card p-4 ${strong ? 'border-brand/40' : ''}`}>
+    <div className={`card tint tint-${tint} p-4`}>
       <div className="text-xs font-bold uppercase tracking-wider text-muted">{label}</div>
       <div className={`num mt-1.5 whitespace-nowrap text-lg font-extrabold sm:text-xl 2xl:text-2xl ${bad ? 'text-bad' : ''}`}>{loading ? '…' : value}</div>
       {sub && <div className="mt-0.5 text-xs text-muted">{sub}</div>}
@@ -168,18 +168,18 @@ function ArusKas({ r }: { r?: Ringkas }) {
 function Laba({ r }: { r: Ringkas }) {
   const lk = r.laba_kotor || 0, ops = r.biaya_operasional || 0;
   const tiles = [
-    { label: 'Omzet ber-HPP', value: rp(r.omzet_ber_hpp), sub: `cakupan ${String(r.cakupan_hpp ?? 0).replace('.', ',')}% dari omzet` },
-    { label: 'HPP (harga pokok)', value: rp(r.hpp), sub: 'dari harga beli saat nota dibuat' },
-    { label: 'Laba kotor', value: rp(lk), sub: `margin ${pct(lk, r.omzet_ber_hpp || 0)}`, ok: lk >= 0 },
-    { label: 'Biaya operasional', value: rp(ops), sub: 'non-bahan & non-aset + kas kecil' },
-    { label: 'Perkiraan laba bersih', value: rp(lk - ops), sub: 'laba kotor − biaya operasional', ok: lk - ops >= 0, strong: true },
+    { label: 'Omzet ber-HPP', value: rp(r.omzet_ber_hpp), sub: `cakupan ${String(r.cakupan_hpp ?? 0).replace('.', ',')}% dari omzet`, tint: 'orange' },
+    { label: 'HPP (harga pokok)', value: rp(r.hpp), sub: 'dari harga beli saat nota dibuat', tint: 'purple' },
+    { label: 'Laba kotor', value: rp(lk), sub: `margin ${pct(lk, r.omzet_ber_hpp || 0)}`, ok: lk >= 0, tint: 'green' },
+    { label: 'Biaya operasional', value: rp(ops), sub: 'non-bahan & non-aset + kas kecil', tint: 'amber' },
+    { label: 'Perkiraan laba bersih', value: rp(lk - ops), sub: 'laba kotor − biaya operasional', ok: lk - ops >= 0, tint: 'teal' },
   ];
   return (
     <section className="mt-4">
       <h2 className="mb-2 text-base font-bold">Laba</h2>
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
         {tiles.map((t) => (
-          <div key={t.label} className={`card p-4 ${t.strong ? 'border-brand/40' : ''}`}>
+          <div key={t.label} className={`card tint tint-${t.tint} p-4`}>
             <div className="text-xs font-bold uppercase tracking-wider text-muted">{t.label}</div>
             <div className={`num mt-1.5 whitespace-nowrap text-lg font-extrabold sm:text-xl ${t.ok === false ? 'text-bad' : t.ok ? 'text-ok' : ''}`}>{t.value}</div>
             <div className="mt-0.5 text-xs text-muted">{t.sub}</div>

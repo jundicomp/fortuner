@@ -72,9 +72,9 @@ export function PengeluaranPage() {
           {can('pengeluaran', 'tambah') && <button className="btn btn-primary" onClick={() => setForm(true)}><Plus size={16} />Catat pengeluaran</button>}
         </>} />
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <section className="card p-4"><div className="text-xs font-bold uppercase tracking-wider text-muted">Total periode</div><div className="num mt-1 text-2xl font-extrabold">{rp(total)}</div><div className="text-xs text-muted">{rows.length} transaksi</div></section>
-        <section className="card p-4"><div className="text-xs font-bold uppercase tracking-wider text-muted">Dibayar lunas / hutang</div><div className="num mt-1 text-lg font-bold">{rp(lunas)} <span className="text-sm font-normal text-muted">/ {rp(total - lunas)}</span></div></section>
-        <section className="card p-4">
+        <section className="card tint tint-orange p-4"><div className="text-xs font-bold uppercase tracking-wider text-muted">Total periode</div><div className="num mt-1 text-2xl font-extrabold">{rp(total)}</div><div className="text-xs text-muted">{rows.length} transaksi</div></section>
+        <section className="card tint tint-blue p-4"><div className="text-xs font-bold uppercase tracking-wider text-muted">Dibayar lunas / hutang</div><div className="num mt-1 text-lg font-bold">{rp(lunas)} <span className="text-sm font-normal text-muted">/ {rp(total - lunas)}</span></div></section>
+        <section className="card tint tint-purple p-4">
           <div className="text-xs font-bold uppercase tracking-wider text-muted">Per jenis</div>
           <ul className="mt-1.5 flex flex-col gap-1 text-sm">{perJenis.slice(0, 4).map(([j, v]) => <li key={j} className="flex justify-between"><span>{JENIS[j] || j}</span><span className="num font-semibold">{nf(v)}</span></li>)}{!perJenis.length && <li className="text-muted">–</li>}</ul>
         </section>

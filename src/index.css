@@ -76,3 +76,25 @@ body { @apply bg-canvas text-ink font-sans antialiased; font-size: 14px; }
   #print-root { position: absolute; left: 0; top: 0; }
   html, body { background: #fff !important; }
 }
+
+/* Di luar @layer supaya tidak dibuang Tailwind (nama kelas tint-* dibentuk dinamis). */
+/* Kartu angka berwarna lembut. Pakai bersama .card: <section className="card tint tint-blue"> */
+.tint { background-color: rgb(var(--tint-bg)); border-color: rgb(var(--tint-bd)); }
+.tint .tint-ico { color: rgb(var(--tint-fg)); }
+.tint-orange { --tint-bg: 255 243 234; --tint-bd: 251 214 188; --tint-fg: 217 89 15; }
+.tint-blue { --tint-bg: 238 244 252; --tint-bd: 202 220 243; --tint-fg: 46 109 180; }
+.tint-green { --tint-bg: 236 247 240; --tint-bd: 193 229 206; --tint-fg: 30 122 69; }
+.tint-purple { --tint-bg: 244 241 252; --tint-bd: 217 208 243; --tint-fg: 100 76 180; }
+.tint-amber { --tint-bg: 253 247 230; --tint-bd: 239 221 168; --tint-fg: 150 104 0; }
+.tint-rose { --tint-bg: 253 240 242; --tint-bd: 244 206 213; --tint-fg: 190 45 70; }
+.tint-teal { --tint-bg: 235 248 246; --tint-bd: 189 228 222; --tint-fg: 15 118 110; }
+.tint .tint-chip { background-color: rgb(var(--tint-fg) / 0.12); color: rgb(var(--tint-fg)); }
+
+/* Kartu berwarna lembut, versi gelap */
+[data-theme='dark'] .tint-orange { --tint-bg: 45 28 18; --tint-bd: 92 52 28; --tint-fg: 243 145 84; }
+[data-theme='dark'] .tint-blue { --tint-bg: 20 30 44; --tint-bd: 38 60 92; --tint-fg: 110 160 220; }
+[data-theme='dark'] .tint-green { --tint-bg: 18 36 26; --tint-bd: 34 74 50; --tint-fg: 100 196 140; }
+[data-theme='dark'] .tint-purple { --tint-bg: 32 26 46; --tint-bd: 62 50 96; --tint-fg: 170 150 235; }
+[data-theme='dark'] .tint-amber { --tint-bg: 42 34 14; --tint-bd: 86 68 22; --tint-fg: 226 184 80; }
+[data-theme='dark'] .tint-rose { --tint-bg: 44 22 26; --tint-bd: 92 40 50; --tint-fg: 240 130 150; }
+[data-theme='dark'] .tint-teal { --tint-bg: 16 36 34; --tint-bd: 30 74 70; --tint-fg: 90 200 186; }

@@ -60,10 +60,10 @@ function TutupKasir() {
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
         <section className="card p-4"><Field label="Tanggal"><input id="kas-tanggal" type="date" className="input" value={tanggal} max={ymd()} onChange={(e) => e.target.value && setTanggal(e.target.value)} /></Field></section>
-        <Tile label="Uang masuk (sistem)" value={rp(totSistem)} sub={`${rows.reduce((a, r) => a + r.transaksi, 0)} transaksi`} />
-        <Tile label="Tunai" value={rp(tunai)} sub={q.data?.kas_kecil_keluar ? `Kas kecil keluar hari ini ${rp(q.data.kas_kecil_keluar)}` : 'Tidak ada kas kecil keluar'} />
-        <Tile label="Transfer & EDC" value={rp(nonTunai)} sub="Cocokkan dengan mutasi bank" />
-        <Tile label="Selisih" value={filled ? (totSelisih === 0 ? 'Cocok' : rp(totSelisih)) : '–'} sub={`${filled}/${rows.length} baris dicocokkan`} tone={!filled ? '' : totSelisih === 0 ? 'text-ok' : 'text-bad'} />
+        <Tile tint="orange" label="Uang masuk (sistem)" value={rp(totSistem)} sub={`${rows.reduce((a, r) => a + r.transaksi, 0)} transaksi`} />
+        <Tile tint="green" label="Tunai" value={rp(tunai)} sub={q.data?.kas_kecil_keluar ? `Kas kecil keluar hari ini ${rp(q.data.kas_kecil_keluar)}` : 'Tidak ada kas kecil keluar'} />
+        <Tile tint="blue" label="Transfer & EDC" value={rp(nonTunai)} sub="Cocokkan dengan mutasi bank" />
+        <Tile tint="purple" label="Selisih" value={filled ? (totSelisih === 0 ? 'Cocok' : rp(totSelisih)) : '–'} sub={`${filled}/${rows.length} baris dicocokkan`} tone={!filled ? '' : totSelisih === 0 ? 'text-ok' : 'text-bad'} />
       </div>
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
@@ -107,9 +107,9 @@ function TutupKasir() {
   );
 }
 
-function Tile({ label, value, sub, tone = '' }: { label: string; value: string; sub?: string; tone?: string }) {
+function Tile({ label, value, sub, tone = '', tint = 'blue' }: { label: string; value: string; sub?: string; tone?: string; tint?: string }) {
   return (
-    <section className="card p-4">
+    <section className={`card tint tint-${tint} p-4`}>
       <div className="text-xs font-bold uppercase tracking-wider text-muted">{label}</div>
       <div className={`num mt-1.5 text-xl font-extrabold ${tone}`}>{value}</div>
       {sub && <div className="mt-0.5 text-xs text-muted">{sub}</div>}
@@ -148,8 +148,8 @@ function KasKecil() {
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Tile label="Saldo kas kecil" value={q.isLoading ? '…' : rp(q.data?.saldo)} tone={(q.data?.saldo || 0) < 100000 ? 'text-bad' : ''} sub={(q.data?.saldo || 0) < 100000 ? 'Saldo menipis, minta isi ulang' : undefined} />
-        <Tile label="Keluar bulan ini" value={rp(keluarBulan)} />
+        <Tile tint="teal" label="Saldo kas kecil" value={q.isLoading ? '…' : rp(q.data?.saldo)} tone={(q.data?.saldo || 0) < 100000 ? 'text-bad' : ''} sub={(q.data?.saldo || 0) < 100000 ? 'Saldo menipis, minta isi ulang' : undefined} />
+        <Tile tint="amber" label="Keluar bulan ini" value={rp(keluarBulan)} />
         {can('kas', 'tambah') && (
           <section className="card flex items-center gap-2 p-4">
             <button className="btn btn-primary flex-1" onClick={() => { add.reset(); setForm({ tanggal: ymd(), item: '', jenis: 'keluar', nominal: '', keterangan: '' }); }}><ArrowUpRight size={16} />Uang keluar</button>

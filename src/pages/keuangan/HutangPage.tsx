@@ -52,9 +52,9 @@ export function HutangPage() {
       <PageHeader title="Hutang Supplier" desc="Tagihan dari pembelian bahan secara tempo. Urutan: jatuh tempo paling dekat di atas. Klik tagihan untuk mencatat pembayaran."
         actions={can('hutang', 'tambah') && <button className="btn" onClick={() => setBaru(true)}><Plus size={16} />Tagihan tanpa pembelian</button>} />
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-        <Tile label="Total hutang" value={rp(sum(openRows))} sub={`${openRows.length} tagihan`} />
-        <Tile label="Terlambat" value={rp(sum(openRows.filter((r) => r.hari < 0)))} sub={`${openRows.filter((r) => r.hari < 0).length} tagihan`} tone="text-bad" />
-        <Tile label="Jatuh tempo 7 hari" value={rp(sum(openRows.filter((r) => r.hari >= 0 && r.hari <= 7)))} sub={`${openRows.filter((r) => r.hari >= 0 && r.hari <= 7).length} tagihan`} tone="text-warn" />
+        <Tile tint="orange" label="Total hutang" value={rp(sum(openRows))} sub={`${openRows.length} tagihan`} />
+        <Tile tint="rose" label="Terlambat" value={rp(sum(openRows.filter((r) => r.hari < 0)))} sub={`${openRows.filter((r) => r.hari < 0).length} tagihan`} tone="text-bad" />
+        <Tile tint="amber" label="Jatuh tempo 7 hari" value={rp(sum(openRows.filter((r) => r.hari >= 0 && r.hari <= 7)))} sub={`${openRows.filter((r) => r.hari >= 0 && r.hari <= 7).length} tagihan`} tone="text-warn" />
       </div>
       <DataTable<Row> data={rows} loading={q.isLoading} columns={cols} title="Hutang_supplier" storageKey="hutang" canExport={can('hutang', 'ekspor')} onRowClick={(r) => setOpen(r.id)}
         searchPlaceholder="Cari supplier, nota, keterangan…" cardTitle={(r) => <span className="flex justify-between gap-2"><span>{r.supplier}</span><span className="num text-sm">{nf(r.sisa)}</span></span>}
@@ -66,8 +66,8 @@ export function HutangPage() {
   );
 }
 
-function Tile({ label, value, sub, tone = '' }: { label: string; value: string; sub?: string; tone?: string }) {
-  return <section className="card p-4"><div className="text-xs font-bold uppercase tracking-wider text-muted">{label}</div><div className={`num mt-1 text-2xl font-extrabold ${tone}`}>{value}</div>{sub && <div className="text-xs text-muted">{sub}</div>}</section>;
+function Tile({ label, value, sub, tone = '', tint = 'blue' }: { label: string; value: string; sub?: string; tone?: string; tint?: string }) {
+  return <section className={`card tint tint-${tint} p-4`}><div className="text-xs font-bold uppercase tracking-wider text-muted">{label}</div><div className={`num mt-1 text-2xl font-extrabold ${tone}`}>{value}</div>{sub && <div className="text-xs text-muted">{sub}</div>}</section>;
 }
 
 function BillModal({ bill, onClose }: { bill: Row; onClose: () => void }) {
