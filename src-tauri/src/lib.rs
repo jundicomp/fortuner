@@ -102,6 +102,14 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
+        // Judul jendela: nama aplikasi + versi terpasang, mis. "Fortuner POS FOR WINDOWS · Versi 1.1.8"
+        .setup(|app| {
+            if let Some(w) = app.get_webview_window("main") {
+                let v = app.package_info().version.to_string();
+                let _ = w.set_title(&format!("Fortuner POS FOR WINDOWS · Versi {v}"));
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![machine_info, list_printers, print_raw, print_tcp, save_download, open_path])
         .run(tauri::generate_context!())
         .expect("gagal menjalankan Fortuner POS");
