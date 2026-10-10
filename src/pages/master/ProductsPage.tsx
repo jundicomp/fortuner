@@ -33,7 +33,7 @@ export function ProductsPage() {
 
   const columns: ColumnDef<Product, any>[] = [
     { accessorKey: 'kode', header: 'Kode', meta: { className: 'font-mono text-xs', hideOnCard: true } },
-    { accessorKey: 'nama', header: 'Nama produk', cell: (c) => <span className="font-semibold">{c.getValue()}</span>, meta: { hideOnCard: true } },
+    { accessorKey: 'nama', header: 'Nama produk', cell: (c) => <span className="font-semibold">{c.getValue()}{c.row.original.kertas_sendiri && <span className="pill pill-mute ml-1.5 align-middle">Kertas sendiri</span>}</span>, meta: { hideOnCard: true } },
     { accessorKey: 'kategori', header: 'Kategori', meta: { filter: 'select' } },
     { id: 'mesin', accessorFn: (r) => mName[r.mesin_id] || '', header: 'Mesin', meta: { filter: 'select' } },
     { id: 'jenis', accessorFn: (r) => JENIS_HARGA.find((j) => j.value === r.jenis_harga)?.label || r.jenis_harga, header: 'Jenis harga', meta: { filter: 'select' } },
@@ -250,6 +250,8 @@ function ProductForm({ product, onClose, minQty, embedded }: { product?: Product
           <PriceGrid jenis={p.jenis_harga as JenisHarga} vals={tiers} minQty={minQty} idPrefix="init" onChange={(k, v) => setTiers((t) => ({ ...t, [k]: v }))} />
         </div>
       )}
+      <Switch id="prd-ks" checked={!!p.kertas_sendiri} onChange={(v) => setP((x) => ({ ...x, kertas_sendiri: v, kategori: v && !x.kategori ? 'Kertas sendiri' : x.kategori }))}
+        label={<>Kertas sendiri / upah print <span className="block text-xs text-muted">Konsumen membawa kertas. Stok bahan tidak dipotong, HPP hanya biaya klik mesin.</span></>} />
       <Switch id="prd-aktif" checked={p.aktif !== false} onChange={(v) => set('aktif', v)} label="Aktif (nonaktif = tidak muncul di kasir)" />
       <ErrorBox error={save.error} />
       <div className="flex justify-end gap-2">
@@ -263,7 +265,7 @@ function ProductForm({ product, onClose, minQty, embedded }: { product?: Product
 }
 
 // ---------------- import excel ----------------
-const IMPORT_COLS = ['kode', 'nama', 'kategori', 'mesin', 'jenis_harga', 'satuan', 'aktif', ...TIERS.map((t) => t.key)];
+const IMPORT_COLS = ['kode', 'nama', 'kategori', 'mesin', 'jenis_harga', 'satuan', 'aktif', 'kertas_sendiri', ...TIERS.map((t) => t.key)];
 
 function ImportModal({ onClose, products, mName }: { onClose: () => void; products: Product[]; mName: Record<string, string> }) {
   const qc = useQueryClient();
@@ -279,7 +281,7 @@ function ImportModal({ onClose, products, mName }: { onClose: () => void; produc
 
   const template = () => {
     const data = products.length
-      ? products.map((p) => { const o: Record<string, unknown> = { kode: p.kode, nama: p.nama, kategori: p.kategori, mesin: mName[p.mesin_id] || '', jenis_harga: p.jenis_harga, satuan: p.satuan, aktif: p.aktif ? 'ya' : 'tidak' }; TIERS.forEach((t) => (o[t.key] = p.harga?.[t.key] ?? '')); return o; })
+      ? products.map((p) => { const o: Record<string, unknown> = { kode: p.kode, nama: p.nama, kategori: p.kategori, mesin: mName[p.mesin_id] || '', jenis_harga: p.jenis_harga, satuan: p.satuan, aktif: p.aktif ? 'ya' : 'tidak', kertas_sendiri: p.kertas_sendiri ? 'ya' : 'tidak' }; TIERS.forEach((t) => (o[t.key] = p.harga?.[t.key] ?? '')); return o; })
       : [Object.fromEntries(IMPORT_COLS.map((c) => [c, '']))];
     exportXlsx(data, `Template_Produk_${ymd()}.xlsx`, 'Produk');
   };

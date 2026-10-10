@@ -306,7 +306,8 @@ export function makeExt(h: Helpers) {
       fn: (c: ExtCtx, p: any) => {
         needAny(c, [['master.produk', 'ubah'], ['stok', 'ubah']]);
         const pid = str(p.product_id);
-        if (!c.s.all('products').some((x) => x.id === pid)) fail('NOT_FOUND', 'Produk tidak ditemukan.');
+        const prod = c.s.all('products').find((x) => x.id === pid) || fail('NOT_FOUND', 'Produk tidak ditemukan.');
+        if (bool((prod as Row).kertas_sendiri) && Array.isArray(p.lines) && p.lines.length) fail('VALIDATION', 'Produk kertas sendiri (upah print) tidak memakai bahan dari stok. HPP-nya hanya biaya klik mesin.');
         const mats = byId(c.s.all('materials'));
         const lines = (Array.isArray(p.lines) ? p.lines : []).map((l: any) => ({ material_id: str(l.material_id), qty: num(l.qty), per: l.per === 'klik' ? 'klik' : 'unit' }));
         lines.forEach((l: any) => { if (!mats[l.material_id]) fail('VALIDATION', 'Ada bahan yang tidak dikenal.'); if (!(l.qty > 0)) fail('VALIDATION', 'Jumlah pemakaian harus lebih dari 0.'); });
@@ -469,8 +470,8 @@ export function makeExt(h: Helpers) {
             const terendah = margins.length ? Math.min(...margins) : null;
             return {
               id: x.id, kode: x.kode, nama: x.nama, kategori: x.kategori, jenis_harga: x.jenis_harga, mesin: str(cache.machines[str(x.mesin_id)]?.nama),
-              resep: c1.resep, hpp_bahan: c1.bahan, hpp_klik: c1.klik, hpp: c1.total, hpp_bb: x.jenis_harga === 'matriks' ? c2.total : null, ...cells, margin_terendah: terendah,
-              status: !c1.resep ? 'tanpa_resep' : terendah == null ? 'tanpa_harga' : terendah < 0 ? 'rugi' : terendah < minMargin ? 'tipis' : 'aman',
+              kertas_sendiri: bool(x.kertas_sendiri), resep: c1.resep || bool(x.kertas_sendiri), hpp_bahan: c1.bahan, hpp_klik: c1.klik, hpp: c1.total, hpp_bb: x.jenis_harga === 'matriks' ? c2.total : null, ...cells, margin_terendah: terendah,
+              status: !c1.resep && !bool(x.kertas_sendiri) ? 'tanpa_resep' : terendah == null ? 'tanpa_harga' : terendah < 0 ? 'rugi' : terendah < minMargin ? 'tipis' : 'aman',
             };
           }),
         };

@@ -576,7 +576,8 @@ var FortunerServer = (() => {
         fn: (c, p) => {
           needAny(c, [["master.produk", "ubah"], ["stok", "ubah"]]);
           const pid = str2(p.product_id);
-          if (!c.s.all("products").some((x) => x.id === pid)) fail2("NOT_FOUND", "Produk tidak ditemukan.");
+          const prod = c.s.all("products").find((x) => x.id === pid) || fail2("NOT_FOUND", "Produk tidak ditemukan.");
+          if (bool2(prod.kertas_sendiri) && Array.isArray(p.lines) && p.lines.length) fail2("VALIDATION", "Produk kertas sendiri (upah print) tidak memakai bahan dari stok. HPP-nya hanya biaya klik mesin.");
           const mats = byId(c.s.all("materials"));
           const lines = (Array.isArray(p.lines) ? p.lines : []).map((l) => ({ material_id: str2(l.material_id), qty: num(l.qty), per: l.per === "klik" ? "klik" : "unit" }));
           lines.forEach((l) => {
@@ -794,14 +795,15 @@ var FortunerServer = (() => {
                 kategori: x.kategori,
                 jenis_harga: x.jenis_harga,
                 mesin: str2((_a = cache.machines[str2(x.mesin_id)]) == null ? void 0 : _a.nama),
-                resep: c1.resep,
+                kertas_sendiri: bool2(x.kertas_sendiri),
+                resep: c1.resep || bool2(x.kertas_sendiri),
                 hpp_bahan: c1.bahan,
                 hpp_klik: c1.klik,
                 hpp: c1.total,
                 hpp_bb: x.jenis_harga === "matriks" ? c2.total : null,
                 ...cells,
                 margin_terendah: terendah,
-                status: !c1.resep ? "tanpa_resep" : terendah == null ? "tanpa_harga" : terendah < 0 ? "rugi" : terendah < minMargin ? "tipis" : "aman"
+                status: !c1.resep && !bool2(x.kertas_sendiri) ? "tanpa_resep" : terendah == null ? "tanpa_harga" : terendah < 0 ? "rugi" : terendah < minMargin ? "tipis" : "aman"
               };
             })
           };
@@ -1498,7 +1500,9 @@ var FortunerServer = (() => {
         if (!["matriks", "cutting", "tetap", "manual"].includes(r.jenis_harga)) fail("VALIDATION", "Pilih jenis harga.");
         return c.s.withLock(() => {
           if (c.s.all("products").some((x) => str(x.kode).toLowerCase() === str(r.kode).toLowerCase() && x.id !== r.id)) fail("VALIDATION", `Kode produk ${r.kode} sudah dipakai.`);
-          const data = { kode: str(r.kode), nama: str(r.nama), kategori: str(r.kategori), mesin_id: str(r.mesin_id), jenis_harga: r.jenis_harga, satuan: str(r.satuan) || "lembar", aktif: r.aktif !== false };
+          const ks = bool(r.kertas_sendiri);
+          const data = { kode: str(r.kode), nama: str(r.nama), kategori: str(r.kategori) || (ks ? "Kertas sendiri" : ""), mesin_id: str(r.mesin_id), jenis_harga: r.jenis_harga, satuan: str(r.satuan) || "lembar", aktif: r.aktif !== false, kertas_sendiri: ks };
+          if (ks) c.s.all("recipes").filter((x) => x.product_id === r.id).forEach((x) => c.s.remove("recipes", "id", str(x.id)));
           let row;
           if (isNew) row = c.s.insert("products", { id: newId(c.env, "prd"), ...data, ...stamp(c, true) });
           else row = c.s.update("products", "id", r.id, { ...data, ...stamp(c, false) }) || fail("NOT_FOUND", "Produk tidak ditemukan.");
@@ -1566,7 +1570,8 @@ var FortunerServer = (() => {
               }
               mesinId = str(m.id);
             }
-            const data = { kode, nama, kategori: str(r.kategori), mesin_id: mesinId, jenis_harga: jenis, satuan: str(r.satuan) || "lembar", aktif: r.aktif === void 0 || r.aktif === "" ? true : bool(r.aktif) };
+            const ks = r.kertas_sendiri === void 0 || r.kertas_sendiri === "" ? /(^|\s)ks(\s|$)/i.test(nama) : bool(r.kertas_sendiri);
+            const data = { kode, nama, kategori: str(r.kategori) || (ks ? "Kertas sendiri" : ""), mesin_id: mesinId, jenis_harga: jenis, satuan: str(r.satuan) || "lembar", aktif: r.aktif === void 0 || r.aktif === "" ? true : bool(r.aktif), kertas_sendiri: ks };
             let prod = c.s.all("products").find((x) => str(x.kode).toLowerCase() === kode.toLowerCase());
             if (prod) {
               c.s.update("products", "id", str(prod.id), { ...data, ...stamp(c, false) });
@@ -1815,6 +1820,7 @@ var FortunerServer = (() => {
         const cust = Object.fromEntries(c.s.all("customers").map((x) => [x.id, x.nama]));
         const users = Object.fromEntries(c.s.all("users").map((x) => [x.id, x.nama]));
         const jenis = Object.fromEntries(c.s.all("products").map((x) => [x.id, x.jenis_harga]));
+        const ksProd = new Set(c.s.all("products").filter((x) => bool(x.kertas_sendiri)).map((x) => str(x.id)));
         const mesinNama = Object.fromEntries(c.s.all("machines").map((x) => [x.id, x.nama]));
         return c.s.all("order_items").filter((i) => {
           const o = orders[str(i.order_id)];
@@ -1842,6 +1848,7 @@ var FortunerServer = (() => {
             klik: i.klik,
             ukuran_cutting: i.ukuran_cutting,
             jenis_harga: str(jenis[str(i.product_id)]),
+            kertas_sendiri: ksProd.has(str(i.product_id)),
             mesin_id: i.mesin_id,
             mesin_nama: str(mesinNama[str(i.mesin_id)]),
             status_produksi: i.status_produksi,
@@ -2689,7 +2696,7 @@ var FortunerServer = (() => {
     settings: { key: "s", value: "s" },
     counters: { key: "s", value: "n" },
     // ---------- Master ----------
-    products: { id: "s", kode: "s", nama: "s", kategori: "s", mesin_id: "s", jenis_harga: "s", satuan: "s", aktif: "b", ...audit },
+    products: { id: "s", kode: "s", nama: "s", kategori: "s", mesin_id: "s", jenis_harga: "s", satuan: "s", aktif: "b", kertas_sendiri: "b", ...audit },
     price_history: {
       id: "s",
       product_id: "s",

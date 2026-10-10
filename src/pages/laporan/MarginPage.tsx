@@ -11,7 +11,7 @@ import { dec } from '@/pages/stok/stokApi';
 
 type Cell = { harga: number; margin: number } | null;
 interface Row {
-  id: string; kode: string; nama: string; kategori: string; jenis_harga: string; mesin: string; resep: boolean;
+  id: string; kode: string; nama: string; kategori: string; jenis_harga: string; mesin: string; resep: boolean; kertas_sendiri?: boolean;
   hpp_bahan: number; hpp_klik: number; hpp: number; hpp_bb: number | null; es: Cell; rb: Cell; es_bb: Cell; rb_bb: Cell; margin_terendah: number | null;
   status: 'tanpa_resep' | 'tanpa_harga' | 'rugi' | 'tipis' | 'aman';
 }
@@ -27,7 +27,7 @@ export function MarginPage() {
   const ex = (k: 'es' | 'rb' | 'es_bb' | 'rb_bb') => (r: Row) => (r[k] ? r[k]!.margin : '');
   const cols: ColumnDef<Row, any>[] = [
     { accessorKey: 'kode', header: 'Kode', meta: { className: 'font-mono text-xs', hideOnCard: true } },
-    { accessorKey: 'nama', header: 'Produk', cell: (c) => <span className="font-semibold">{c.getValue()}<span className="block text-[11px] font-normal text-muted">{c.row.original.mesin}</span></span>, meta: { hideOnCard: true } },
+    { accessorKey: 'nama', header: 'Produk', cell: (c) => <span className="font-semibold">{c.getValue()}<span className="block text-[11px] font-normal text-muted">{c.row.original.mesin}{c.row.original.kertas_sendiri ? ' · kertas sendiri' : ''}</span></span>, meta: { hideOnCard: true } },
     { accessorKey: 'kategori', header: 'Kategori', meta: { filter: 'select' } },
     { accessorKey: 'hpp', header: 'HPP / unit', meta: { align: 'right' }, cell: (c) => <span className="num" title={`bahan ${dec(c.row.original.hpp_bahan)} + klik ${dec(c.row.original.hpp_klik)}`}>{dec(c.getValue())}</span> },
     { accessorKey: 'hpp_bb', header: 'HPP BB', meta: { align: 'right' }, cell: (c) => (c.getValue() != null ? <span className="num">{dec(c.getValue())}</span> : <span className="text-muted">–</span>) },

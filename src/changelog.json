@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.1.2",
+    "tanggal": "2026-10-10",
+    "catatan": [
+      "Produk Kertas sendiri (upah print): konsumen membawa kertas, stok bahan tidak dipotong dan HPP hanya biaya klik mesin.",
+      "Tanda \"Kertas konsumen\" di papan Produksi dan keterangan di Front Office supaya operator tahu kertasnya dari konsumen.",
+      "Import Excel otomatis mengenali produk KS (mis. ks, ks id, ks lp, BW KS) sebagai kertas sendiri."
+    ]
+  },
+  {
     "version": "1.1.1",
     "tanggal": "2026-10-10",
     "catatan": [

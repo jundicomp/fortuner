@@ -175,7 +175,7 @@ export function FoPage() {
     right: <span className={`pill ${c.tipe === 'reseller' ? 'pill-brand' : 'pill-mute'}`}>{c.tipe === 'reseller' ? 'Reseller' : 'End user'}</span>,
   })), [d]);
   const prodItems: ComboItem[] = useMemo(() => products.map((p) => ({
-    value: p.id, label: p.nama, hint: `#${p.kode} · ${machineName[p.mesin_id] || '–'}`, search: `${p.nama} ${p.kode} ${p.kategori} ${machineName[p.mesin_id] || ''}`.toLowerCase(),
+    value: p.id, label: p.nama, hint: `#${p.kode} · ${machineName[p.mesin_id] || '–'}${p.kertas_sendiri ? ' · kertas sendiri' : ''}`, search: `${p.nama} ${p.kode} ${p.kategori} ${machineName[p.mesin_id] || ''}`.toLowerCase(),
     right: p.jenis_harga !== 'manual' && !p.harga ? <span className="pill pill-bad">Tanpa harga</span> : <span className="num text-xs text-muted">{priceSummary(p.jenis_harga, p.harga)}</span>,
   })), [products, machineName]);
 
@@ -275,7 +275,7 @@ export function FoPage() {
             {dp && (
               <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg bg-sunk px-3 py-2 text-xs">
                 <span className="pill pill-brand">{dManual ? 'Harga manual' : dCalc?.label}</span>
-                <span className="text-muted">{machineName[dp.mesin_id] || '–'}{dp.jenis_harga === 'matriks' ? ` · klik ${nf((dQty || 1) * draft.sisi)}` : ''}</span>
+                <span className="text-muted">{machineName[dp.mesin_id] || '–'}{dp.jenis_harga === 'matriks' ? ` · klik ${nf((dQty || 1) * draft.sisi)}` : ''}{dp.kertas_sendiri && <b className="text-warn"> · kertas dari konsumen</b>}</span>
                 {!dManual && dCalc?.peringatan && <span className="text-warn">{dCalc.peringatan}</span>}
                 <span className="num ml-auto text-sm">{nf(dQty || 0)} × {dHarga == null ? '–' : nf(dHarga)} = <b>{dHarga == null ? '–' : rp(dHarga * (dQty || 0))}</b></span>
               </div>

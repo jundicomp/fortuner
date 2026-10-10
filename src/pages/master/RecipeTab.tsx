@@ -33,6 +33,17 @@ export function RecipeTab({ product }: { product: Product }) {
   const dirty = JSON.stringify(lines.map((l) => [l.material_id, numIn(l.qty), l.per])) !== JSON.stringify((q.data?.lines || []).map((l) => [l.material_id, l.qty, l.per]));
 
   if (q.isLoading) return <p className="text-sm text-muted">Memuat…</p>;
+  if (product.kertas_sendiri) return (
+    <div className="flex flex-col gap-4">
+      <div className="rounded-xl border border-warn/40 bg-warn/5 p-4 text-sm"><b>Kertas sendiri / upah print.</b> Konsumen membawa kertasnya sendiri, jadi produk ini tidak memakai bahan dari stok. HPP-nya hanya biaya klik mesin. Untuk mengubahnya, matikan pilihan "Kertas sendiri" di tab Data produk.</div>
+      {seeCost && q.data && (
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <CostCard title={matriks ? 'HPP 1 sisi' : 'HPP per unit'} c={q.data.satu_sisi} />
+          {matriks && <CostCard title="HPP bolak-balik" c={q.data.bolak_balik} />}
+        </div>
+      )}
+    </div>
+  );
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted">Bahan yang terpakai untuk <b className="text-ink">1 {product.satuan || 'lembar'}</b> produk ini. Saat item selesai (atau dibayar, sesuai pengaturan) stok bahan dipotong otomatis dan HPP nota dihitung dari harga rata-rata bahan + biaya klik mesin.</p>

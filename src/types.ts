@@ -54,6 +54,7 @@ export interface Product {
   jenis_harga: JenisHarga;
   satuan: string;
   aktif: boolean;
+  kertas_sendiri?: boolean; // upah print: kertas dibawa konsumen, tidak memotong stok
   harga?: PriceRow | null; // harga yang berlaku hari ini (diisi server)
   harga_berikutnya?: PriceRow | null; // harga terjadwal (bila ada)
 }

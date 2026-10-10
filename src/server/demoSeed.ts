@@ -35,6 +35,8 @@ export function seedDemo(s: Store, env: Env) {
     ['12', 'Stiker glossy', 'Stiker', 'versant', 'matriks', [6500, null, 6500, null, 8000, null, 8000, null]],
     ['16', 'Linen', 'Kertas', 'versant', 'matriks', [2600, 3700, 2800, 4100, 4300, 5500, 4500, 5900]],
     ['22', 'BW HVS A3+', 'Hitam putih', 'Mahogani', 'matriks', [400, 550, 450, 650, 1400, 1550, 1450, 1650]],
+    ['33', 'KS warna (kertas sendiri)', 'Kertas sendiri', 'versant', 'matriks', [1200, 2300, 1400, 2700, 3000, 4100, 3200, 4500]],
+    ['29', 'BW KS (kertas sendiri)', 'Kertas sendiri', 'Mahogani', 'matriks', [200, 400, 300, 500, 1200, 1400, 1300, 1500]],
     ['36', 'Cutting stiker standar', 'Finishing', 'graphtech', 'cutting', [1000, 2000, 3000, 4000, null, null, null, null]],
     ['39', 'Cutting stiker rumit', 'Finishing', 'graphtech', 'cutting', [3000, 4000, 5000, 6000, null, null, null, null]],
     ['44', 'Laminating doff', 'Finishing', 'laminating', 'matriks', [1250, 1000, 1500, 1100, 3500, null, 3500, null]],
@@ -45,7 +47,7 @@ export function seedDemo(s: Store, env: Env) {
   const keys = ['rb', 'rb_bb', 'rs', 'rs_bb', 'eb', 'eb_bb', 'es', 'es_bb'];
   products.forEach(([kode, nama, kat, m, jenis, harga]) => {
     const id = _newId(env, 'prd');
-    s.insert('products', { id, kode, nama, kategori: kat, mesin_id: mesin(m), jenis_harga: jenis, satuan: 'lembar', aktif: true, ...st });
+    s.insert('products', { id, kode, nama, kategori: kat, mesin_id: mesin(m), jenis_harga: jenis, satuan: 'lembar', aktif: true, kertas_sendiri: kat === 'Kertas sendiri', ...st });
     if (!harga.length) return;
     const tiers: Record<string, number | null> = {};
     keys.forEach((k, i) => (tiers[k] = harga[i] ?? null));

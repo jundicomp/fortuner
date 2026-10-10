@@ -11,7 +11,7 @@ import { OrderDetailModal } from '@/pages/order/OrderDetailModal';
 
 interface Item {
   id: string; order_id: string; nomor: string; tanggal: string; order_created: string; customer: string; fo: string; desain: string; janji_selesai: string; catatan: string; status_bayar: string;
-  nama_produk: string; keterangan: string; qty: number; sisi: number; klik: number; ukuran_cutting: number; jenis_harga: string; mesin_id: string; mesin_nama: string;
+  nama_produk: string; keterangan: string; qty: number; sisi: number; klik: number; ukuran_cutting: number; jenis_harga: string; kertas_sendiri?: boolean; mesin_id: string; mesin_nama: string;
   status_produksi: 'antrian' | 'proses' | 'selesai'; operator: string; selesai_at: string; updated_at: string;
 }
 const COLS = [
@@ -68,7 +68,7 @@ export function ProduksiPage() {
         <button className="font-mono font-bold hover:text-brand" onClick={() => setOpen(i.order_id)}>{i.nomor}</button>
         {!mesin && <span className="font-mono uppercase text-brand">{mName[i.mesin_id] || '–'}</span>}
       </div>
-      <div className="mt-1.5 font-bold leading-snug">{i.nama_produk}{i.sisi === 2 ? ' · BB' : ''}{i.jenis_harga === 'cutting' ? ` · ${CUT_SIZES[i.ukuran_cutting]}` : ''}</div>
+      <div className="mt-1.5 font-bold leading-snug">{i.nama_produk}{i.sisi === 2 ? ' · BB' : ''}{i.jenis_harga === 'cutting' ? ` · ${CUT_SIZES[i.ukuran_cutting]}` : ''}{i.kertas_sendiri && <span className="pill pill-warn ml-1.5 align-middle">Kertas konsumen</span>}</div>
       <div className="num mt-0.5 text-sm">{nf(i.qty)} lembar{i.klik !== i.qty ? ` · ${nf(i.klik)} klik` : ''}</div>
       {i.keterangan && <div className="mt-1 text-sm text-muted">{i.keterangan}</div>}
       <div className="mt-2 flex flex-col gap-1 text-xs text-muted">

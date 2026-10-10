@@ -17,7 +17,7 @@ export const isValidApiUrl = (u: string) => /^https:\/\/script\.google(userconte
  * nota latihan tidak ikut terkirim ke Google Sheets. Pengaturan printer, tema, dan ID perangkat tetap.
  */
 const MODE_KEY = 'fortuner-data-owner';
-export const DATA_KEYS = ['fortuner-demo-db-v1', 'fortuner-demo-db-v2', 'fortuner-outbox', 'fortuner-pos-cache', 'fortuner-last-sync', 'fortuner-token', 'fortuner-session-cache', 'fortuner-kasir-queue', 'fortuner-sim-offline'];
+export const DATA_KEYS = ['fortuner-demo-db-v1', 'fortuner-demo-db-v2', 'fortuner-demo-db-v3', 'fortuner-outbox', 'fortuner-pos-cache', 'fortuner-last-sync', 'fortuner-token', 'fortuner-session-cache', 'fortuner-kasir-queue', 'fortuner-sim-offline'];
 export function purgeLocalData() {
   try {
     DATA_KEYS.forEach((k) => localStorage.removeItem(k));

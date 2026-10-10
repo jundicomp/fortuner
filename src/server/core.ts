@@ -553,7 +553,9 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
       if (!['matriks', 'cutting', 'tetap', 'manual'].includes(r.jenis_harga)) fail('VALIDATION', 'Pilih jenis harga.');
       return c.s.withLock(() => {
         if (c.s.all('products').some((x) => str(x.kode).toLowerCase() === str(r.kode).toLowerCase() && x.id !== r.id)) fail('VALIDATION', `Kode produk ${r.kode} sudah dipakai.`);
-        const data = { kode: str(r.kode), nama: str(r.nama), kategori: str(r.kategori), mesin_id: str(r.mesin_id), jenis_harga: r.jenis_harga, satuan: str(r.satuan) || 'lembar', aktif: r.aktif !== false };
+        const ks = bool(r.kertas_sendiri);
+        const data = { kode: str(r.kode), nama: str(r.nama), kategori: str(r.kategori) || (ks ? 'Kertas sendiri' : ''), mesin_id: str(r.mesin_id), jenis_harga: r.jenis_harga, satuan: str(r.satuan) || 'lembar', aktif: r.aktif !== false, kertas_sendiri: ks };
+        if (ks) c.s.all('recipes').filter((x) => x.product_id === r.id).forEach((x) => c.s.remove('recipes', 'id', str(x.id))); // upah print: tidak memakai bahan stok
         let row: Row;
         if (isNew) row = c.s.insert('products', { id: newId(c.env, 'prd'), ...data, ...stamp(c, true) });
         else row = c.s.update('products', 'id', r.id, { ...data, ...stamp(c, false) }) || fail('NOT_FOUND', 'Produk tidak ditemukan.');
@@ -609,7 +611,9 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
             if (!m) { m = c.s.insert('machines', { id: newId(c.env, 'mes'), nama: mesinNama, pakai_counter: false, aktif: true, ...stamp(c, true) }); machines.push(m); }
             mesinId = str(m.id);
           }
-          const data = { kode, nama, kategori: str(r.kategori), mesin_id: mesinId, jenis_harga: jenis, satuan: str(r.satuan) || 'lembar', aktif: r.aktif === undefined || r.aktif === '' ? true : bool(r.aktif) };
+          // kolom kertas_sendiri (ya/tidak); bila kolom tidak ada, nama berawalan/berisi "KS" dianggap kertas sendiri (kebiasaan di Basis data)
+          const ks = r.kertas_sendiri === undefined || r.kertas_sendiri === '' ? /(^|\s)ks(\s|$)/i.test(nama) : bool(r.kertas_sendiri);
+          const data = { kode, nama, kategori: str(r.kategori) || (ks ? 'Kertas sendiri' : ''), mesin_id: mesinId, jenis_harga: jenis, satuan: str(r.satuan) || 'lembar', aktif: r.aktif === undefined || r.aktif === '' ? true : bool(r.aktif), kertas_sendiri: ks };
           let prod = c.s.all('products').find((x) => str(x.kode).toLowerCase() === kode.toLowerCase());
           if (prod) { c.s.update('products', 'id', str(prod.id), { ...data, ...stamp(c, false) }); res.diperbarui++; }
           else { prod = c.s.insert('products', { id: newId(c.env, 'prd'), ...data, ...stamp(c, true) }); res.dibuat++; }
@@ -828,6 +832,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
       const cust = Object.fromEntries(c.s.all('customers').map((x) => [x.id, x.nama]));
       const users = Object.fromEntries(c.s.all('users').map((x) => [x.id, x.nama]));
       const jenis = Object.fromEntries(c.s.all('products').map((x) => [x.id, x.jenis_harga]));
+      const ksProd = new Set(c.s.all('products').filter((x) => bool(x.kertas_sendiri)).map((x) => str(x.id)));
       const mesinNama = Object.fromEntries(c.s.all('machines').map((x) => [x.id, x.nama]));
       return c.s.all('order_items').filter((i) => {
         const o = orders[str(i.order_id)];
@@ -839,7 +844,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
         return {
           id: i.id, order_id: i.order_id, nomor: o.nomor, tanggal: o.tanggal, order_created: o.created_at, customer: str(cust[str(o.customer_id)]), fo: str(users[str(o.cs_id)]),
           desain: o.desain, janji_selesai: o.janji_selesai, catatan: o.catatan, status_bayar: o.status_bayar,
-          nama_produk: i.nama_produk, keterangan: i.keterangan, qty: i.qty, sisi: i.sisi, klik: i.klik, ukuran_cutting: i.ukuran_cutting, jenis_harga: str(jenis[str(i.product_id)]),
+          nama_produk: i.nama_produk, keterangan: i.keterangan, qty: i.qty, sisi: i.sisi, klik: i.klik, ukuran_cutting: i.ukuran_cutting, jenis_harga: str(jenis[str(i.product_id)]), kertas_sendiri: ksProd.has(str(i.product_id)),
           mesin_id: i.mesin_id, mesin_nama: str(mesinNama[str(i.mesin_id)]), status_produksi: i.status_produksi, operator: str(users[str(i.operator_id)]), selesai_at: i.selesai_at, updated_at: i.updated_at,
         };
       });
