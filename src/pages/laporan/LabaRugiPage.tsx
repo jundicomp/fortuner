@@ -47,7 +47,7 @@ export function LabaRugiPage() {
       <PageHeader title="Laba Rugi" desc="Disusun otomatis dari buku besar: penjualan dari nota, HPP dari pemakaian bahan (harga rata-rata) + biaya klik mesin + selisih opname, beban dari pengeluaran dan kas kecil."
         actions={<div className="flex flex-wrap items-center gap-2">
           <DateRangeFilter value={range} onChange={setRange} id="pnl-range" />
-          {can('laporan.laba', 'ekspor') && <button className="btn" onClick={exportIt} disabled={!a}><Download size={15} />Excel</button>}
+          {can('laporan.laba', 'ekspor') && <button className="btn btn-excel" onClick={exportIt} disabled={!a}><Download size={15} />Excel</button>}
         </div>} />
       <ErrorBox error={q.error} />
       {a && b && d && (
@@ -61,7 +61,7 @@ export function LabaRugiPage() {
 
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1fr_320px]">
             <section className="card overflow-x-auto">
-              <table className="w-full min-w-[560px] text-sm">
+              <table className="tbl w-full min-w-[560px] text-sm">
                 <thead className="border-b border-line text-left text-xs text-muted">
                   <tr><th className="px-4 py-2.5">Pos</th><th className="px-3 text-right">{tgl(d.from)} – {tgl(d.to)}</th><th className="px-3 text-right">Periode sebelumnya</th><th className="px-4 text-right">%</th></tr>
                 </thead>

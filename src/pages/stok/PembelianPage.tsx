@@ -73,7 +73,7 @@ export function PembelianPage() {
       {view && (
         <Modal open onClose={() => setView(null)} title={`Pembelian ${view.nota || ''}`.trim()} subtitle={`${tgl(view.tanggal)} · ${view.supplier || 'tanpa supplier'} · ${view.cara_bayar === 'hutang' ? `tempo s/d ${tgl(view.jatuh_tempo)}` : view.metode}`}
           footer={<>{can('pembelian', 'hapus') && <button className="btn btn-ghost mr-auto text-bad" onClick={() => setDel(view)}><Trash2 size={15} />Hapus</button>}<button className="btn" onClick={() => setView(null)}>Tutup</button></>}>
-          <table className="w-full text-sm">
+          <table className="tbl w-full text-sm">
             <thead className="text-left text-xs text-muted"><tr><th className="py-1">Bahan</th><th className="text-right">Beli</th><th className="text-right">Harga</th><th className="text-right">Masuk stok</th><th className="text-right">Subtotal</th></tr></thead>
             <tbody className="divide-y divide-line">{view.items.map((i) => (
               <tr key={i.id}><td className="py-1.5 font-semibold">{i.nama}</td><td className="num text-right">{dec(i.qty_beli)} {i.satuan_beli}</td><td className="num text-right">{nf(i.harga_beli)}</td>
@@ -142,7 +142,7 @@ export function PurchaseForm({ meta, last, initial, onClose }: { meta: StockMeta
       </div>
 
       <div className="mt-4 overflow-x-auto rounded-xl border border-line">
-        <table className="w-full min-w-[720px] text-sm">
+        <table className="tbl w-full min-w-[720px] text-sm">
           <thead className="bg-sunk text-left text-xs text-muted">
             <tr><th className="px-2 py-2">Bahan</th><th className="w-20 px-2 text-right">Jumlah</th><th className="w-24 px-2">Satuan beli</th><th className="w-20 px-2 text-right">Isi</th><th className="w-32 px-2 text-right">Harga / satuan</th><th className="w-36 px-2 text-right">Masuk stok</th><th className="w-28 px-2 text-right">Subtotal</th><th className="w-8" /></tr>
           </thead>

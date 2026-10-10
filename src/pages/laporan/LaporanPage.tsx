@@ -89,7 +89,7 @@ export function LaporanPage() {
       <PageHeader title="Laporan" desc="Rekap periode pengganti sheet Rekap. Omzet dihitung dari nota yang dibuat (tidak termasuk batal); uang masuk dari pembayaran yang diterima di periode itu."
         actions={<div className="flex flex-wrap items-center gap-2">
           <DateRangeFilter value={range} onChange={setRange} id="laporan-range" />
-          {(can('laporan', 'ekspor') || can('laporan')) && <button className="btn btn-ghost" disabled={!d} onClick={exportAll}><Download size={15} />Export semua</button>}
+          {(can('laporan', 'ekspor') || can('laporan')) && <button className="btn btn-excel" disabled={!d} onClick={exportAll}><Download size={15} />Export semua</button>}
         </div>} />
       <ErrorBox error={q.error} />
       {d && <p className="-mt-2 mb-4 text-xs text-muted">Periode {tgl(d.from)} – {tgl(d.to)}</p>}

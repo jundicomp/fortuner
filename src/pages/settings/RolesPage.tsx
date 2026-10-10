@@ -40,7 +40,7 @@ export function RolesPage() {
         {ROLES.map((r) => <button key={r.value} className={`chip ${role === r.value ? 'border-ink bg-ink text-canvas' : 'hover:border-muted'}`} onClick={() => setRole(r.value)}>{r.label}</button>)}
       </div>
       <div className="card overflow-x-auto">
-        <table className="w-full min-w-[560px] border-collapse text-[13px]">
+        <table className="tbl w-full min-w-[560px] border-collapse text-[13px]">
           <thead>
             <tr className="bg-sunk text-[11px] uppercase tracking-wider text-muted">
               <th className="px-4 py-2.5 text-left font-bold">Modul</th>

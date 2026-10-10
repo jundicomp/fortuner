@@ -187,7 +187,7 @@ function OpnameTab({ mats }: { mats: Material[] }) {
       {form && <OpnameForm mats={mats.filter((m) => m.aktif)} onClose={() => setForm(false)} />}
       {view && (
         <Modal open onClose={() => setView(null)} size="lg" title={`Stok opname ${tgl(view.tanggal)}`} subtitle={`${view.keterangan || ''} · dicatat ${tglJam(view.created_at)} oleh ${view.oleh}`}>
-          <table className="w-full text-sm">
+          <table className="tbl w-full text-sm">
             <thead className="text-left text-xs text-muted"><tr><th className="py-1">Bahan</th><th className="text-right">Sistem</th><th className="text-right">Fisik</th><th className="text-right">Selisih</th><th className="text-right">Nilai</th></tr></thead>
             <tbody className="divide-y divide-line">{view.items.map((i) => (
               <tr key={i.id}><td className="py-1.5"><b>{i.nama}</b>{i.keterangan && <span className="block text-xs text-muted">{i.keterangan}</span>}</td><td className="num text-right">{dec(i.stok_sistem)}</td><td className="num text-right">{dec(i.stok_fisik)}</td>
@@ -222,7 +222,7 @@ function OpnameForm({ mats, onClose }: { mats: Material[]; onClose: () => void }
         {kats.length > 1 && <select id="opn-kat" className="input w-auto" value={kat} onChange={(e) => setKat(e.target.value)}><option value="">Semua kategori</option>{kats.map((k) => <option key={k}>{k}</option>)}</select>}
       </div>
       <div className="overflow-x-auto rounded-xl border border-line">
-        <table className="w-full min-w-[640px] text-sm">
+        <table className="tbl w-full min-w-[640px] text-sm">
           <thead className="bg-sunk text-left text-xs text-muted"><tr><th className="px-3 py-2">Bahan</th><th className="px-2 text-right">Stok sistem</th><th className="w-32 px-2 text-right">Hitung fisik</th><th className="w-24 px-2 text-right">Selisih</th><th className="px-2">Catatan</th></tr></thead>
           <tbody className="divide-y divide-line">
             {shown.map((m, i) => {

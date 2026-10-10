@@ -307,7 +307,7 @@ function ImportModal({ onClose, products, mName }: { onClose: () => void; produc
           <li>Kolom harga: <span className="font-mono text-xs">rb, rb_bb, rs, rs_bb</span> (reseller banyak/BB/sedikit/BB) dan <span className="font-mono text-xs">eb … es_bb</span> (end user). Cutting memakai rb–rs_bb untuk 4 ukuran; harga tetap cukup di rb.</li>
           <li>Harga yang berubah dicatat sebagai harga baru mulai tanggal di bawah; harga lama tetap tersimpan.</li>
         </ol>
-        <button className="btn self-start" onClick={template}><FileSpreadsheet size={16} />Unduh template</button>
+        <button className="btn btn-excel self-start" onClick={template}><FileSpreadsheet size={16} />Unduh template</button>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field label="File Excel (.xlsx / .csv)">
             <input id="import-file" type="file" accept=".xlsx,.xls,.csv" className="input file:mr-3 file:rounded-md file:border-0 file:bg-sunk file:px-3 file:py-1 file:text-xs file:font-semibold" onChange={(e) => onFile(e.target.files?.[0])} />
@@ -319,7 +319,7 @@ function ImportModal({ onClose, products, mName }: { onClose: () => void; produc
           <div className="rounded-xl border border-line">
             <div className="border-b border-line px-3 py-2 text-xs font-semibold text-muted">{fileName}: {rows.length} baris · contoh 5 baris pertama</div>
             <div className="overflow-x-auto">
-              <table className="w-full text-xs">
+              <table className="tbl w-full text-xs">
                 <thead><tr>{['kode', 'nama', 'mesin', 'jenis_harga', 'rb', 'eb'].map((c) => <th key={c} className="px-3 py-1.5 text-left font-bold text-muted">{c}</th>)}</tr></thead>
                 <tbody>{rows.slice(0, 5).map((r, i) => <tr key={i} className="border-t border-line">{['kode', 'nama', 'mesin', 'jenis_harga', 'rb', 'eb'].map((c) => <td key={c} className="px-3 py-1.5">{String(r[c] ?? '')}</td>)}</tr>)}</tbody>
               </table>

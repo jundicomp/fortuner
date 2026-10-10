@@ -15,10 +15,11 @@ interface Item {
   status_produksi: 'antrian' | 'proses' | 'selesai'; operator: string; selesai_at: string; updated_at: string;
 }
 const COLS = [
-  { key: 'antrian' as const, label: 'Antrian', tone: 'pill-brand' },
-  { key: 'proses' as const, label: 'Proses', tone: 'pill-warn' },
-  { key: 'selesai' as const, label: 'Selesai', tone: 'pill-ok' },
+  { key: 'antrian' as const, label: 'Antrian', tone: 'tint-blue' },
+  { key: 'proses' as const, label: 'Proses', tone: 'tint-amber' },
+  { key: 'selesai' as const, label: 'Selesai', tone: 'tint-green' },
 ];
+const TONE = Object.fromEntries(COLS.map((c) => [c.key, c.tone])) as Record<'antrian' | 'proses' | 'selesai', string>;
 const MKEY = 'fortuner-produksi-mesin';
 
 /** Papan produksi per mesin. Operator memindah item: Antrian → Proses → Selesai. */
@@ -63,7 +64,7 @@ export function ProduksiPage() {
   const soon = (i: Item) => i.janji_selesai && i.status_produksi !== 'selesai' && !late(i) && Date.parse(i.janji_selesai) - now < 3 * 3600e3;
 
   const Card = ({ i }: { i: Item }) => (
-    <div className={`rounded-xl border bg-surface p-3 shadow-sm ${late(i) ? 'border-bad/60' : soon(i) ? 'border-warn/60' : 'border-line'}`}>
+    <div className={`kanban-card tint ${TONE[i.status_produksi]} rounded-xl border p-3 shadow-sm ${late(i) ? 'ring-2 ring-bad/60' : soon(i) ? 'ring-2 ring-warn/50' : ''}`}>
       <div className="flex items-center justify-between gap-2 text-xs">
         <button className="font-mono font-bold hover:text-brand" onClick={() => setOpen(i.order_id)}>{i.nomor}</button>
         {!mesin && <span className="font-mono uppercase text-brand">{mName[i.mesin_id] || '–'}</span>}
@@ -118,7 +119,7 @@ export function ProduksiPage() {
             return (
               <section key={c.key} className={`flex min-w-0 flex-col gap-3 rounded-2xl bg-sunk/70 p-3 ${mobileCol === c.key ? '' : 'max-md:hidden'}`}>
                 <div className="flex items-center justify-between px-1">
-                  <span className={`pill ${c.tone}`}>{c.label}</span>
+                  <span className={`pill tint tint-text border ${c.tone}`}>{c.label}</span>
                   <span className="num text-sm font-bold text-muted">{list.length}</span>
                 </div>
                 {!list.length && <div className="rounded-xl border border-dashed border-line p-6 text-center text-sm text-muted">Kosong</div>}

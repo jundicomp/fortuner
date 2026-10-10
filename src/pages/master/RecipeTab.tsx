@@ -48,7 +48,7 @@ export function RecipeTab({ product }: { product: Product }) {
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted">Bahan yang terpakai untuk <b className="text-ink">1 {product.satuan || 'lembar'}</b> produk ini. Saat item selesai (atau dibayar, sesuai pengaturan) stok bahan dipotong otomatis dan HPP nota dihitung dari harga rata-rata bahan + biaya klik mesin.</p>
       <div className="overflow-x-auto rounded-xl border border-line">
-        <table className="w-full min-w-[480px] text-sm">
+        <table className="tbl w-full min-w-[480px] text-sm">
           <thead className="bg-sunk text-left text-xs text-muted"><tr><th className="px-3 py-2">Bahan</th><th className="w-28 px-2 text-right">Pemakaian</th><th className="w-40 px-2">Dihitung per</th>{seeCost && <th className="px-2 text-right">Harga rata2</th>}<th className="w-8" /></tr></thead>
           <tbody className="divide-y divide-line">
             {lines.map((l, i) => {

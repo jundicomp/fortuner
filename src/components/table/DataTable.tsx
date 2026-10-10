@@ -171,7 +171,7 @@ export function DataTable<T>({
               </div>
             )}
           </div>
-          {canExport && <button className="btn" onClick={doExport} disabled={!filtered.length} title="Export ke Excel sesuai filter"><Download size={16} /><span className="hidden sm:inline">Excel</span></button>}
+          {canExport && <button className="btn btn-excel" onClick={doExport} disabled={!filtered.length} title="Export ke Excel sesuai filter"><Download size={16} /><span className="hidden sm:inline">Excel</span></button>}
           {toolbar}
         </div>
         {(selectCols.length > 0 || activeFilters > 0) && (
@@ -195,7 +195,7 @@ export function DataTable<T>({
 
       {/* tabel (tablet & desktop) */}
       <div className="hidden overflow-x-auto md:block">
-        <table className="w-full border-collapse text-[13px]">
+        <table className="tbl w-full border-collapse text-[13px]">
           <thead>
             {table.getHeaderGroups().map((hg) => (
               <tr key={hg.id}>

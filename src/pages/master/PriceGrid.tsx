@@ -46,7 +46,7 @@ export function PriceGrid({ jenis, vals, before, onChange, minQty = 26, idPrefix
   }
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[420px] border-collapse text-[13px]">
+      <table className="tbl w-full min-w-[420px] border-collapse text-[13px]">
         <thead>
           <tr className="text-[11px] uppercase tracking-wider text-muted">
             <th className="py-1.5 pr-2 text-left font-bold" />

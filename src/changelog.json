@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.1.3",
+    "tanggal": "2026-10-10",
+    "catatan": [
+      "Semua tabel: header hijau tua dengan tulisan putih dan garis baris/kolom hijau tipis, di mode terang maupun gelap.",
+      "Tombol export dan unduh Excel berwarna hijau khas Excel.",
+      "Kartu di papan Produksi berwarna sesuai progres: biru (antrian), kuning (proses), hijau (selesai)."
+    ]
+  },
+  {
     "version": "1.1.2",
     "tanggal": "2026-10-10",
     "catatan": [

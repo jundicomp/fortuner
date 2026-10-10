@@ -88,7 +88,7 @@ export function OrderDetailModal({ orderId, onClose }: { orderId: string; onClos
           )}
 
           <div className="overflow-x-auto rounded-xl border border-line">
-            <table className="w-full min-w-[560px] text-[13px]">
+            <table className="tbl w-full min-w-[560px] text-[13px]">
               <thead><tr className="bg-sunk text-[11px] uppercase tracking-wider text-muted">
                 <th className="px-3 py-2 text-left">Item</th><th className="px-3 py-2 text-right">Jml</th><th className="px-3 py-2 text-right">Harga</th><th className="px-3 py-2 text-right">Subtotal</th><th className="px-3 py-2 text-left">Produksi</th>
               </tr></thead>

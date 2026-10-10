@@ -98,3 +98,19 @@ body { @apply bg-canvas text-ink font-sans antialiased; font-size: 14px; }
 [data-theme='dark'] .tint-amber { --tint-bg: 42 34 14; --tint-bd: 86 68 22; --tint-fg: 226 184 80; }
 [data-theme='dark'] .tint-rose { --tint-bg: 44 22 26; --tint-bd: 92 40 50; --tint-fg: 240 130 150; }
 [data-theme='dark'] .tint-teal { --tint-bg: 16 36 34; --tint-bd: 30 74 70; --tint-fg: 90 200 186; }
+
+/* Tabel: header hijau tua + tulisan putih, garis baris/kolom hijau tua tipis (terang & gelap). */
+:root { --tbl-head: 20 83 45; --tbl-line: 20 83 45; --tbl-line-a: 0.28; --excel: 33 115 70; }
+[data-theme='dark'] { --tbl-head: 22 101 52; --tbl-line: 74 160 110; --tbl-line-a: 0.35; }
+.tbl { border-collapse: collapse; }
+.tbl > thead > tr > th { background-color: rgb(var(--tbl-head)) !important; color: #fff !important; border: 1px solid rgb(var(--tbl-line) / var(--tbl-line-a)); }
+.tbl > thead > tr > th * { color: inherit; }
+.tbl > tbody > tr > td, .tbl > tfoot > tr > td { border: 1px solid rgb(var(--tbl-line) / var(--tbl-line-a)); }
+
+/* Tombol export/unduh Excel: hijau khas Microsoft Excel. */
+.btn-excel { background-color: rgb(var(--excel)); border-color: rgb(var(--excel)); color: #fff; }
+.btn-excel:hover { filter: brightness(1.1); border-color: rgb(var(--excel)); }
+
+/* Kartu kanban produksi: warna sesuai progres (pakai bersama .tint .tint-*). */
+.kanban-card { border-left-width: 4px; border-left-color: rgb(var(--tint-fg)); }
+.tint-text { color: rgb(var(--tint-fg)); }

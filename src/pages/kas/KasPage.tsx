@@ -67,7 +67,7 @@ function TutupKasir() {
       </div>
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[760px] text-[13px]">
+          <table className="tbl w-full min-w-[760px] text-[13px]">
             <thead><tr className="bg-sunk text-[11px] uppercase tracking-wider text-muted">
               <th className="px-3 py-2.5 text-left">Kasir</th><th className="px-3 py-2.5 text-left">Metode</th><th className="px-3 py-2.5 text-right">Trx</th><th className="px-3 py-2.5 text-right">Sistem</th>
               <th className="px-3 py-2.5 text-right">Aktual</th><th className="px-3 py-2.5 text-right">Selisih</th><th className="px-3 py-2.5 text-left">Keterangan</th>

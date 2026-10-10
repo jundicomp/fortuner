@@ -183,7 +183,7 @@ function JournalForm({ accounts, onClose }: { accounts: Account[]; onClose: () =
         <Field label="Tanggal"><input id="jr-tanggal" type="date" className="input" value={tanggal} onChange={(e) => setTanggal(e.target.value)} /></Field>
         <Field label="Keterangan" className="sm:col-span-2"><input id="jr-ket" className="input" value={ket} onChange={(e) => setKet(e.target.value)} placeholder="mis. Saldo awal BCA per 1 Maret" /></Field>
       </div>
-      <table className="mt-4 w-full text-sm">
+      <table className="tbl mt-4 w-full text-sm">
         <thead className="text-left text-xs text-muted"><tr><th className="py-1">Akun</th><th className="w-36 text-right">Debit</th><th className="w-36 text-right">Kredit</th><th className="w-8" /></tr></thead>
         <tbody>{lines.map((l, i) => (
           <tr key={i}>
