@@ -1,10 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Ban, CloudOff, HandCoins, PackageCheck, Printer, Undo2 } from 'lucide-react';
+import { Ban, CloudOff, HandCoins, PackageCheck, Printer, ReceiptText, Undo2 } from 'lucide-react';
 import { useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { ErrorBox, Field } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
-import { printReceipt, shopOf, tipeLabel, type ReceiptData, type ReceiptShop } from '@/components/Receipt';
+import { no4, printReceipt, shopOf, tipeLabel, type ReceiptData, type ReceiptShop } from '@/components/Receipt';
 import { ReceiptModal } from '@/components/ReceiptModal';
 import { drawerForCash, paperWidth } from '@/platform/printer';
 import { api } from '@/lib/api';
@@ -19,6 +19,7 @@ import { Money } from '@/components/ui/Money';
 export const BAYAR: Record<string, [string, string]> = { lunas: ['Lunas', 'pill-ok'], dp: ['DP', 'pill-warn'], belum: ['Belum bayar', 'pill-bad'], batal: ['Batal', 'pill-mute'] };
 export const PRODUKSI: Record<string, [string, string]> = { antrian: ['Antrian', 'pill-brand'], proses: ['Proses', 'pill-warn'], selesai: ['Selesai', 'pill-ok'], batal: ['Batal', 'pill-mute'] };
 const numIn = (s: string) => Number(String(s).replace(/[^\d]/g, '')) || 0;
+const sortPays = <T extends { created_at: string; tanggal: string }>(l: T[]) => [...l].sort((a, b) => (a.created_at || a.tanggal).localeCompare(b.created_at || b.tanggal));
 
 export function OrderDetailModal({ orderId, onClose }: { orderId: string; onClose: () => void }) {
   const { can } = useAuth();
@@ -31,7 +32,7 @@ export function OrderDetailModal({ orderId, onClose }: { orderId: string; onClos
   const [diterimaIn, setDiterimaIn] = useState('');
   const [methodId, setMethodId] = useState('');
   const [alasan, setAlasan] = useState('');
-  const [payId] = useState(() => newClientId('pmt'));
+  const [payId, setPayId] = useState(() => newClientId('pmt'));
   const [rcpt, setRcpt] = useState<ReceiptData | null>(null);
 
   const methodList = q.data?.payment_methods || [];
@@ -40,7 +41,11 @@ export function OrderDetailModal({ orderId, onClose }: { orderId: string; onClos
 
   const pay = useMutation({
     mutationFn: () => api<OrderDetail>('orders.pay', { order_id: orderId, payment_id: payId, nominal: numIn(nominalIn), method_id: methodId }),
-    onSuccess: (d) => { setData(d); if (isTunai) drawerForCash(); after(d.order.sisa <= 0 ? 'Nota lunas' : 'Pembayaran dicatat'); },
+    onSuccess: (d) => {
+      setData(d); if (isTunai) drawerForCash(); after(d.order.sisa <= 0 ? 'Nota lunas' : 'Pembayaran dicatat'); setPayId(newClientId('pmt'));
+      const list = sortPays(d.payments); const i = list.findIndex((p) => p.id === payId);
+      if (i >= 0) setRcpt({ ...kwitansiOf(d, i), ulang: false, diterima: isTunai && numIn(diterimaIn) > 0 ? numIn(diterimaIn) : undefined, kembalian: isTunai ? Math.max(0, numIn(diterimaIn) - list[i].nominal) : 0 });
+    },
   });
   const ambil = useMutation({
     mutationFn: (diambil: boolean) => api<OrderDetail>('orders.ambil', { order_id: orderId, diambil, alasan }),
@@ -59,21 +64,39 @@ export function OrderDetailModal({ orderId, onClose }: { orderId: string; onClos
   const shop: ReceiptShop = shopOf(settings.data);
   const width = paperWidth(posCache.get()?.device?.lebar_kertas);
 
+  const base = (dd: OrderDetail): Omit<ReceiptData, 'jenis' | 'payments' | 'sisa' | 'waktu' | 'cs'> => {
+    const oo = dd.order;
+    return {
+      nomor: oo.nomor, customer: oo.customer_nama || '', tipe: tipeLabel(oo.customer_tipe), telp: oo.customer_telp, offline: oo.dibuat_offline, total: oo.total, item_count: dd.items.length,
+      items: dd.items.map((i) => ({ nama: i.nama_produk, keterangan: i.keterangan, qty: i.qty, sisi: i.sisi, ukuran: i.jenis_harga === 'cutting' ? i.ukuran_cutting : null, harga: i.harga_satuan, subtotal: i.subtotal })),
+    };
+  };
+  /** Kwitansi untuk pembayaran ke-(i+1): nominal pembayaran itu saja, merujuk ke nota. */
+  const kwitansiOf = (dd: OrderDetail, i: number): ReceiptData => {
+    const list = sortPays(dd.payments);
+    const p = list[i];
+    const sebelumnya = list.slice(0, i).reduce((a, x) => a + x.nominal, 0);
+    const jenis = (dd.payment_methods || methodList).find((m) => m.id === p.method_id)?.jenis;
+    return {
+      ...base(dd), jenis: 'kwitansi', ulang: true, waktu: p.created_at || p.tanggal, cs: (p.kasir_nama || '').split(' ')[0], kw_no: `KW-${no4(dd.order.nomor)}-${i + 1}`, ke: i + 1,
+      metode: p.method_nama, metode_jenis: jenis, catatan: p.catatan, sebelumnya, payments: [{ label: `Bayar ${p.method_nama || ''}`, nominal: p.nominal }],
+      sisa: Math.max(0, dd.order.total - sebelumnya - p.nominal),
+    };
+  };
+  /** Nota/SPK dengan status terkini (BELUM DIBAYAR / DP / LUNAS). */
   const reprint = () => {
     if (!d || !o) return;
     setRcpt({
-      jenis: o.terbayar > 0 ? 'kwitansi' : 'spk', nomor: o.nomor, waktu: o.created_at, customer: o.customer_nama || '', tipe: tipeLabel(o.customer_tipe), telp: o.customer_telp,
-      cs: (o.cs_nama || '').split(' ')[0], csLabel: 'FO', ulang: true, catatan: o.catatan, offline: o.dibuat_offline, desain: o.desain, janji_selesai: o.janji_selesai,
-      items: d.items.map((i) => ({ nama: i.nama_produk, keterangan: i.keterangan, qty: i.qty, sisi: i.sisi, ukuran: i.jenis_harga === 'cutting' ? i.ukuran_cutting : null, harga: i.harga_satuan, subtotal: i.subtotal })),
-      total: o.total, payments: d.payments.map((p) => ({ label: `${tgl(p.tanggal)} ${p.method_nama}`, nominal: p.nominal })), sisa: Math.max(0, o.sisa),
+      ...base(d), jenis: 'spk', waktu: o.created_at, cs: (o.cs_nama || '').split(' ')[0], csLabel: 'FO', ulang: true, catatan: o.catatan, desain: o.desain, janji_selesai: o.janji_selesai,
+      payments: d.payments.map((p) => ({ label: p.method_nama || '', nominal: p.nominal })), sisa: Math.max(0, o.sisa),
     });
   };
 
   if (rcpt) {
     return (
       <ReceiptModal d={rcpt} shop={shop} width={width} waTemplate={rcpt.jenis === 'kwitansi' ? settings.data?.wa_pesan_kwitansi : settings.data?.wa_pesan_spk}
-        title={<span className="font-mono">{rcpt.nomor}</span>} subtitle="Cetak ulang atau kirim ulang ke konsumen"
-        printLabel="Cetak ulang" onPrint={() => printReceipt(rcpt, shop, width)} closeLabel="Kembali" onClose={() => setRcpt(null)} />
+        title={<span className="font-mono">{rcpt.jenis === 'kwitansi' ? rcpt.kw_no : rcpt.nomor}</span>} subtitle={rcpt.jenis === 'kwitansi' ? `Kwitansi pembayaran ke-${rcpt.ke} · ${rcpt.customer}` : `Nota/SPK · ${rcpt.customer}`}
+        printLabel={rcpt.jenis === 'kwitansi' ? 'Cetak kwitansi' : 'Cetak nota / SPK'} onPrint={() => printReceipt(rcpt, shop, width)} closeLabel="Kembali" onClose={() => setRcpt(null)} />
     );
   }
 
@@ -130,10 +153,11 @@ export function OrderDetailModal({ orderId, onClose }: { orderId: string; onClos
             <h3 className="mb-2 text-sm font-bold">Pembayaran</h3>
             {!d.payments.length ? <p className="text-sm text-muted">Belum ada pembayaran.</p> : (
               <ul className="divide-y divide-line rounded-xl border border-line text-sm">
-                {d.payments.map((p, i) => (
+                {sortPays(d.payments).map((p, i) => (
                   <li key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
                     <span className="num w-5 text-muted">{i + 1}</span><span className="num">{tgl(p.tanggal)}</span><span className="font-semibold">{p.method_nama}</span>
                     <span className="text-xs text-muted">{p.kasir_nama}{p.catatan ? ` · ${p.catatan}` : ''}</span><span className="num ml-auto font-bold">{rp(p.nominal)}</span>
+                    <button className="btn btn-sm" onClick={() => setRcpt(kwitansiOf(d, i))} title={`Kwitansi KW-${no4(o.nomor)}-${i + 1}`}><ReceiptText size={14} />Kwitansi</button>
                   </li>
                 ))}
               </ul>
@@ -179,7 +203,7 @@ export function OrderDetailModal({ orderId, onClose }: { orderId: string; onClos
               {!o.batal && can('order', 'ubah') && (o.status_ambil === 'diambil'
                 ? <button className="btn" disabled={ambil.isPending} onClick={() => ambil.mutate(false)}><Undo2 size={16} />Batal diambil</button>
                 : <button className="btn" disabled={ambil.isPending} onClick={() => { ambil.reset(); setAlasan(''); if (o.sisa > 0) setPanel('ambil'); else ambil.mutate(true); }}><PackageCheck size={16} />Tandai diambil</button>)}
-              <button className="btn" onClick={reprint}><Printer size={16} />Cetak / kirim ulang</button>
+              <button className="btn" onClick={reprint}><Printer size={16} />Nota / SPK</button>
               {!o.batal && can('order', 'hapus') && <button className="btn btn-ghost ml-auto text-bad" onClick={() => { cancel.reset(); setAlasan(''); setPanel('batal'); }}><Ban size={16} />Batalkan</button>}
             </div>
           )}

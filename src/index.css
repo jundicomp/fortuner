@@ -138,3 +138,38 @@ body { @apply bg-canvas text-ink font-sans antialiased; font-size: 14px; }
 /* Kotak tombol shortcut (F9, Esc). */
 .kbd { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 0.72em; font-weight: 700; opacity: 0.75; border: 1px solid currentColor; border-radius: 4px; padding: 0 4px; line-height: 1.4; }
 .btn svg { flex-shrink: 0; }
+
+/* ---- Nota/SPK & Kwitansi: Inter tebal, hitam pekat (tanpa abu-abu) supaya tajam di printer thermal ---- */
+.rc { background: #fff; color: #000; font-family: Inter, Arial, sans-serif; font-size: 13px; line-height: 1.4; font-weight: 600; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.rc-58 { font-size: 11.5px; }
+.rc b, .rc .rc-b { font-weight: 800; }
+.rc-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+.rc-shop { font-size: 1.1em; font-weight: 800; line-height: 1.25; }
+.rc-small { font-size: 0.9em; font-weight: 600; }
+.rc-no { flex-shrink: 0; background: #000; color: #fff; font-weight: 800; font-size: 2em; letter-spacing: 0.04em; padding: 1px 0.35em; border-radius: 4px; line-height: 1.2; }
+.rc-title { text-align: center; font-weight: 900; font-size: 1.85em; letter-spacing: 0.08em; margin-top: 4px; line-height: 1.2; }
+.rc-sub { text-align: center; font-size: 0.92em; }
+.rc-hr { border-top: 1.5px dashed #000; margin: 8px 0; }
+.rc-hr2 { border-top: 2px solid #000; margin: 8px 0; }
+.rc-dbl { border-top: 4px double #000; margin: 8px 0; }
+.rc-kv { display: grid; grid-template-columns: auto 10px minmax(0, 1fr); column-gap: 4px; font-size: 0.96em; }
+.rc-kv > span:first-child, .rc-kv > span:nth-child(3n+1) { white-space: nowrap; }
+.rc-kv > b { font-weight: 700; overflow-wrap: anywhere; }
+.rc-row { display: flex; justify-content: space-between; gap: 8px; }
+.rc-row > span:last-child { flex-shrink: 0; text-align: right; }
+.rc-item + .rc-item { margin-top: 5px; }
+.rc-total { display: flex; justify-content: space-between; font-weight: 900; font-size: 1.22em; }
+.rc-center { text-align: center; margin-top: 10px; }
+.rc-stamp { display: inline-block; border: 2.5px solid #000; padding: 2px 0.8em; font-weight: 900; letter-spacing: 0.15em; font-size: 1.3em; }
+.rc-note { font-weight: 800; margin-top: 4px; }
+.rc-via { font-weight: 800; margin-top: 4px; }
+.rc-box { border: 2px solid #000; border-radius: 4px; padding: 6px 9px; margin: 8px 0; }
+.rc-big { font-size: 1.9em; font-weight: 900; line-height: 1.2; }
+.rc-terbilang { font-size: 0.92em; font-weight: 700; font-style: italic; }
+.rc-keep { border: 1.5px solid #000; border-radius: 4px; padding: 4px 6px; text-align: center; font-size: 0.92em; font-weight: 800; margin-top: 10px; }
+.rc-foot { text-align: center; font-size: 0.9em; white-space: pre-line; }
+.rc-sign { display: flex; justify-content: space-between; margin-top: 12px; font-size: 0.92em; text-align: center; }
+.rc-sign > div { width: 45%; }
+.rc-line { margin-top: 34px; border-top: 1.5px solid #000; padding-top: 2px; overflow-wrap: anywhere; }
+.rc-bar { display: block; width: 86%; height: 38px; margin: 8px auto 2px; fill: #000; shape-rendering: crispEdges; }
+.rc-total > span:last-child { flex: 1; text-align: right; }

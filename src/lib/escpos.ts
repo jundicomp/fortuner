@@ -5,7 +5,7 @@
  */
 import { CUT_SIZES } from './pricing';
 import type { ReceiptData, ReceiptShop } from '@/components/Receipt';
-import { footerOf, no4 } from './receiptText';
+import { footerOf, KEEP_NOTE, no4, SAH_NOTE, statusOf, terbilang, untukLabel, viaLabel } from './receiptText';
 
 const ESC = 0x1b, GS = 0x1d;
 
@@ -65,6 +65,28 @@ export class EscPos {
     this.align('right').size(2).reverse(true); this.bytesOf(b); this.reverse(false).size(0).raw(0x0a).align('left');
     return this.bold(true).text(left).bold(false);
   }
+  /** Label rata (titik dua sejajar) + nilai; nilai panjang dibungkus dan menjorok di bawah nilai. */
+  kv(rows: [string, string][]) {
+    if (this.cols < 40) { // kertas 58 mm: label di atas, nilai tebal di bawahnya supaya tidak terpotong
+      rows.forEach(([k, v]) => { this.line(toAscii(k) + ':'); this.bold(true); wrap(v, this.cols - 2).forEach((l) => this.line('  ' + l)); this.bold(false); });
+      return this;
+    }
+    const lw = Math.min(Math.max(...rows.map(([k]) => toAscii(k).length)), Math.floor(this.cols / 2));
+    const vw = this.cols - lw - 2;
+    rows.forEach(([k, v]) => {
+      const lines = wrap(v, vw);
+      lines.forEach((l, i) => { this.bytesOf(i === 0 ? toAscii(k).slice(0, lw).padEnd(lw) + ': ' : ' '.repeat(lw + 2)); this.bold(true); this.bytesOf(l); this.bold(false); this.raw(0x0a); });
+    });
+    return this;
+  }
+  /** Dua teks, masing-masing di tengah separuh lebar (kolom tanda tangan). */
+  center2(a: string, b: string) {
+    const w = Math.floor(this.cols / 2);
+    const c = (t: string) => { const x = toAscii(t).slice(0, w - 1); const pad = Math.floor((w - x.length) / 2); return (' '.repeat(pad) + x).padEnd(w); };
+    return this.line(c(a) + c(b));
+  }
+  /** Cap status: tebal, tinggi 2x, di tengah. */
+  stamp(t: string) { return this.align('center').bold(true).size(1).line(`[ ${t} ]`).size(0).bold(false).align('left'); }
   /** Dua kolom sejajar; bila salah satu terlalu panjang, masing-masing satu baris. */
   cols2(a: string, b?: string) {
     const w = Math.floor(this.cols / 2);
@@ -112,42 +134,70 @@ export interface EscOptions { cols: number; drawer?: boolean; cut?: boolean; bar
 export function receiptEscPos(d: ReceiptData, shop: ReceiptShop, o: EscOptions): Uint8Array {
   const p = new EscPos(o.cols);
   const narrow = o.cols < 40;
+  const kw = d.jenis === 'kwitansi';
   if (o.drawer) p.drawer();
   p.align('left');
   p.leftBig(shop.nama, no4(d.nomor));
   if (shop.alamat) p.text(shop.alamat);
   if (shop.telp) p.text('Telp/WA ' + shop.telp);
-  p.hr();
-  const judul = d.jenis === 'spk' ? 'NOTA / SPK' : d.jenis === 'kwitansi' ? 'KWITANSI' : 'STRUK';
-  p.bold(true).row(judul, d.ulang ? 'CETAK ULANG' : '').bold(false);
-  p.row(d.nomor, tglJamS(d.waktu));
-  p.hr();
-  p.bold(true).text(d.customer + (d.tipe ? ` (${d.tipe})` : '')).bold(false);
-  const cells: string[] = [`${d.csLabel || (d.jenis === 'kwitansi' ? 'Kasir' : 'FO')}: ${d.cs}`];
-  if (d.telp && d.telp !== '-') cells.push('WA: ' + d.telp);
-  if (d.janji_selesai) cells.push('Selesai: ' + tglJamS(d.janji_selesai));
-  if (narrow) cells.forEach((c) => p.text(c));
-  else for (let i = 0; i < cells.length; i += 2) p.cols2(cells[i], cells[i + 1]);
-  if (d.jenis === 'spk' && d.desain) p.text('Desain: ' + d.desain);
-  if (d.catatan) p.text((d.jenis === 'kwitansi' ? 'Ket: ' : 'Catatan: ') + d.catatan);
-  if (d.offline) p.bold(true).line('* Dibuat saat offline').bold(false);
-  p.hr();
-  d.items.forEach((it) => {
-    p.bold(true).text(it.nama + (it.sisi === 2 ? ' (BB)' : '') + (it.ukuran != null ? ' - ' + CUT_SIZES[it.ukuran] : '')).bold(false);
-    p.row(`  ${nfi(it.qty)} x ${nfi(it.harga)}${it.keterangan ? ' - ' + it.keterangan : ''}`, nfi(it.subtotal));
-  });
-  p.hr();
-  p.bold(true);
-  if (narrow) p.row('TOTAL', nfi(d.total)); else { p.size(1).row('TOTAL', nfi(d.total)).size(0); }
-  p.bold(false);
-  if (d.sebelumnya != null && d.sebelumnya > 0) p.row('Dibayar sebelumnya', nfi(d.sebelumnya));
-  d.payments.forEach((x) => p.row(x.label, nfi(x.nominal)));
-  if (d.diterima != null && d.diterima > 0) p.row('Tunai diterima', nfi(d.diterima));
-  if (d.kembalian != null && d.kembalian > 0) p.bold(true).row('Kembalian', nfi(d.kembalian)).bold(false);
-  if (d.jenis === 'spk') p.align('center').bold(true).text('BELUM DIBAYAR - SILAKAN KE KASIR').bold(false).align('left');
-  else p.bold(true).row(d.sisa > 0 ? 'SISA TAGIHAN' : 'STATUS', d.sisa > 0 ? nfi(d.sisa) : 'LUNAS').bold(false);
-  p.hr();
-  if (o.barcode !== false && d.jenis === 'spk') p.barcode(d.nomor, narrow);
+  p.hr('=');
+  p.align('center').bold(true).bigText(kw ? 'KWITANSI' : 'NOTA / SPK').bold(false);
+  p.text(`${kw ? d.kw_no || d.nomor : d.nomor} - ${tglJamS(d.waktu)}`);
+  if (d.cs) p.text(`${d.csLabel || (kw ? 'Kasir' : 'FO')} ${d.cs}`);
+  if (d.ulang) p.bold(true).line('CETAK ULANG').bold(false);
+  if (d.offline && !kw) p.bold(true).line('* Dibuat saat offline').bold(false);
+  p.align('left').hr();
+  const bayar = d.payments.reduce((a, x) => a + x.nominal, 0);
+  if (!kw) {
+    const rows: [string, string][] = [['Nama pelanggan', d.customer + (d.tipe ? ` (${d.tipe})` : '')]];
+    if (d.telp && d.telp !== '-') rows.push(['No WA', d.telp]);
+    if (d.janji_selesai) rows.push(['Target selesai', tglJamS(d.janji_selesai)]);
+    if (d.desain) rows.push(['Sumber', d.desain]);
+    if (d.catatan) rows.push(['Catatan', d.catatan]);
+    p.kv(rows).hr('=');
+    d.items.forEach((it) => {
+      p.bold(true).text(it.nama + (it.sisi === 2 ? ' (BB)' : '') + (it.ukuran != null ? ' - ' + CUT_SIZES[it.ukuran] : '')).bold(false);
+      p.row(`${nfi(it.qty)} x ${nfi(it.harga)}${it.keterangan ? ' - ' + it.keterangan : ''}`, nfi(it.subtotal));
+    });
+    p.hr();
+    p.bold(true);
+    if (narrow) p.row('TOTAL', 'Rp ' + nfi(d.total)); else p.size(1).row('TOTAL', 'Rp ' + nfi(d.total)).size(0);
+    p.bold(false);
+    if (bayar > 0) { p.row('Sudah dibayar', nfi(bayar)); if (d.sisa > 0) p.bold(true).row('Sisa tagihan', nfi(d.sisa)).bold(false); }
+    const st = statusOf(d.sisa, bayar);
+    p.feed(1).stamp(st);
+    p.align('center');
+    if (st !== 'LUNAS') p.bold(true).text(SAH_NOTE).bold(false);
+    if (st === 'BELUM DIBAYAR') p.text('Silakan lakukan pembayaran di kasir');
+    if (st === 'DP') p.text(`Sisa Rp ${nfi(d.sisa)} dibayar di kasir`);
+    p.align('left');
+    if (o.barcode !== false && d.jenis === 'spk') { p.feed(1); p.barcode(d.nomor, narrow); }
+  } else {
+    const sebelumnya = d.sebelumnya || 0;
+    const rows: [string, string][] = [['Telah terima dari', d.customer]];
+    if (d.telp && d.telp !== '-') rows.push(['No WA', d.telp]);
+    rows.push(['Untuk pembayaran', `${untukLabel(d.ke || 1, d.sisa, sebelumnya)}\n${d.nomor}`]);
+    p.kv(rows).hr('=');
+    p.text('Uang sejumlah');
+    p.bold(true).size(2).line('Rp ' + nfi(bayar)).size(0).bold(false);
+    p.text(`# ${terbilang(bayar)} #`);
+    p.hr();
+    p.row('Total nota', nfi(d.total));
+    if (sebelumnya > 0) p.row('Dibayar sebelumnya', nfi(sebelumnya));
+    p.row('Dibayar s/d kwitansi ini', nfi(sebelumnya + bayar));
+    if (d.diterima != null && d.diterima > 0) p.row('Tunai diterima', nfi(d.diterima));
+    if (d.kembalian != null && d.kembalian > 0) p.bold(true).row('Kembalian', nfi(d.kembalian)).bold(false);
+    const st = statusOf(d.sisa, sebelumnya + bayar);
+    p.feed(1).stamp(st === 'BELUM DIBAYAR' ? 'DP' : st);
+    p.align('center').bold(true).text(viaLabel(d.metode, d.metode_jenis)).bold(false);
+    if (d.catatan) p.text('Ref: ' + d.catatan);
+    if (d.sisa > 0) p.bold(true).text(`Sisa tagihan Rp ${nfi(d.sisa)}`).bold(false);
+    p.align('left').feed(1);
+    p.center2('Penyetor', 'Kasir').feed(3);
+    const ln = '_'.repeat(Math.floor(o.cols / 2) - 4);
+    p.center2(ln, ln).center2(d.customer, d.cs || '');
+  }
+  p.hr().align('center').bold(true).text(KEEP_NOTE).bold(false).align('left').hr();
   const footer = footerOf(d, shop);
   if (footer) p.align('center').text(footer).align('left');
   if (o.cut !== false) p.cut(); else p.feed(4);

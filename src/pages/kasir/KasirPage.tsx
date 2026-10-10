@@ -215,6 +215,9 @@ function PayPanel({ row, methods, onBack, onDone, kasirNama, active }: { row: Qu
   const telp = o?.customer_telp || row.telp;
   const tipe = tipeLabel(o?.customer_tipe || row.tipe);
 
+  // pembayaran ke-berapa untuk nota ini (server + yang masih antri kirim dari perangkat ini)
+  const ke = (detail.data?.payments.length || 0) + s.outbox.filter((x) => x.kind === 'orders.pay' && x.payload.order_id === row.id).length + 1;
+
   const submit = async () => {
     if (busy) return;
     setErr(null);
@@ -224,6 +227,7 @@ function PayPanel({ row, methods, onBack, onDone, kasirNama, active }: { row: Qu
     const payload = { order_id: row.id, payment_id: payId, nominal, method_id: methodId, catatan: catatan.trim(), tanggal: ymd() };
     const receipt = (): ReceiptData => ({
       jenis: 'kwitansi', nomor: row.nomor, waktu: new Date().toISOString(), customer: row.customer, tipe, telp, cs: kasirNama.split(' ')[0], catatan: catatan.trim(),
+      kw_no: `KW-${no4(row.nomor)}-${ke}`, ke, metode: method?.nama, metode_jenis: method?.jenis, item_count: items.length,
       items: items.map((i) => ({ nama: i.nama, keterangan: i.keterangan, qty: i.qty, harga: i.harga, subtotal: i.harga * i.qty })),
       total: row.total, sebelumnya: row.terbayar, payments: [{ label: `Bayar ${method?.nama || ''}`, nominal }], sisa: sisa - nominal, diterima: isTunai ? amount : undefined, kembalian,
     });

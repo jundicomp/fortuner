@@ -1,5 +1,17 @@
 [
   {
+    "version": "1.1.7",
+    "tanggal": "2026-10-10",
+    "catatan": [
+      "Format Nota/SPK dan Kwitansi dibedakan: judul besar di tengah; Nota/SPK berisi rincian pekerjaan, Kwitansi hanya bukti uang diterima dan merujuk ke nomor nota.",
+      "Nota/SPK: data pelanggan tersusun (Nama pelanggan, No WA, Target selesai, Sumber, Catatan) dengan garis dobel pemisah; cap status BELUM DIBAYAR / DP / LUNAS dengan catatan \"Pembayaran sah jika ada KWITANSI\".",
+      "Kwitansi: nomor per pembayaran (KW-0038-1, KW-0038-2), uang sejumlah + terbilang, cap LUNAS/DP dengan keterangan cara bayar (tunai atau transfer bank), dan kolom tanda tangan.",
+      "Catatan \"Simpan dan satukan struk ini jika diperlukan\" di nota dan kwitansi.",
+      "Huruf nota lebih tebal dan hitam pekat (Inter, ikut terpasang di aplikasi) supaya tidak kabur di printer thermal; cetak langsung ESC/POS ikut format baru.",
+      "Detail order: cetak/kirim Nota/SPK dengan status terkini dan kwitansi untuk setiap pembayaran."
+    ]
+  },
+  {
     "version": "1.1.6",
     "tanggal": "2026-10-10",
     "catatan": [

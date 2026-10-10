@@ -19,7 +19,7 @@ const ITEMS = [
 ];
 const SAMPLE: Record<'spk' | 'kwitansi', ReceiptData> = {
   spk: { jenis: 'spk', nomor: 'FT-K1-1026-0038', waktu: now, customer: 'Kedai Kopi Senja', tipe: 'End user', telp: '0896-0000-7708', cs: 'Riska', desain: 'WA, menu_kedai.pdf', janji_selesai: now, catatan: 'laminating doff, potong rapi', items: ITEMS, total: 371000, payments: [], sisa: 371000 },
-  kwitansi: { jenis: 'kwitansi', nomor: 'FT-K1-1026-0038', waktu: now, customer: 'Kedai Kopi Senja', tipe: 'End user', telp: '0896-0000-7708', cs: 'Tina', items: ITEMS, total: 371000, sebelumnya: 0, payments: [{ label: 'Bayar Tunai', nominal: 371000 }], diterima: 400000, kembalian: 29000, sisa: 0 },
+  kwitansi: { jenis: 'kwitansi', nomor: 'FT-K1-1026-0038', waktu: now, customer: 'Kedai Kopi Senja', tipe: 'End user', telp: '0896-0000-7708', cs: 'Tina', kw_no: 'KW-0038-1', ke: 1, metode: 'Tunai', metode_jenis: 'tunai', item_count: 2, items: ITEMS, total: 371000, sebelumnya: 0, payments: [{ label: 'Bayar Tunai', nominal: 371000 }], diterima: 400000, kembalian: 29000, sisa: 0 },
 };
 
 /** Pengaturan → Nota & SPK: footer nota/kwitansi dan template pesan WhatsApp, dengan pratinjau langsung. */

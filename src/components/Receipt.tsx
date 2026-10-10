@@ -1,10 +1,15 @@
 import { createPortal } from 'react-dom';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import { CheckCircle2, Printer, TriangleAlert, X } from 'lucide-react';
 import { directReady, printDirect, printerSettings } from '@/platform/printer';
 import { nf, tglJam } from '@/lib/format';
 import { CUT_SIZES } from '@/lib/pricing';
-import { footerOf, no4 } from '@/lib/receiptText';
+import { footerOf, KEEP_NOTE, no4, SAH_NOTE, statusOf, terbilang, untukLabel, viaLabel } from '@/lib/receiptText';
+import { code128 } from '@/lib/code128';
+import '@fontsource/inter/latin-600.css';
+import '@fontsource/inter/latin-700.css';
+import '@fontsource/inter/latin-800.css';
+import '@fontsource/inter/latin-900.css';
 
 export interface ReceiptData {
   nomor: string;
@@ -18,15 +23,21 @@ export interface ReceiptData {
   diterima?: number;   // uang tunai diterima (untuk kembalian)
   kembalian?: number;
   offline?: boolean;
-  catatan?: string;
+  catatan?: string;    // nota: catatan FO · kwitansi: no. referensi transfer
   ulang?: boolean;     // cetak ulang
-  jenis?: 'spk' | 'kwitansi' | 'struk'; // spk = dari FO (belum bayar); kwitansi = bukti pembayaran kasir
+  jenis?: 'spk' | 'kwitansi' | 'struk'; // spk = Nota/SPK dari FO (rincian); kwitansi = bukti uang diterima kasir
   desain?: string;
   janji_selesai?: string;
   sebelumnya?: number; // sudah dibayar sebelum pembayaran ini (kwitansi)
   tipe?: string;       // tipe harga konsumen: "End user" / "Reseller"
   telp?: string;       // telepon/WA konsumen
   csLabel?: string;    // label petugas; bawaan: Kasir (kwitansi) / FO (nota)
+  // kwitansi
+  kw_no?: string;      // KW-0038-1
+  ke?: number;         // pembayaran ke-berapa untuk nota ini
+  metode?: string;     // nama metode bayar (Tunai, BCA Transfer, …)
+  metode_jenis?: string;
+  item_count?: number;
 }
 export interface ReceiptShop { nama: string; alamat?: string; telp?: string; catatan?: string; footer_spk?: string; footer_kwitansi?: string }
 
@@ -36,63 +47,127 @@ export function shopOf(s?: Record<string, string> | null): ReceiptShop {
 }
 export { footerOf, no4 };
 export const tipeLabel = (t?: string) => (t === 'reseller' ? 'Reseller' : t === 'enduser' || t === 'end user' ? 'End user' : t || '');
-const JUDUL = { spk: 'NOTA / SPK', kwitansi: 'KWITANSI', struk: 'STRUK' } as const;
+/** Nominal pembayaran yang dicatat kwitansi ini. */
+export const bayarOf = (d: ReceiptData) => d.payments.reduce((a, p) => a + p.nominal, 0);
 
-/** Isi struk; dipakai untuk pratinjau di layar, cetak, dan gambar JPEG untuk WhatsApp. */
+/**
+ * Isi struk; dipakai untuk pratinjau di layar, cetak lewat jendela print, dan gambar JPEG untuk WhatsApp.
+ * Nota/SPK = rincian pekerjaan. Kwitansi = bukti uang diterima (tanpa rincian item, merujuk ke nota).
+ * Huruf Inter tebal & hitam pekat (tanpa abu-abu) supaya tidak kabur di printer thermal.
+ */
 export function ReceiptBody({ d, shop, width = 80 }: { d: ReceiptData; shop: ReceiptShop; width?: 58 | 80 }) {
-  const sm = width === 58;
-  const footer = footerOf(d, shop);
-  const det: [string, string, boolean?][] = [
-    [d.csLabel || (d.jenis === 'kwitansi' ? 'Kasir' : 'FO'), d.cs],
-    ...(d.telp && d.telp !== '-' ? [['WA', d.telp] as [string, string]] : []),
-    ...(d.janji_selesai ? [['Selesai', tglJam(d.janji_selesai), true] as [string, string, boolean]] : []),
-    ...(d.jenis === 'spk' && d.desain ? [['Desain', d.desain, true] as [string, string, boolean]] : []),
-    ...(d.catatan ? [[d.jenis === 'kwitansi' ? 'Ket' : 'Catatan', d.catatan, true] as [string, string, boolean]] : []),
-  ];
   return (
-    <div className={`receipt bg-white font-mono text-black ${sm ? 'text-[10.5px]' : 'text-[12px]'} leading-[1.4]`}>
-      <div className="flex items-start justify-between gap-2">
+    <div className={`rc ${width === 58 ? 'rc-58' : ''}`}>
+      <div className="rc-top">
         <div className="min-w-0">
-          <div className={`font-bold leading-tight ${sm ? 'text-[12px]' : 'text-[13.5px]'}`}>{shop.nama}</div>
-          {shop.alamat && <div className="text-[0.9em] text-neutral-700">{shop.alamat}</div>}
-          {shop.telp && <div className="text-[0.9em] text-neutral-700">Telp/WA {shop.telp}</div>}
+          <div className="rc-shop">{shop.nama}</div>
+          {shop.alamat && <div className="rc-small">{shop.alamat}</div>}
+          {shop.telp && <div className="rc-small">Telp/WA {shop.telp}</div>}
         </div>
-        <div className={`receipt-no shrink-0 rounded bg-black px-2 py-0.5 font-bold leading-tight tracking-wider text-white ${sm ? 'text-[18px]' : 'text-[24px]'}`}>{no4(d.nomor)}</div>
+        <div className="rc-no receipt-no">{no4(d.nomor)}</div>
       </div>
-      <Hr />
-      <Row l={JUDUL[d.jenis || 'struk']} r={d.ulang ? 'CETAK ULANG' : ''} bold />
-      <Row l={d.nomor} r={tglJam(d.waktu)} />
-      <Hr />
-      <div className="font-bold">{d.customer}{d.tipe ? <span className="font-normal"> ({d.tipe})</span> : null}</div>
-      <div className={`grid ${sm ? 'grid-cols-1' : 'grid-cols-2'} gap-x-3 text-[0.92em]`}>
-        {det.map(([k, v, full]) => <div key={k} className={`min-w-0 ${full ? 'col-span-full' : ''}`}>{k}: {v}</div>)}
-      </div>
-      {d.offline && <div className="font-bold">* Dibuat saat offline</div>}
-      <Hr />
-      {d.items.map((it, i) => (
-        <div key={i} className="mb-1">
-          <div className="font-bold">{it.nama}{it.sisi === 2 ? ' (BB)' : ''}{it.ukuran != null ? ` · ${CUT_SIZES[it.ukuran]}` : ''}</div>
-          <Row l={`  ${nf(it.qty)} x ${nf(it.harga)}${it.keterangan ? ` · ${it.keterangan}` : ''}`} r={nf(it.subtotal)} />
-        </div>
-      ))}
-      <Hr />
-      <Row l="TOTAL" r={nf(d.total)} bold big={!sm} />
-      {d.sebelumnya != null && d.sebelumnya > 0 && <Row l="Dibayar sebelumnya" r={nf(d.sebelumnya)} />}
-      {d.payments.map((p, i) => <Row key={i} l={p.label} r={nf(p.nominal)} />)}
-      {d.diterima != null && d.diterima > 0 && <Row l="Tunai diterima" r={nf(d.diterima)} />}
-      {d.kembalian != null && d.kembalian > 0 && <Row l="Kembalian" r={nf(d.kembalian)} bold />}
-      {d.jenis === 'spk' ? (
-        <div className="mt-1 text-center font-bold">BELUM DIBAYAR · SILAKAN KE KASIR</div>
-      ) : (
-        <Row l={d.sisa > 0 ? 'SISA TAGIHAN' : 'STATUS'} r={d.sisa > 0 ? nf(d.sisa) : 'LUNAS'} bold />
-      )}
-      {footer && <><Hr /><div className="whitespace-pre-line text-center text-[0.92em] text-neutral-700">{footer}</div></>}
+      <div className="rc-hr2" />
+      {d.jenis === 'kwitansi' ? <KwitansiPart d={d} /> : <NotaPart d={d} />}
+      <div className="rc-keep">{KEEP_NOTE}</div>
+      {footerOf(d, shop) && <><div className="rc-hr" /><div className="rc-foot">{footerOf(d, shop)}</div></>}
     </div>
   );
 }
-const Hr = () => <div className="my-1.5 border-t border-dashed border-black/60" />;
-function Row({ l, r, bold, big }: { l: string; r: string; bold?: boolean; big?: boolean }) {
-  return <div className={`flex justify-between gap-2 ${bold ? 'font-bold' : ''} ${big ? 'text-[14px]' : ''}`}><span className="min-w-0">{l}</span><span className="shrink-0 text-right">{r}</span></div>;
+
+function Kv({ rows }: { rows: [string, ReactNode][] }) {
+  return <div className="rc-kv">{rows.map(([k, v]) => <Fragment key={k}><span>{k}</span><span>:</span><b>{v}</b></Fragment>)}</div>;
+}
+const R = ({ l, r, b }: { l: ReactNode; r: ReactNode; b?: boolean }) => <div className={`rc-row ${b ? 'rc-b' : ''}`}><span>{l}</span><span>{r}</span></div>;
+
+function NotaPart({ d }: { d: ReceiptData }) {
+  const terbayar = bayarOf(d);
+  const st = statusOf(d.sisa, terbayar);
+  const rows: [string, ReactNode][] = [['Nama pelanggan', <>{d.customer}{d.tipe ? ` (${d.tipe})` : ''}</>]];
+  if (d.telp && d.telp !== '-') rows.push(['No WA', d.telp]);
+  if (d.janji_selesai) rows.push(['Target selesai', tglJam(d.janji_selesai)]);
+  if (d.desain) rows.push(['Sumber', d.desain]);
+  if (d.catatan) rows.push(['Catatan', d.catatan]);
+  return (
+    <>
+      <div className="rc-title">NOTA / SPK</div>
+      <div className="rc-sub">{d.nomor} · {tglJam(d.waktu)}{d.cs ? ` · ${d.csLabel || 'FO'} ${d.cs}` : ''}</div>
+      {d.ulang && <div className="rc-sub rc-b">CETAK ULANG</div>}
+      {d.offline && <div className="rc-sub rc-b">* Dibuat saat offline</div>}
+      <div className="rc-hr" />
+      <Kv rows={rows} />
+      <div className="rc-dbl" />
+      {d.items.map((it, i) => (
+        <div key={i} className="rc-item">
+          <div className="rc-b">{it.nama}{it.sisi === 2 ? ' (BB)' : ''}{it.ukuran != null ? ` · ${CUT_SIZES[it.ukuran]}` : ''}</div>
+          <R l={`${nf(it.qty)} × ${nf(it.harga)}${it.keterangan ? ` · ${it.keterangan}` : ''}`} r={nf(it.subtotal)} />
+        </div>
+      ))}
+      <div className="rc-hr" />
+      <div className="rc-total"><span>TOTAL</span><span>Rp {nf(d.total)}</span></div>
+      {terbayar > 0 && <><R l="Sudah dibayar" r={nf(terbayar)} />{d.sisa > 0 && <R l="Sisa tagihan" r={nf(d.sisa)} b />}</>}
+      <div className="rc-center">
+        <span className="rc-stamp">{st}</span>
+        {st !== 'LUNAS' && <div className="rc-note">{SAH_NOTE}</div>}
+        {st === 'BELUM DIBAYAR' && <div className="rc-small">Silakan lakukan pembayaran di kasir</div>}
+        {st === 'DP' && <div className="rc-small">Sisa Rp {nf(d.sisa)} dibayar di kasir</div>}
+      </div>
+      {d.jenis === 'spk' && <Barcode text={d.nomor} />}
+    </>
+  );
+}
+
+function KwitansiPart({ d }: { d: ReceiptData }) {
+  const bayar = bayarOf(d);
+  const sebelumnya = d.sebelumnya || 0;
+  const st = statusOf(d.sisa, sebelumnya + bayar);
+  const rows: [string, ReactNode][] = [['Telah terima dari', d.customer]];
+  if (d.telp && d.telp !== '-') rows.push(['No WA', d.telp]);
+  rows.push(['Untuk pembayaran', <>{untukLabel(d.ke || 1, d.sisa, sebelumnya)}<br /><span className="whitespace-nowrap">{d.nomor}</span></>]);
+  return (
+    <>
+      <div className="rc-title">KWITANSI</div>
+      <div className="rc-sub">{d.kw_no || d.nomor} · {tglJam(d.waktu)}{d.cs ? ` · ${d.csLabel || 'Kasir'} ${d.cs}` : ''}</div>
+      {d.ulang && <div className="rc-sub rc-b">CETAK ULANG</div>}
+      <div className="rc-hr" />
+      <Kv rows={rows} />
+      <div className="rc-dbl" />
+      <div className="rc-box">
+        <div className="rc-small">Uang sejumlah</div>
+        <div className="rc-big">Rp {nf(bayar)}</div>
+        <div className="rc-terbilang"># {terbilang(bayar)} #</div>
+      </div>
+      <R l="Total nota" r={nf(d.total)} />
+      {sebelumnya > 0 && <R l="Dibayar sebelumnya" r={nf(sebelumnya)} />}
+      <R l="Dibayar s/d kwitansi ini" r={nf(sebelumnya + bayar)} />
+      {d.diterima != null && d.diterima > 0 && <R l="Tunai diterima" r={nf(d.diterima)} />}
+      {d.kembalian != null && d.kembalian > 0 && <R l="Kembalian" r={nf(d.kembalian)} b />}
+      <div className="rc-center">
+        <span className="rc-stamp">{st === 'BELUM DIBAYAR' ? 'DP' : st}</span>
+        <div className="rc-via">{viaLabel(d.metode, d.metode_jenis)}</div>
+        {d.catatan && <div className="rc-small">Ref: {d.catatan}</div>}
+        {d.sisa > 0 && <div className="rc-via">Sisa tagihan Rp {nf(d.sisa)}</div>}
+      </div>
+      <div className="rc-sign">
+        <div>Penyetor<div className="rc-line">{d.customer}</div></div>
+        <div>Kasir<div className="rc-line">{d.cs || '\u00a0'}</div></div>
+      </div>
+    </>
+  );
+}
+
+/** Barcode CODE128-B sebagai SVG (sama dengan barcode printer thermal), bisa discan kasir dari kertas atau layar HP. */
+function Barcode({ text }: { text: string }) {
+  const bars = code128(text);
+  const w = bars.reduce((a, n) => a + n, 0);
+  let x = 0;
+  return (
+    <div className="rc-center">
+      <svg viewBox={`0 0 ${w} 40`} preserveAspectRatio="none" className="rc-bar" aria-label={`Barcode ${text}`}>
+        {bars.map((n, i) => { const r = i % 2 === 0 ? <rect key={i} x={x} y={0} width={n} height={40} /> : null; x += n; return r; })}
+      </svg>
+      <div className="rc-small">{text}</div>
+    </div>
+  );
 }
 
 /**

@@ -15,7 +15,7 @@ const lsGet = (k: string, def: boolean) => { try { const v = localStorage.getIte
 const lsSet = (k: string, v: boolean) => { try { localStorage.setItem(k, v ? '1' : '0'); } catch { /* abaikan */ } };
 
 const SAMPLE: ReceiptData = {
-  jenis: 'kwitansi', nomor: 'FT-K1-1026-0014', waktu: new Date().toISOString(), customer: 'Contoh Konsumen', tipe: 'End user', telp: '0812-0000-0000', cs: 'Sari',
+  jenis: 'kwitansi', nomor: 'FT-K1-1026-0014', waktu: new Date().toISOString(), customer: 'Contoh Konsumen', tipe: 'End user', telp: '0812-0000-0000', cs: 'Sari', kw_no: 'KW-0014-1', ke: 1, metode: 'Tunai', metode_jenis: 'tunai',
   items: [{ nama: 'Art carton 260 A3+', qty: 50, harga: 2100, subtotal: 105000 }, { nama: 'Stiker kromo + cutting', qty: 20, harga: 4000, subtotal: 80000 }],
   total: 185000, payments: [{ label: 'Bayar Tunai', nominal: 185000 }], sisa: 0, diterima: 200000, kembalian: 15000,
 };

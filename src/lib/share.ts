@@ -9,7 +9,7 @@ import { invoke, isTauri } from '@/platform/desktop';
 import type { ReceiptData, ReceiptShop } from '@/components/Receipt';
 import { nf } from './format';
 
-const OPTS = { backgroundColor: '#ffffff', pixelRatio: 2, skipFonts: true, cacheBust: false } as const;
+const OPTS = { backgroundColor: '#ffffff', pixelRatio: 2, cacheBust: false } as const;
 
 /** Nomor Indonesia → format internasional tanpa +: 0896… / +62896… / 896… → 62896…  Kosong bila tidak valid. */
 export function waNumber(telp?: string | null): string {
