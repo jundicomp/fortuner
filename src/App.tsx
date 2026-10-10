@@ -28,6 +28,7 @@ import { AboutPage } from '@/pages/AboutPage';
 import { StokPage } from '@/pages/stok/StokPage';
 import { PembelianPage } from '@/pages/stok/PembelianPage';
 import { LabaRugiPage } from '@/pages/laporan/LabaRugiPage';
+import { AnalitikPage } from '@/pages/laporan/AnalitikPage';
 import { BukuBesarPage } from '@/pages/laporan/BukuBesarPage';
 import { MarginPage } from '@/pages/laporan/MarginPage';
 import { isDesktop } from '@/platform/desktop';
@@ -46,6 +47,7 @@ const PAGES: Record<string, () => ReactElement | null> = {
   '/hutang': HutangPage,
   '/laporan': LaporanPage,
   '/laporan/laba-rugi': LabaRugiPage,
+  '/laporan/analitik': AnalitikPage,
   '/laporan/buku-besar': BukuBesarPage,
   '/laporan/margin': MarginPage,
   '/stok': StokPage,

@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.1.9",
+    "tanggal": "2026-10-10",
+    "catatan": [
+      "Menu baru Laporan → Analitik: kurva penjualan dan laba kotor harian/bulanan, untuk semua produk atau per produk.",
+      "Kurva pembelian bahan (semua bahan atau per bahan) dan kurva saldo piutang & hutang di akhir tiap hari/bulan.",
+      "Ringkasan penjualan, laba, pembelian, piutang, hutang dengan perbandingan periode sebelumnya.",
+      "Top 10/20/50 pelanggan dengan total belanja, porsi, sisa tagihan, dan capaian belanja per bulan; daftar produk terjual dengan laba & margin.",
+      "Semua data analitik bisa diekspor ke Excel."
+    ]
+  },
+  {
     "version": "1.1.8",
     "tanggal": "2026-10-10",
     "catatan": [

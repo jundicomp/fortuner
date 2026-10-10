@@ -311,6 +311,14 @@ var FortunerServer = (() => {
       });
       return o;
     };
+    const nextMonth = (ym) => {
+      let y = Number(ym.slice(0, 4)), m = Number(ym.slice(5, 7)) + 1;
+      if (m > 12) {
+        m = 1;
+        y++;
+      }
+      return `${y}-${String(m).padStart(2, "0")}`;
+    };
     const byId = (rows) => Object.fromEntries(rows.map((r) => [str2(r.id), r]));
     function move(c, mat, qty, jenis, harga, tanggal, refTabel, refId, ket) {
       const stokLama = num(mat.stok);
@@ -822,6 +830,204 @@ var FortunerServer = (() => {
           const klikCat = new Set(c.s.all("expense_categories").filter((x) => x.jenis === "klik").map((x) => str2(x.id)));
           const tagihanKlik = c.s.all("expenses").filter((x) => !bool2(x.deleted) && klikCat.has(str2(x.kategori_id)) && str2(x.tanggal) >= from && str2(x.tanggal) <= to).reduce((s, x) => s + num(x.total), 0);
           return { from, to, sekarang: pnl(c, from, to), sebelumnya: { from: pFrom, to: pTo, ...pnl(c, pFrom, pTo) }, belum_hpp: { item: belum.length, nilai_jual: belum.reduce((s, i) => s + num(i.subtotal), 0) }, tagihan_klik: tagihanKlik };
+        }
+      },
+      "analytics.get": {
+        auth: true,
+        fn: (c, p) => {
+          var _a, _b, _c, _d;
+          need2(c, "laporan");
+          const t = today(c);
+          const grain = p.grain === "bulan" ? "bulan" : "hari";
+          const to = isYmd2(str2(p.to)) ? str2(p.to) : t;
+          let from = isYmd2(str2(p.from)) ? str2(p.from) : grain === "bulan" ? `${addDays2(to, -330).slice(0, 7)}-01` : addDays2(to, -29);
+          if (grain === "bulan") from = `${from.slice(0, 7)}-01`;
+          if (from > to) fail2("VALIDATION", "Tanggal awal harus sebelum tanggal akhir.");
+          const laba = seeCost(c);
+          const productId = str2(p.product_id);
+          const materialId = str2(p.material_id);
+          const keyOf = (d) => grain === "bulan" ? d.slice(0, 7) : d;
+          const keys = [];
+          if (grain === "hari") {
+            for (let d = from; d <= to && keys.length < 400; d = addDays2(d, 1)) keys.push(d);
+          } else {
+            let y = Number(from.slice(0, 4)), m = Number(from.slice(5, 7));
+            const end = to.slice(0, 7);
+            while (keys.length < 60) {
+              const k = `${y}-${String(m).padStart(2, "0")}`;
+              if (k > end) break;
+              keys.push(k);
+              m++;
+              if (m > 12) {
+                m = 1;
+                y++;
+              }
+            }
+          }
+          const zero = () => Object.fromEntries(keys.map((k) => [k, 0]));
+          const inR = (d) => str2(d) >= from && str2(d) <= to;
+          const cache = { mats: byId(c.s.all("materials")), recipes: c.s.all("recipes"), machines: byId(c.s.all("machines")), products: byId(c.s.all("products")) };
+          const unitCost = {};
+          const costOf = (i) => {
+            if (str2(i.stok_at)) return num(i.hpp_bahan) + num(i.hpp_klik);
+            const k = `${str2(i.product_id)}|${num(i.sisi) === 2 ? 2 : 1}`;
+            if (!(k in unitCost)) unitCost[k] = productCost(c, str2(i.product_id), num(i.sisi) === 2 ? 2 : 1, cache).total;
+            return unitCost[k] * num(i.qty);
+          };
+          const allOrders = c.s.all("orders").filter((o) => !bool2(o.batal));
+          const oById = byId(allOrders);
+          const omzet = zero(), hpp = zero(), qty = zero();
+          const nota = {};
+          const perProduk = {};
+          c.s.all("order_items").forEach((i) => {
+            var _a2;
+            const o = oById[str2(i.order_id)];
+            if (!o || i.status_produksi === "batal" || !inR(o.tanggal)) return;
+            const k = keyOf(str2(o.tanggal));
+            const sub = num(i.subtotal), cst = costOf(i);
+            const pid = str2(i.product_id);
+            const pr = perProduk[pid] || (perProduk[pid] = { id: pid, kode: str2((_a2 = cache.products[pid]) == null ? void 0 : _a2.kode), nama: str2(i.nama_produk), qty: 0, omzet: 0, hpp: 0, nota: /* @__PURE__ */ new Set() });
+            pr.qty += num(i.qty);
+            pr.omzet += sub;
+            pr.hpp += cst;
+            pr.nota.add(str2(o.id));
+            if (productId && pid !== productId) return;
+            if (k in omzet) {
+              omzet[k] += sub;
+              hpp[k] += cst;
+              qty[k] += num(i.qty);
+              (nota[k] || (nota[k] = /* @__PURE__ */ new Set())).add(str2(o.id));
+            }
+          });
+          const penjualan = keys.map((k) => {
+            var _a2;
+            return { key: k, omzet: Math.round(omzet[k]), hpp: laba ? Math.round(hpp[k]) : null, laba: laba ? Math.round(omzet[k] - hpp[k]) : null, qty: qty[k], nota: ((_a2 = nota[k]) == null ? void 0 : _a2.size) || 0 };
+          });
+          const purchases = c.s.all("purchases").filter((x) => !bool2(x.deleted) && inR(x.tanggal));
+          const pById = byId(purchases);
+          const beli = zero(), beliTrx = {};
+          const perBahan = {};
+          c.s.all("purchase_items").forEach((i) => {
+            const pr = pById[str2(i.purchase_id)];
+            if (!pr) return;
+            const mid = str2(i.material_id);
+            const m = cache.mats[mid];
+            const b = perBahan[mid] || (perBahan[mid] = { id: mid, nama: str2(m == null ? void 0 : m.nama) || "\u2013", satuan: str2(m == null ? void 0 : m.satuan), qty: 0, total: 0 });
+            b.qty += num(i.qty_stok);
+            b.total += num(i.subtotal);
+            if (materialId && mid !== materialId) return;
+            const k = keyOf(str2(pr.tanggal));
+            if (k in beli) {
+              beli[k] += num(i.subtotal);
+              (beliTrx[k] || (beliTrx[k] = /* @__PURE__ */ new Set())).add(str2(pr.id));
+            }
+          });
+          const pembelian = laba ? keys.map((k) => {
+            var _a2;
+            return { key: k, total: Math.round(beli[k]), transaksi: ((_a2 = beliTrx[k]) == null ? void 0 : _a2.size) || 0 };
+          }) : null;
+          const bucketEnd = (k) => grain === "hari" ? k : addDays2(`${nextMonth(k)}-01`, -1);
+          const ends = keys.map((k) => {
+            const e = bucketEnd(k);
+            return e > to ? to : e;
+          });
+          const cum = (events) => {
+            events.sort((a, b) => a[0].localeCompare(b[0]));
+            let j = 0, run = 0;
+            return ends.map((e) => {
+              while (j < events.length && events[j][0] <= e) {
+                run += events[j][1];
+                j++;
+              }
+              return Math.round(run);
+            });
+          };
+          const piutangEv = [];
+          allOrders.forEach((o) => piutangEv.push([str2(o.tanggal), num(o.total)]));
+          c.s.all("payments").forEach((x) => {
+            if (oById[str2(x.order_id)]) piutangEv.push([str2(x.tanggal), -num(x.nominal)]);
+          });
+          const piutang = cum(piutangEv);
+          let hutang = null;
+          if (laba) {
+            const hutangEv = [];
+            c.s.all("supplier_bills").forEach((b) => hutangEv.push([str2(b.tanggal), num(b.total)]));
+            c.s.all("bill_payments").forEach((x) => hutangEv.push([str2(x.tanggal), -num(x.nominal)]));
+            hutang = cum(hutangEv);
+          }
+          const saldo = keys.map((k, i) => ({ key: k, piutang: piutang[i], hutang: hutang ? hutang[i] : null }));
+          const cust = byId(c.s.all("customers"));
+          const months = [];
+          {
+            let y = Number(from.slice(0, 4)), m = Number(from.slice(5, 7));
+            while (months.length < 24) {
+              const k = `${y}-${String(m).padStart(2, "0")}`;
+              if (k > to.slice(0, 7)) break;
+              months.push(k);
+              m++;
+              if (m > 12) {
+                m = 1;
+                y++;
+              }
+            }
+          }
+          const perCust = {};
+          allOrders.filter((o) => inR(o.tanggal)).forEach((o) => {
+            const id = str2(o.customer_id);
+            const cu = cust[id];
+            const r = perCust[id] || (perCust[id] = { id, nama: str2(cu == null ? void 0 : cu.nama) || "\u2013", tipe: str2(cu == null ? void 0 : cu.tipe), omzet: 0, nota: 0, terbayar: 0, sisa: 0, bulanan: {}, terakhir: "" });
+            r.omzet += num(o.total);
+            r.nota += 1;
+            r.terbayar += num(o.terbayar);
+            r.sisa += Math.max(0, num(o.sisa));
+            const mk = str2(o.tanggal).slice(0, 7);
+            r.bulanan[mk] = (r.bulanan[mk] || 0) + num(o.total);
+            if (str2(o.tanggal) > r.terakhir) r.terakhir = str2(o.tanggal);
+          });
+          const custAll = Object.values(perCust).filter((r) => !/^umum|walk/i.test(r.nama));
+          const totalOmzet = Object.values(perCust).reduce((a, r) => a + r.omzet, 0);
+          const pelanggan = custAll.sort((a, b) => b.omzet - a.omzet).slice(0, Math.min(50, Math.max(1, Number(p.top) || 10))).map((r, i) => ({ ...r, rank: i + 1, porsi: totalOmzet ? Math.round(r.omzet / totalOmzet * 1e3) / 10 : 0 }));
+          const len = Math.round((Date.parse(to) - Date.parse(from)) / 864e5) + 1;
+          const pFrom = addDays2(from, -len), pTo = addDays2(from, -1);
+          let prevOmzet = 0, prevHpp = 0;
+          c.s.all("order_items").forEach((i) => {
+            const o = oById[str2(i.order_id)];
+            if (!o || i.status_produksi === "batal" || str2(o.tanggal) < pFrom || str2(o.tanggal) > pTo) return;
+            if (productId && str2(i.product_id) !== productId) return;
+            prevOmzet += num(i.subtotal);
+            prevHpp += costOf(i);
+          });
+          const prevBeli = c.s.all("purchases").filter((x) => !bool2(x.deleted) && str2(x.tanggal) >= pFrom && str2(x.tanggal) <= pTo).reduce((a, x) => a + num(x.total), 0);
+          const sumOmzet = penjualan.reduce((a, x) => a + x.omzet, 0);
+          const sumHpp = keys.reduce((a, k) => a + hpp[k], 0);
+          return {
+            from,
+            to,
+            grain,
+            keys,
+            lihat_laba: laba,
+            product_id: productId,
+            material_id: materialId,
+            penjualan,
+            pembelian,
+            saldo,
+            pelanggan,
+            months,
+            ringkasan: {
+              omzet: sumOmzet,
+              laba: laba ? Math.round(sumOmzet - sumHpp) : null,
+              margin: laba && sumOmzet ? Math.round((sumOmzet - sumHpp) / sumOmzet * 1e3) / 10 : null,
+              nota: new Set(Object.values(nota).flatMap((x) => [...x])).size,
+              pembelian: laba ? (pembelian || []).reduce((a, x) => a + x.total, 0) : null,
+              piutang: (_a = piutang[piutang.length - 1]) != null ? _a : 0,
+              piutang_awal: (_b = piutang[0]) != null ? _b : 0,
+              hutang: hutang ? (_c = hutang[hutang.length - 1]) != null ? _c : 0 : null,
+              hutang_awal: hutang ? (_d = hutang[0]) != null ? _d : 0 : null,
+              sebelumnya: { from: pFrom, to: pTo, omzet: Math.round(prevOmzet), laba: laba ? Math.round(prevOmzet - prevHpp) : null, pembelian: laba ? Math.round(prevBeli) : null }
+            },
+            produk: Object.values(perProduk).map((r) => ({ id: r.id, kode: r.kode, nama: r.nama, qty: r.qty, nota: r.nota.size, omzet: Math.round(r.omzet), hpp: laba ? Math.round(r.hpp) : null, laba: laba ? Math.round(r.omzet - r.hpp) : null, margin: laba && r.omzet ? Math.round((r.omzet - r.hpp) / r.omzet * 1e3) / 10 : null })).sort((a, b) => b.omzet - a.omzet),
+            bahan: laba ? Object.values(perBahan).map((b) => ({ ...b, total: Math.round(b.total) })).sort((a, b) => b.total - a.total) : []
+          };
         }
       },
       "ledger.trial": {
