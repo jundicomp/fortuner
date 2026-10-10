@@ -1,30 +1,37 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Banknote, CheckCircle2, CloudOff, HandCoins, Printer, RefreshCw, Search } from 'lucide-react';
+import { ArrowLeft, Banknote, CheckCircle2, CloudOff, CreditCard, FileText, HandCoins, Landmark, MessageCircle, RefreshCw, ScanLine, StickyNote } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
-import { ErrorBox, Field } from '@/components/ui/Field';
+import { ErrorBox } from '@/components/ui/Field';
+import { Money } from '@/components/ui/Money';
 import { useToast } from '@/components/ui/Toast';
-import { printReceipt, ReceiptBody, type ReceiptData, type ReceiptShop } from '@/components/Receipt';
+import { no4, printReceipt, shopOf, tipeLabel, type ReceiptData } from '@/components/Receipt';
+import { ReceiptModal } from '@/components/ReceiptModal';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/auth/AuthContext';
 import { loadPos, newClientId, sync, useSync, type OutboxOp } from '@/lib/offline';
 import { CUT_SIZES } from '@/lib/pricing';
-import { nf, rp, tglJam, ymd } from '@/lib/format';
-import { BAYAR } from '@/pages/order/OrderDetailModal';
+import { jam, nf, rp, ymd } from '@/lib/format';
 import { directReady, drawerForCash, openDrawer, paperWidth, printerSettings } from '@/platform/printer';
 import type { Order, OrderDetail } from '@/types';
 
 /**
  * Kasir: menerima pembayaran berdasarkan nota/SPK yang diterbitkan Front Office.
- * Tidak bisa membuat atau mengubah isi order.
+ * Tidak bisa membuat atau mengubah isi order. Setelah bayar, kwitansi tampil sebagai pratinjau akhir
+ * dengan tombol cetak, kirim WhatsApp, dan simpan JPEG.
  */
-type PayMode = 'lunas' | 'dp' | 'nominal';
-interface QueueRow { id: string; nomor: string; tanggal: string; created_at: string; customer: string; cs: string; total: number; terbayar: number; sisa: number; status: string; ringkas: string; pending?: boolean; offline?: boolean }
+interface QueueRow {
+  id: string; nomor: string; tanggal: string; created_at: string; customer: string; telp: string; tipe: string; cs: string;
+  total: number; terbayar: number; sisa: number; status: string; ringkas: string; selesai?: boolean; pending?: boolean; offline?: boolean;
+}
 interface Done { receipt: ReceiptData; offline: boolean; lunas: boolean; tunai?: boolean }
+type Method = { id: string; nama: string; jenis: string };
 
 const QKEY = 'fortuner-kasir-queue';
-const AUTO_PRINT = 'fortuner-autoprint-kwitansi';
 const numIn = (s: string) => Number(String(s).replace(/[^\d]/g, '')) || 0;
 const readQ = (): Order[] => { try { return JSON.parse(localStorage.getItem(QKEY) || '[]'); } catch { return []; } };
+/** 1.320.000 → 1,32jt · 61.000 → 61rb · 17.400 → 17,4rb */
+const singkat = (v: number) => v >= 1e6 ? `${(v / 1e6).toLocaleString('id-ID', { maximumFractionDigits: 2 })}jt` : v >= 1e3 ? `${(v / 1e3).toLocaleString('id-ID', { maximumFractionDigits: 1 })}rb` : nf(v);
+const METHOD_ICON = { tunai: Banknote, transfer: Landmark, edc: CreditCard } as Record<string, typeof Banknote>;
 
 export function KasirPage() {
   const { user } = useAuth();
@@ -54,110 +61,115 @@ export function KasirPage() {
   const pendingOrders: QueueRow[] = s.outbox.filter((o) => o.kind === 'orders.create').map((o: OutboxOp) => {
     const paid = s.outbox.filter((x) => x.kind === 'orders.pay' && x.payload.order_id === o.id).reduce((a, x) => a + Number(x.payload.nominal || 0), 0);
     return {
-      id: o.id, nomor: o.label.split(' · ')[0], tanggal: String(o.payload.tanggal || today), created_at: o.created_at, customer: o.view?.customer || '', cs: '',
+      id: o.id, nomor: o.label.split(' · ')[0], tanggal: String(o.payload.tanggal || today), created_at: o.created_at, customer: o.view?.customer || '', telp: o.view?.telp || '', tipe: o.view?.tipe || '', cs: '',
       total: o.total || 0, terbayar: paid, sisa: (o.total || 0) - paid, status: paid ? 'dp' : 'belum', ringkas: (o.view?.items || []).map((i) => i.nama).join(', '), pending: true, offline: true,
     };
   }).filter((r) => r.sisa > 0);
   const pendingPays = s.outbox.filter((o) => o.kind === 'orders.pay');
   const serverRows: QueueRow[] = (q.data?.rows || []).map((o) => {
     const extra = pendingPays.filter((x) => x.payload.order_id === o.id).reduce((a, x) => a + Number(x.payload.nominal || 0), 0);
-    return { id: o.id, nomor: o.nomor, tanggal: o.tanggal, created_at: o.created_at, customer: o.customer_nama || '', cs: o.cs_nama || '', total: o.total, terbayar: o.terbayar + extra, sisa: o.sisa - extra, status: o.status_bayar, ringkas: o.ringkas || '', offline: o.dibuat_offline };
+    return {
+      id: o.id, nomor: o.nomor, tanggal: o.tanggal, created_at: o.created_at, customer: o.customer_nama || '', telp: o.customer_telp || '', tipe: o.customer_tipe || '', cs: o.cs_nama || '',
+      total: o.total, terbayar: o.terbayar + extra, sisa: o.sisa - extra, status: extra && o.status_bayar === 'belum' ? 'dp' : o.status_bayar, ringkas: o.ringkas || '', selesai: o.produksi_selesai, offline: o.dibuat_offline,
+    };
   }).filter((r) => r.sisa > 0);
   const all = [...pendingOrders, ...serverRows].sort((a, b) => b.created_at.localeCompare(a.created_at));
   const term = search.trim().toLowerCase();
   const rows = all.filter((r) => (scope === 'semua' || r.tanggal === today || term) && (!term || `${r.nomor} ${r.customer}`.toLowerCase().includes(term)));
   const sel = all.find((r) => r.id === selId) || null;
 
-  // Enter di kotak cari: bila cocok tepat satu nota (mis. ketik nomor), langsung pilih
-  const onSearchEnter = () => { if (rows.length === 1) setSelId(rows[0].id); };
+  // Enter / scan di kotak cari: nomor persis atau satu-satunya hasil langsung dipilih
+  const onSearchEnter = () => {
+    const exact = rows.find((r) => r.nomor.toLowerCase() === term) || (rows.length === 1 ? rows[0] : null);
+    if (exact) { setSelId(exact.id); setSearch(''); }
+  };
 
-  const shop: ReceiptShop = { nama: pos.data?.settings.nama_usaha || 'Fortuner', alamat: pos.data?.settings.alamat, telp: pos.data?.settings.telp, catatan: pos.data?.settings.catatan_struk };
+  const shop = shopOf(pos.data?.settings);
   const width = paperWidth(pos.data?.device?.lebar_kertas);
-
-  if (done) {
-    return (
-      <div className="mx-auto grid max-w-4xl grid-cols-1 gap-4 md:grid-cols-[1fr_320px]">
-        <section className="card p-6">
-          <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${done.offline ? 'bg-warn/10 text-warn' : 'bg-ok/10 text-ok'}`}>{done.offline ? <CloudOff size={24} /> : <CheckCircle2 size={24} />}</div>
-          <h1 className="mt-4 text-2xl font-extrabold">{done.lunas ? 'Lunas' : 'Pembayaran diterima'}</h1>
-          <div className="num mt-2 font-mono text-2xl font-bold text-brand">{done.receipt.nomor}</div>
-          <p className="mt-2 text-sm text-muted">{done.receipt.customer} · dibayar {rp(done.receipt.payments[0]?.nominal)}{done.receipt.sisa > 0 ? ` · sisa ${rp(done.receipt.sisa)} jadi piutang` : ''}{done.offline ? ' · tersimpan di perangkat, dikirim otomatis saat online' : ''}</p>
-          {done.receipt.kembalian ? <div className="mt-4 rounded-xl bg-ink p-4 text-canvas"><div className="text-xs uppercase tracking-wider opacity-70">Kembalian</div><div className="num text-4xl font-extrabold">{rp(done.receipt.kembalian)}</div></div> : null}
-          <div className="mt-6 flex flex-wrap gap-2">
-            <button className="btn btn-primary" autoFocus onClick={() => { setDone(null); setSelId(''); setSearch(''); setTimeout(() => searchRef.current?.focus(), 0); }}><ArrowLeft size={16} />Kembali ke antrian</button>
-            <button className="btn" onClick={() => printReceipt(done.receipt, shop, width)}><Printer size={16} />Cetak kwitansi</button>
-          </div>
-        </section>
-        <section className="card overflow-hidden">
-          <div className="border-b border-line px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-muted">Pratinjau kwitansi · {width} mm</div>
-          <div className="max-h-[70vh] overflow-y-auto bg-white p-4"><ReceiptBody d={done.receipt} shop={shop} width={width} /></div>
-        </section>
-      </div>
-    );
-  }
+  const finish = () => { setDone(null); setSelId(''); setSearch(''); setTimeout(() => searchRef.current?.focus(), 0); };
 
   return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_400px]">
-      {/* antrian */}
-      <section className={`card flex min-w-0 flex-col overflow-hidden ${sel ? 'max-lg:hidden' : ''}`}>
-        <div className="flex flex-col gap-3 border-b border-line p-4">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-base font-bold">Menunggu pembayaran <span className="num font-normal text-muted">({rows.length})</span></h2>
-            <div className="flex items-center gap-1">
-              <DrawerButton />
-              <button className="btn btn-ghost btn-sm" onClick={() => q.refetch()} disabled={q.isFetching} title="Muat ulang"><RefreshCw size={14} className={q.isFetching ? 'animate-spin' : ''} /></button>
+    <>
+      <div className="grid grid-cols-1 overflow-hidden rounded-2xl border border-line bg-surface lg:h-[calc(100vh-8rem)] lg:min-h-[560px] lg:grid-cols-[272px_minmax(0,1fr)]">
+        {/* antrian */}
+        <aside className={`queue-pane flex min-h-0 flex-col border-line lg:border-r ${sel ? 'max-lg:hidden' : ''}`}>
+          <div className="flex flex-col gap-2.5 p-3.5 pb-3">
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-base font-bold">Kasir <span className="num text-xs font-normal text-muted">· {rows.length} menunggu</span></h2>
+              <div className="flex items-center">
+                <DrawerButton />
+                <button className="btn btn-ghost btn-sm px-2" onClick={() => q.refetch()} disabled={q.isFetching} title="Muat ulang" aria-label="Muat ulang antrian"><RefreshCw size={14} className={q.isFetching ? 'animate-spin' : ''} /></button>
+              </div>
             </div>
+            <div className="relative">
+              <ScanLine size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+              <input ref={searchRef} id="kasir-cari" autoFocus className="input pl-9 font-mono text-[13px]" placeholder="Scan / ketik nota atau nama" value={search}
+                onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && onSearchEnter()} />
+            </div>
+            <div className="flex gap-1.5">
+              {([['hari_ini', 'Hari ini'], ['semua', 'Semua belum lunas']] as const).map(([k, l]) => (
+                <button key={k} className={`chip ${scope === k ? 'border-ink bg-ink text-canvas' : 'hover:border-muted'}`} onClick={() => setScope(k)}>{l}</button>
+              ))}
+            </div>
+            {q.data?.cached && <div className="flex gap-2 rounded-lg bg-warn/10 px-2.5 py-1.5 text-[11px] text-warn"><CloudOff size={13} className="shrink-0" />Offline: daftar dari data terakhir.</div>}
           </div>
-          <div className="relative">
-            <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-            <input ref={searchRef} id="kasir-cari" autoFocus className="input pl-9 font-mono" placeholder="Ketik / scan nomor nota, atau nama konsumen" value={search}
-              onChange={(e) => setSearch(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && onSearchEnter()} />
-          </div>
-          <div className="flex gap-2">
-            {([['hari_ini', 'Hari ini'], ['semua', 'Semua belum lunas']] as const).map(([k, l]) => (
-              <button key={k} className={`chip ${scope === k ? 'border-ink bg-ink text-canvas' : 'hover:border-muted'}`} onClick={() => setScope(k)}>{l}</button>
-            ))}
-          </div>
-          {q.data?.cached && <div className="flex gap-2 rounded-lg bg-warn/10 px-3 py-2 text-xs text-warn"><CloudOff size={14} className="shrink-0" />Offline: daftar dari data terakhir. Nota baru dari PC lain belum terlihat.</div>}
-        </div>
-        <ul className="max-h-[calc(100vh-300px)] min-h-[200px] divide-y divide-line overflow-y-auto">
-          {q.isLoading && <li className="p-6 text-center text-sm text-muted">Memuat…</li>}
-          <ErrorBox error={q.error} />
-          {!q.isLoading && !rows.length && <li className="p-8 text-center text-sm text-muted">{term ? 'Tidak ada nota yang cocok.' : scope === 'hari_ini' ? 'Tidak ada nota hari ini yang menunggu dibayar.' : 'Semua nota sudah lunas.'}</li>}
-          {rows.map((r) => (
-            <li key={r.id}>
-              <button className={`flex w-full items-center gap-3 px-4 py-3 text-left transition hover:bg-sunk ${selId === r.id ? 'bg-brand/10' : ''}`} onClick={() => setSelId(r.id)}>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-mono text-sm font-bold">{r.nomor}</span>
-                    <span className={`pill ${BAYAR[r.status]?.[1] || 'pill-mute'}`}>{BAYAR[r.status]?.[0]}</span>
-                    {r.pending && <span className="pill pill-warn"><CloudOff size={11} />Belum terkirim</span>}
-                  </div>
-                  <div className="mt-0.5 truncate text-sm font-semibold">{r.customer}</div>
-                  <div className="truncate text-xs text-muted">{tglJam(r.created_at)}{r.cs ? ` · FO ${r.cs}` : ''}{r.ringkas ? ` · ${r.ringkas}` : ''}</div>
-                </div>
-                <div className="text-right">
-                  <div className="num text-base font-extrabold">{nf(r.sisa)}</div>
-                  {r.terbayar > 0 && <div className="num text-[11px] text-muted">dari {nf(r.total)}</div>}
-                </div>
-              </button>
-            </li>
-          ))}
-        </ul>
-      </section>
+          <ul className="min-h-[160px] flex-1 overflow-y-auto border-t border-black/5 dark:border-white/5 max-lg:max-h-[60vh]">
+            {q.isLoading && <li className="p-6 text-center text-sm text-muted">Memuat…</li>}
+            <ErrorBox error={q.error} />
+            {!q.isLoading && !rows.length && <li className="p-6 text-center text-xs text-muted">{term ? 'Tidak ada nota yang cocok.' : scope === 'hari_ini' ? 'Tidak ada nota hari ini yang menunggu dibayar.' : 'Semua nota sudah lunas.'}</li>}
+            {rows.map((r) => {
+              const on = selId === r.id;
+              return (
+                <li key={r.id}>
+                  <button className={`queue-row flex w-full items-center gap-2.5 border-b border-black/5 px-3.5 py-2.5 text-left transition dark:border-white/5 ${on ? '!bg-surface shadow-[inset_3px_0_0_rgb(var(--brand))]' : ''}`}
+                    onClick={() => setSelId(r.id)} title={`${r.nomor}${r.ringkas ? ` · ${r.ringkas}` : ''}`}>
+                    <span className="num w-11 shrink-0 font-mono text-[15px] font-bold">{no4(r.nomor)}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm font-semibold">{r.customer}</span>
+                      <span className="flex items-center gap-1 text-[11px] text-muted">{r.pending && <CloudOff size={11} className="text-warn" />}{jam(r.created_at)}{r.status === 'dp' ? ' · DP' : ''}</span>
+                    </span>
+                    <span className={`h-2 w-2 shrink-0 rounded-full ${r.status === 'dp' ? 'bg-warn' : 'bg-bad'}`} aria-label={r.status === 'dp' ? 'DP' : 'Belum bayar'} />
+                    <span className="num w-14 shrink-0 text-right text-sm font-bold">{singkat(r.sisa)}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </aside>
 
-      {/* pembayaran */}
-      <section className={`lg:sticky lg:top-20 lg:self-start ${sel ? '' : 'max-lg:hidden'}`}>
-        {!sel ? (
-          <div className="card flex flex-col items-center gap-2 p-8 text-center text-sm text-muted">
-            <HandCoins size={28} className="text-brand" />Pilih nota dari antrian, atau ketik nomor nota lalu tekan Enter.
-          </div>
-        ) : (
-          <PayPanel key={sel.id} row={sel} methods={pos.data?.payment_methods || []} onBack={() => setSelId('')} kasirNama={user?.nama || ''}
-            onDone={(d) => { setDone(d); if (autoPrintOn()) printReceipt(d.receipt, shop, width, { drawer: d.tunai }); else if (d.tunai) drawerForCash(); qc.invalidateQueries({ queryKey: ['orders'] }); qc.invalidateQueries({ queryKey: ['dashboard'] }); if (d.offline) toast('Pembayaran disimpan di perangkat dan dikirim otomatis saat online.'); }} />
-        )}
-      </section>
-    </div>
+        {/* pembayaran */}
+        <main className={`min-h-0 overflow-y-auto ${sel ? '' : 'max-lg:hidden'}`}>
+          {!sel ? (
+            <div className="flex h-full min-h-[300px] flex-col items-center justify-center gap-2 p-8 text-center text-sm text-muted">
+              <HandCoins size={30} className="text-brand" />Pilih nota dari antrian, atau scan / ketik nomor nota lalu tekan Enter.
+            </div>
+          ) : (
+            <PayPanel key={sel.id} row={sel} methods={pos.data?.payment_methods || []} onBack={() => setSelId('')} kasirNama={user?.nama || ''} active={!done}
+              onDone={(d) => {
+                setDone(d);
+                if (d.tunai) drawerForCash();
+                qc.invalidateQueries({ queryKey: ['orders'] }); qc.invalidateQueries({ queryKey: ['dashboard'] });
+                if (d.offline) toast('Pembayaran disimpan di perangkat dan dikirim otomatis saat online.');
+              }} />
+          )}
+        </main>
+      </div>
+
+      {done && (
+        <ReceiptModal d={done.receipt} shop={shop} width={width} waTemplate={pos.data?.settings.wa_pesan_kwitansi}
+          title={<span className="inline-flex items-center gap-2">{done.offline ? <CloudOff size={18} className="text-warn" /> : <CheckCircle2 size={18} className="text-ok" />}{done.lunas ? `Nota ${no4(done.receipt.nomor)} lunas` : 'Pembayaran diterima'}</span>}
+          subtitle={`${done.receipt.customer} · dibayar ${rp(done.receipt.payments[0]?.nominal)}${done.receipt.sisa > 0 ? ` · sisa ${rp(done.receipt.sisa)} jadi piutang` : ''}`}
+          printLabel="Cetak kwitansi" onPrint={() => printReceipt(done.receipt, shop, width)}
+          closeLabel="Selesai" onClose={finish}>
+          {done.receipt.kembalian ? (
+            <div className="rounded-xl bg-ink p-4 text-canvas"><div className="text-xs uppercase tracking-wider opacity-70">Kembalian</div><div className="num text-4xl font-extrabold">{rp(done.receipt.kembalian)}</div></div>
+          ) : (
+            <div className={`rounded-xl p-4 ${done.lunas ? 'bg-ok/10 text-ok' : 'bg-warn/10 text-warn'}`}><div className="text-xs font-bold uppercase tracking-wider">{done.lunas ? 'Status' : 'Sisa tagihan'}</div><div className="num text-3xl font-extrabold">{done.lunas ? 'LUNAS' : rp(done.receipt.sisa)}</div></div>
+          )}
+          {done.offline && <p className="text-xs text-warn">Tersimpan di perangkat, dikirim otomatis saat online.</p>}
+        </ReceiptModal>
+      )}
+    </>
   );
 }
 
@@ -167,120 +179,174 @@ function DrawerButton() {
   const s = printerSettings.get();
   if (!directReady(s) || !s.laci || !s.laci_manual) return null;
   return (
-    <button id="kasir-buka-laci" className="btn btn-sm" onClick={async () => {
+    <button id="kasir-buka-laci" className="btn btn-ghost btn-sm px-2" title="Buka laci" onClick={async () => {
       try { await openDrawer(); toast('Laci dibuka'); api('drawer.open', {}).catch(() => { /* offline: abaikan */ }); }
       catch (e) { toast((e as Error).message, 'err'); }
-    }}><Banknote size={14} />Buka laci</button>
+    }}><Banknote size={15} /><span className="sr-only">Buka laci</span></button>
   );
 }
 
-const autoPrintOn = () => { try { return localStorage.getItem(AUTO_PRINT) !== '0'; } catch { return true; } };
-
-function PayPanel({ row, methods, onBack, onDone, kasirNama }: { row: QueueRow; methods: { id: string; nama: string; jenis: string }[]; onBack: () => void; onDone: (d: Done) => void; kasirNama: string }) {
+function PayPanel({ row, methods, onBack, onDone, kasirNama, active }: { row: QueueRow; methods: Method[]; onBack: () => void; onDone: (d: Done) => void; kasirNama: string; active: boolean }) {
   const s = useSync();
   const detail = useQuery({ queryKey: ['order', row.id], queryFn: () => api<OrderDetail>('orders.get', { order_id: row.id }), enabled: !row.pending && s.online, retry: 0 });
   const op = s.outbox.find((o) => o.id === row.id);
   const items = detail.data?.items.map((i) => ({ nama: i.nama_produk + (i.sisi === 2 ? ' · BB' : '') + (i.jenis_harga === 'cutting' ? ` · ${CUT_SIZES[i.ukuran_cutting]}` : ''), keterangan: i.keterangan, qty: i.qty, harga: i.harga_satuan }))
     || op?.view?.items || [];
-  const methodList = methods.length ? methods : detail.data?.payment_methods || [];
-  const [mode, setMode] = useState<PayMode>('lunas');
+  const methodList: Method[] = methods.length ? methods : detail.data?.payment_methods || [];
+  const sisa = row.sisa;
   const [methodId, setMethodId] = useState(methodList.find((m) => m.jenis === 'tunai')?.id || methodList[0]?.id || '');
-  const [nominalIn, setNominalIn] = useState('');
-  const [diterimaIn, setDiterimaIn] = useState('');
+  const [amountIn, setAmountIn] = useState(String(sisa));
   const [catatan, setCatatan] = useState('');
   const [err, setErr] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
-  const [autoPrint, setAutoPrint] = useState(autoPrintOn());
   const [payId] = useState(() => newClientId('pmt'));
+  const amountRef = useRef<HTMLInputElement>(null);
   useEffect(() => { if (!methodId && methodList.length) setMethodId(methodList.find((m) => m.jenis === 'tunai')?.id || methodList[0].id); }, [methodList, methodId]);
+  useEffect(() => { setTimeout(() => amountRef.current?.select(), 0); }, []);
 
-  const sisa = row.sisa;
-  const nominal = mode === 'lunas' ? sisa : mode === 'dp' ? Math.min(sisa, Math.max(1000, Math.round(sisa / 2 / 1000) * 1000)) : Math.min(numIn(nominalIn), sisa);
-  const isTunai = methodList.find((m) => m.id === methodId)?.jenis === 'tunai';
-  const diterima = numIn(diterimaIn);
-  const kembalian = isTunai && diterima > nominal ? diterima - nominal : 0;
-  const kurang = isTunai && diterimaIn !== '' && diterima < nominal;
-  const metode = methodList.find((m) => m.id === methodId)?.nama || '';
+  const method = methodList.find((m) => m.id === methodId);
+  const isTunai = method?.jenis === 'tunai';
+  const amount = numIn(amountIn);
+  const nominal = Math.min(amount, sisa);
+  const kembalian = isTunai && amount > sisa ? amount - sisa : 0;
+  const lunas = nominal >= sisa;
+  const o = detail.data?.order;
+  const selesai = o ? detail.data!.items.length > 0 && detail.data!.items.every((i) => i.status_produksi === 'selesai') : row.selesai;
+  const telp = o?.customer_telp || row.telp;
+  const tipe = tipeLabel(o?.customer_tipe || row.tipe);
 
   const submit = async () => {
+    if (busy) return;
     setErr(null);
-    if (nominal <= 0) { setErr(new Error('Isi nominal pembayaran.')); return; }
+    if (nominal <= 0) { setErr(new Error(isTunai ? 'Isi uang diterima.' : 'Isi nominal pembayaran.')); amountRef.current?.focus(); return; }
     if (!methodId) { setErr(new Error('Pilih metode pembayaran.')); return; }
-    if (kurang) { setErr(new Error('Uang diterima kurang dari nominal yang dibayar.')); return; }
     setBusy(true);
     const payload = { order_id: row.id, payment_id: payId, nominal, method_id: methodId, catatan: catatan.trim(), tanggal: ymd() };
     const receipt = (): ReceiptData => ({
-      jenis: 'kwitansi', nomor: row.nomor, waktu: new Date().toISOString(), customer: row.customer, cs: kasirNama.split(' ')[0], catatan: catatan.trim(),
+      jenis: 'kwitansi', nomor: row.nomor, waktu: new Date().toISOString(), customer: row.customer, tipe, telp, cs: kasirNama.split(' ')[0], catatan: catatan.trim(),
       items: items.map((i) => ({ nama: i.nama, keterangan: i.keterangan, qty: i.qty, harga: i.harga, subtotal: i.harga * i.qty })),
-      total: row.total, sebelumnya: row.terbayar, payments: [{ label: `Bayar ${metode}`, nominal }], sisa: sisa - nominal, diterima: isTunai ? diterima : undefined, kembalian,
+      total: row.total, sebelumnya: row.terbayar, payments: [{ label: `Bayar ${method?.nama || ''}`, nominal }], sisa: sisa - nominal, diterima: isTunai ? amount : undefined, kembalian,
     });
     const offline = () => {
       sync.enqueue({ id: payId, kind: 'orders.pay', payload: { ...payload, dibuat_offline: true }, label: `${row.nomor} · ${row.customer}`, total: nominal });
-      onDone({ receipt: receipt(), offline: true, lunas: nominal >= sisa, tunai: isTunai });
+      onDone({ receipt: receipt(), offline: true, lunas, tunai: isTunai });
     };
     try {
       if (row.pending || !s.online) offline();
       else {
-        try { await api<OrderDetail>('orders.pay', payload); onDone({ receipt: receipt(), offline: false, lunas: nominal >= sisa, tunai: isTunai }); }
+        try { await api<OrderDetail>('orders.pay', payload); onDone({ receipt: receipt(), offline: false, lunas, tunai: isTunai }); }
         catch (e) { if ((e as ApiError).code === 'NETWORK') { sync.markOffline(); offline(); } else throw e; }
       }
     } catch (e) { setErr(e); } finally { setBusy(false); }
   };
 
+  // F9 = bayar
+  const submitRef = useRef(submit);
+  submitRef.current = submit;
+  useEffect(() => {
+    if (!active) return;
+    const k = (e: KeyboardEvent) => { if (e.key === 'F9') { e.preventDefault(); void submitRef.current(); } };
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [active]);
+
+  const quick: [string, number][] = isTunai
+    ? [['Uang pas', sisa], ...([50e3, 100e3, 200e3, 500e3] as number[]).filter((v) => v > sisa * 0.25).slice(0, 4).map((v) => [`${v / 1000}rb`, v] as [string, number])]
+    : [['Lunas', sisa], ['DP 50%', Math.min(sisa, Math.max(1000, Math.round(sisa / 2 / 1000) * 1000))]];
+  const laci = (() => { const p = printerSettings.get(); return directReady(p) && p.laci && p.laci_tunai; })();
+
   return (
-    <div className="card flex flex-col">
-      <div className="flex items-start gap-3 border-b border-line p-4">
+    <div className="flex flex-col gap-4 p-4 sm:p-5">
+      {/* identitas nota */}
+      <div className="flex items-start gap-3">
         <button className="btn btn-ghost btn-sm -ml-2 px-2 lg:hidden" onClick={onBack} aria-label="Kembali ke antrian"><ArrowLeft size={16} /></button>
         <div className="min-w-0 flex-1">
-          <div className="font-mono text-lg font-bold">{row.nomor}</div>
-          <div className="text-sm font-semibold">{row.customer}</div>
-          <div className="text-xs text-muted">{tglJam(row.created_at)}{row.cs ? ` · FO ${row.cs}` : ''}</div>
-          {detail.data?.order.desain && <div className="mt-1 text-xs text-muted">File: {detail.data.order.desain}</div>}
-          {detail.data?.order.catatan && <div className="mt-1 rounded-md bg-sunk px-2 py-1 text-xs">Catatan FO: {detail.data.order.catatan}</div>}
-        </div>
-      </div>
-      <ul className="max-h-48 divide-y divide-line overflow-y-auto text-sm">
-        {detail.isLoading && <li className="px-4 py-3 text-muted">Memuat isi nota…</li>}
-        {items.map((i, k) => (
-          <li key={k} className="flex gap-3 px-4 py-2">
-            <div className="min-w-0 flex-1"><div className="truncate font-semibold">{i.nama}</div>{i.keterangan && <div className="truncate text-xs text-muted">{i.keterangan}</div>}</div>
-            <div className="num text-right text-xs text-muted">{nf(i.qty)} × {nf(i.harga)}</div>
-            <div className="num w-24 text-right font-semibold">{nf(i.qty * i.harga)}</div>
-          </li>
-        ))}
-      </ul>
-      <dl className="grid grid-cols-2 gap-y-1 border-t border-line px-4 py-3 text-sm">
-        <dt className="text-muted">Total nota</dt><dd className="num text-right">{rp(row.total)}</dd>
-        {row.terbayar > 0 && <><dt className="text-muted">Sudah dibayar</dt><dd className="num text-right">{rp(row.terbayar)}</dd></>}
-        <dt className="font-bold">Harus dibayar</dt><dd className="num text-right text-2xl font-extrabold">{rp(sisa)}</dd>
-      </dl>
-      <div className="flex flex-col gap-3 border-t border-line p-4">
-        <div className="grid grid-cols-3 gap-2" role="group" aria-label="Jumlah bayar">
-          {([['lunas', 'Lunas'], ['dp', 'DP 50%'], ['nominal', 'Nominal']] as [PayMode, string][]).map(([k, l]) => (
-            <button key={k} type="button" onClick={() => setMode(k)} className={`rounded-lg border px-2 py-2 text-sm font-semibold transition ${mode === k ? 'border-brand bg-brand text-brand-ink' : 'border-line hover:border-muted'}`}>{l}</button>
-          ))}
-        </div>
-        {mode === 'nominal' && <Field label="Nominal dibayar"><input id="kasir-nominal" autoFocus className="input num text-right text-lg" inputMode="numeric" value={nominalIn ? nf(numIn(nominalIn)) : ''} onChange={(e) => setNominalIn(e.target.value)} placeholder="0" /></Field>}
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Metode"><select id="kasir-metode" className="input" value={methodId} onChange={(e) => setMethodId(e.target.value)}>{methodList.map((m) => <option key={m.id} value={m.id}>{m.nama}</option>)}</select></Field>
-          {isTunai ? (
-            <Field label="Uang diterima"><input id="kasir-diterima" className="input num text-right" inputMode="numeric" value={diterimaIn ? nf(numIn(diterimaIn)) : ''} onChange={(e) => setDiterimaIn(e.target.value)} placeholder={nf(nominal)} onKeyDown={(e) => e.key === 'Enter' && submit()} /></Field>
-          ) : (
-            <Field label="Catatan / no. referensi"><input id="kasir-ref" className="input" value={catatan} onChange={(e) => setCatatan(e.target.value)} placeholder="mis. 4 digit akhir rek." /></Field>
+          <div className="text-xl font-bold leading-tight">{row.customer}{tipe && <span className="text-base font-normal text-muted"> ({tipe})</span>}</div>
+          <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+            <span className="font-mono">{row.nomor}</span>
+            {row.cs && <span>· FO {row.cs}</span>}
+            <span>· {jam(row.created_at)}</span>
+            {telp && telp !== '-' && <span className="inline-flex items-center gap-1">· <MessageCircle size={12} className="text-[#1F8F4E]" />{telp}</span>}
+            {row.pending ? <span className="pill pill-warn"><CloudOff size={11} />Belum terkirim</span>
+              : selesai != null && <span className={`pill ${selesai ? 'pill-ok' : 'pill-warn'}`}>{selesai ? 'Produksi selesai' : 'Masih diproduksi'}</span>}
+          </div>
+          {(o?.desain || o?.catatan) && (
+            <div className="mt-2 flex flex-wrap gap-2 text-xs">
+              {o?.desain && <span className="inline-flex items-center gap-1 rounded-md bg-sunk px-2 py-1"><FileText size={12} />{o.desain}</span>}
+              {o?.catatan && <span className="inline-flex items-center gap-1 rounded-md bg-sunk px-2 py-1"><StickyNote size={12} />{o.catatan}</span>}
+            </div>
           )}
         </div>
-        <dl className="grid grid-cols-2 gap-y-1 text-sm">
-          <dt className="text-muted">Dibayar sekarang</dt><dd className="num text-right font-semibold">{rp(nominal)}</dd>
-          <dt className="text-muted">Sisa setelah ini</dt><dd className={`num text-right font-bold ${sisa - nominal > 0 ? 'text-bad' : 'text-ok'}`}>{sisa - nominal > 0 ? rp(sisa - nominal) : 'Lunas'}</dd>
-          {kembalian > 0 && <><dt className="font-bold">Kembalian</dt><dd className="num text-right text-xl font-extrabold">{rp(kembalian)}</dd></>}
-        </dl>
-        <label className="flex cursor-pointer items-center gap-2 text-sm">
-          <input type="checkbox" className="h-4 w-4 accent-[rgb(var(--brand))]" checked={autoPrint} onChange={(e) => { setAutoPrint(e.target.checked); try { localStorage.setItem(AUTO_PRINT, e.target.checked ? '1' : '0'); } catch { /* abaikan */ } }} />
-          Cetak kwitansi setelah bayar
-        </label>
-        <ErrorBox error={err} />
-        <button className="btn btn-primary py-3 text-base" disabled={busy || nominal <= 0} onClick={submit}><HandCoins size={18} />{busy ? 'Menyimpan…' : `Terima ${rp(nominal)}`}</button>
+        <div className="shrink-0 rounded-lg bg-black px-3 py-1 font-mono text-3xl font-bold tracking-wider text-white ring-1 ring-white/10" aria-label={`Nomor nota ${row.nomor}`}>{no4(row.nomor)}</div>
       </div>
+
+      {/* isi nota */}
+      <div className="overflow-x-auto">
+        <table className="tbl w-full text-sm">
+          <thead><tr>
+            <th className="px-2 py-2 text-[11px]">ITEM</th>
+            <th className="w-20 px-2 py-2 text-[11px]">JUMLAH</th>
+            <th className="w-32 px-2 py-2 text-[11px]">HARGA</th>
+            <th className="w-36 px-2 py-2 text-[11px]">SUBTOTAL</th>
+          </tr></thead>
+          <tbody>
+            {detail.isLoading && <tr><td colSpan={4} className="px-3 py-3 text-muted">Memuat isi nota…</td></tr>}
+            {items.map((i, k) => (
+              <tr key={k}>
+                <td className="px-2.5 py-2"><span className="font-semibold">{i.nama}</span>{i.keterangan && <span className="text-muted"> · {i.keterangan}</span>}</td>
+                <td className="num px-2 py-2 text-right">{nf(i.qty)}</td>
+                <td className="px-2 py-2"><Money v={i.harga} /></td>
+                <td className="px-2 py-2 font-semibold"><Money v={i.qty * i.harga} /></td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr><td colSpan={3} className="px-2.5 py-1.5 text-right text-muted">Total</td><td className="px-2 py-1.5"><Money v={row.total} /></td></tr>
+            {row.terbayar > 0 && <tr><td colSpan={3} className="px-2.5 py-1.5 text-right text-muted">Sudah dibayar</td><td className="px-2 py-1.5"><Money v={row.terbayar} /></td></tr>}
+            <tr className="bg-brand/10"><td colSpan={3} className="px-2.5 py-2 text-right font-bold">Sisa tagihan</td><td className="px-2 py-2 text-lg font-extrabold"><Money v={sisa} /></td></tr>
+          </tfoot>
+        </table>
+      </div>
+
+      {/* pembayaran */}
+      <section aria-label="Pembayaran" className="flex flex-col gap-3 rounded-xl border border-line bg-canvas/60 p-4">
+        <div className="flex flex-wrap gap-1.5" role="group" aria-label="Metode pembayaran">
+          {methodList.map((m) => {
+            const Icon = METHOD_ICON[m.jenis] || CreditCard;
+            const on = m.id === methodId;
+            return (
+              <button key={m.id} type="button" onClick={() => { setMethodId(m.id); if (m.jenis !== 'tunai' && amount > sisa) setAmountIn(String(sisa)); setTimeout(() => amountRef.current?.select(), 0); }}
+                className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold transition ${on ? 'border-ink bg-ink text-canvas' : 'border-line bg-surface hover:border-muted'}`}>
+                <Icon size={15} />{m.nama}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex flex-wrap items-end gap-4">
+          <label className="label min-w-[200px] flex-1">
+            <span>{isTunai ? 'Uang diterima' : 'Nominal dibayar'}</span>
+            <input ref={amountRef} id="kasir-diterima" className="input num py-2.5 text-right text-2xl font-bold" inputMode="numeric" value={amountIn ? nf(amount) : ''} placeholder="0"
+              onChange={(e) => setAmountIn(e.target.value.replace(/[^\d]/g, ''))} onFocus={(e) => e.target.select()} onKeyDown={(e) => e.key === 'Enter' && submit()} />
+          </label>
+          <div className="min-w-[180px] text-right">
+            <div className="text-xs text-muted">{lunas ? (kembalian ? 'Kembalian' : 'Status') : 'Sisa setelah bayar'}</div>
+            <div className={`num text-2xl font-extrabold ${lunas ? 'text-ok' : 'text-bad'}`}>{lunas ? (kembalian ? rp(kembalian) : 'Lunas') : rp(sisa - nominal)}</div>
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-1.5">
+          {quick.map(([l, v]) => (
+            <button key={l} type="button" className="btn btn-sm flex-1" onClick={() => { setAmountIn(String(v)); amountRef.current?.focus(); }}>{l}</button>
+          ))}
+        </div>
+        {!isTunai && <input id="kasir-ref" className="input" value={catatan} onChange={(e) => setCatatan(e.target.value)} placeholder="No. referensi / catatan (mis. 4 digit akhir rekening)" />}
+        <ErrorBox error={err} />
+        <button id="kasir-bayar" className="btn btn-primary py-3 text-base" disabled={busy || nominal <= 0} onClick={submit}>
+          <HandCoins size={18} />{busy ? 'Menyimpan…' : nominal <= 0 ? 'Isi nominal' : lunas ? `Lunasi ${rp(sisa)}` : `Catat DP ${rp(nominal)}`} <span className="kbd">F9</span>
+        </button>
+        <p className="text-center text-[11px] text-muted">
+          {isTunai ? (laci ? `Laci terbuka otomatis${kembalian ? ` · kembalian ${rp(kembalian)}` : ''}` : 'Pembayaran tunai') : 'Pastikan dana sudah masuk di mutasi rekening.'} · kwitansi tampil setelah bayar
+        </p>
+      </section>
     </div>
   );
 }

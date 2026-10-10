@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.1.6",
+    "tanggal": "2026-10-10",
+    "catatan": [
+      "Front Office baru: isi nota dalam tabel dan pratinjau nota langsung di samping; terbitkan dengan F9.",
+      "Kasir baru: antrian ringkas di kiri (latar berbeda), cukup tabel isi nota, bayar dengan F9; kwitansi tampil sebagai pratinjau akhir sebelum dicetak.",
+      "Desain nota baru: nomor 4 digit besar di blok hitam kanan atas, nama konsumen dengan tipe harga, detail 2 kolom.",
+      "Kirim nota/kwitansi ke WhatsApp konsumen dan simpan sebagai gambar JPEG, juga dari detail order (cetak / kirim ulang).",
+      "Menu baru Pengaturan → Nota & SPK: footer nota, footer kwitansi, dan template pesan WhatsApp dengan pratinjau."
+    ]
+  },
+  {
     "version": "1.1.5",
     "tanggal": "2026-10-10",
     "catatan": [

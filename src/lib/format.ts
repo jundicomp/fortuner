@@ -16,3 +16,11 @@ export const tglJam = (s?: string) => {
   return d.toLocaleString('id-ID', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 };
 export const nowIso = () => new Date().toISOString();
+/** Jam saja untuk hari ini (12.55), tanggal singkat + jam untuk hari lain (9/10 12.55). */
+export const jam = (s?: string) => {
+  if (!s) return '';
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return s;
+  const hm = `${pad(d.getHours())}.${pad(d.getMinutes())}`;
+  return ymd(d) === ymd() ? hm : `${d.getDate()}/${d.getMonth() + 1} ${hm}`;
+};

@@ -1,6 +1,6 @@
 import {
   LayoutDashboard, ShoppingCart, FilePlus2, ClipboardList, Factory, HandCoins, Receipt, Truck, Wallet, Gauge, Package, Users, Store, Cog,
-  CreditCard, BarChart3, Boxes, ShoppingBag, TrendingUp, BookOpen, Percent, UserCog, ShieldCheck, MonitorSmartphone, SlidersHorizontal, History, ArrowLeftRight, Landmark, Database, Settings, Printer, Info, type LucideIcon,
+  CreditCard, BarChart3, Boxes, ShoppingBag, TrendingUp, BookOpen, Percent, UserCog, ShieldCheck, MonitorSmartphone, SlidersHorizontal, History, ArrowLeftRight, Landmark, Database, Settings, Printer, Info, ReceiptText, type LucideIcon,
 } from 'lucide-react';
 
 /** `desktop` = hanya muncul di aplikasi desktop (Tauri). */
@@ -68,6 +68,7 @@ export const MENU: MenuGroup[] = [
       { path: '/pengaturan/hak-akses', label: 'Hak Akses', icon: ShieldCheck, perm: 'pengaturan.role' },
       { path: '/pengaturan/perangkat', label: 'Perangkat', icon: MonitorSmartphone, perm: 'pengaturan.perangkat' },
       { path: '/pengaturan/umum', label: 'Umum', icon: SlidersHorizontal, perm: 'pengaturan.umum' },
+      { path: '/pengaturan/nota', label: 'Nota & SPK', icon: ReceiptText, perm: 'pengaturan.umum' },
       { path: '/pengaturan/log', label: 'Log Aktivitas', icon: History, perm: 'pengaturan.log' },
       { path: '/pengaturan/printer', label: 'Printer & Laci', icon: Printer, perm: 'dashboard', desktop: true },
       { path: '/pengaturan/tentang', label: 'Tentang Aplikasi', icon: Info, perm: 'dashboard' },

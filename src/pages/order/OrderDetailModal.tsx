@@ -4,7 +4,8 @@ import { useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { ErrorBox, Field } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
-import { printReceipt, type ReceiptShop } from '@/components/Receipt';
+import { printReceipt, shopOf, tipeLabel, type ReceiptData, type ReceiptShop } from '@/components/Receipt';
+import { ReceiptModal } from '@/components/ReceiptModal';
 import { drawerForCash, paperWidth } from '@/platform/printer';
 import { api } from '@/lib/api';
 import { useAuth } from '@/auth/AuthContext';
@@ -31,6 +32,7 @@ export function OrderDetailModal({ orderId, onClose }: { orderId: string; onClos
   const [methodId, setMethodId] = useState('');
   const [alasan, setAlasan] = useState('');
   const [payId] = useState(() => newClientId('pmt'));
+  const [rcpt, setRcpt] = useState<ReceiptData | null>(null);
 
   const methodList = q.data?.payment_methods || [];
   const after = (msg: string) => { qc.invalidateQueries({ queryKey: ['orders'] }); qc.invalidateQueries({ queryKey: ['dashboard'] }); toast(msg); setPanel(''); setAlasan(''); };
@@ -54,17 +56,26 @@ export function OrderDetailModal({ orderId, onClose }: { orderId: string; onClos
   const isTunai = methodList.find((m) => m.id === methodId)?.jenis === 'tunai';
   const nominal = numIn(nominalIn);
   const kembali = isTunai && numIn(diterimaIn) > nominal ? numIn(diterimaIn) - nominal : 0;
-  const shop: ReceiptShop = { nama: settings.data?.nama_usaha || 'Fortuner', alamat: settings.data?.alamat, telp: settings.data?.telp, catatan: settings.data?.catatan_struk };
+  const shop: ReceiptShop = shopOf(settings.data);
   const width = paperWidth(posCache.get()?.device?.lebar_kertas);
 
   const reprint = () => {
     if (!d || !o) return;
-    printReceipt({
-      nomor: o.nomor, waktu: o.created_at, customer: o.customer_nama || '', cs: (o.cs_nama || '').split(' ')[0], ulang: true, catatan: o.catatan, offline: o.dibuat_offline,
+    setRcpt({
+      jenis: o.terbayar > 0 ? 'kwitansi' : 'spk', nomor: o.nomor, waktu: o.created_at, customer: o.customer_nama || '', tipe: tipeLabel(o.customer_tipe), telp: o.customer_telp,
+      cs: (o.cs_nama || '').split(' ')[0], csLabel: 'FO', ulang: true, catatan: o.catatan, offline: o.dibuat_offline, desain: o.desain, janji_selesai: o.janji_selesai,
       items: d.items.map((i) => ({ nama: i.nama_produk, keterangan: i.keterangan, qty: i.qty, sisi: i.sisi, ukuran: i.jenis_harga === 'cutting' ? i.ukuran_cutting : null, harga: i.harga_satuan, subtotal: i.subtotal })),
       total: o.total, payments: d.payments.map((p) => ({ label: `${tgl(p.tanggal)} ${p.method_nama}`, nominal: p.nominal })), sisa: Math.max(0, o.sisa),
-    }, shop, width);
+    });
   };
+
+  if (rcpt) {
+    return (
+      <ReceiptModal d={rcpt} shop={shop} width={width} waTemplate={rcpt.jenis === 'kwitansi' ? settings.data?.wa_pesan_kwitansi : settings.data?.wa_pesan_spk}
+        title={<span className="font-mono">{rcpt.nomor}</span>} subtitle="Cetak ulang atau kirim ulang ke konsumen"
+        printLabel="Cetak ulang" onPrint={() => printReceipt(rcpt, shop, width)} closeLabel="Kembali" onClose={() => setRcpt(null)} />
+    );
+  }
 
   return (
     <Modal open onClose={onClose} size="lg"
@@ -168,7 +179,7 @@ export function OrderDetailModal({ orderId, onClose }: { orderId: string; onClos
               {!o.batal && can('order', 'ubah') && (o.status_ambil === 'diambil'
                 ? <button className="btn" disabled={ambil.isPending} onClick={() => ambil.mutate(false)}><Undo2 size={16} />Batal diambil</button>
                 : <button className="btn" disabled={ambil.isPending} onClick={() => { ambil.reset(); setAlasan(''); if (o.sisa > 0) setPanel('ambil'); else ambil.mutate(true); }}><PackageCheck size={16} />Tandai diambil</button>)}
-              <button className="btn" onClick={reprint}><Printer size={16} />Cetak ulang</button>
+              <button className="btn" onClick={reprint}><Printer size={16} />Cetak / kirim ulang</button>
               {!o.batal && can('order', 'hapus') && <button className="btn btn-ghost ml-auto text-bad" onClick={() => { cancel.reset(); setAlasan(''); setPanel('batal'); }}><Ban size={16} />Batalkan</button>}
             </div>
           )}

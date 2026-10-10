@@ -17,7 +17,7 @@ export interface OutboxOp {
   label: string;         // mis. "FT-K1-1026-0007 · Toko Sinar Abadi"
   total?: number;
   /** ringkasan untuk ditampilkan di perangkat sebelum terkirim (tidak dikirim ke server) */
-  view?: { customer: string; items: { nama: string; keterangan?: string; qty: number; harga: number }[] };
+  view?: { customer: string; telp?: string; tipe?: string; items: { nama: string; keterangan?: string; qty: number; harga: number }[] };
   created_at: string;
   status: 'pending' | 'failed';
   error?: string;

@@ -11,6 +11,7 @@ import { UsersPage } from '@/pages/settings/UsersPage';
 import { RolesPage } from '@/pages/settings/RolesPage';
 import { DevicesPage } from '@/pages/settings/DevicesPage';
 import { GeneralPage } from '@/pages/settings/GeneralPage';
+import { NotaPage } from '@/pages/settings/NotaPage';
 import { LogPage } from '@/pages/settings/LogPage';
 import { KasirPage } from '@/pages/kasir/KasirPage';
 import { FoPage } from '@/pages/fo/FoPage';
@@ -58,6 +59,7 @@ const PAGES: Record<string, () => ReactElement | null> = {
   '/pengaturan/hak-akses': RolesPage,
   '/pengaturan/perangkat': DevicesPage,
   '/pengaturan/umum': GeneralPage,
+  '/pengaturan/nota': NotaPage,
   '/pengaturan/log': LogPage,
   '/pengaturan/printer': PrinterPage,
   '/pengaturan/tentang': AboutPage,

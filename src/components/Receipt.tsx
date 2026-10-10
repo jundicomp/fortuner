@@ -4,6 +4,7 @@ import { CheckCircle2, Printer, TriangleAlert, X } from 'lucide-react';
 import { directReady, printDirect, printerSettings } from '@/platform/printer';
 import { nf, tglJam } from '@/lib/format';
 import { CUT_SIZES } from '@/lib/pricing';
+import { footerOf, no4 } from '@/lib/receiptText';
 
 export interface ReceiptData {
   nomor: string;
@@ -23,34 +24,55 @@ export interface ReceiptData {
   desain?: string;
   janji_selesai?: string;
   sebelumnya?: number; // sudah dibayar sebelum pembayaran ini (kwitansi)
+  tipe?: string;       // tipe harga konsumen: "End user" / "Reseller"
+  telp?: string;       // telepon/WA konsumen
+  csLabel?: string;    // label petugas; bawaan: Kasir (kwitansi) / FO (nota)
 }
-export interface ReceiptShop { nama: string; alamat?: string; telp?: string; catatan?: string }
+export interface ReceiptShop { nama: string; alamat?: string; telp?: string; catatan?: string; footer_spk?: string; footer_kwitansi?: string }
 
-/** Isi struk; dipakai untuk pratinjau di layar dan untuk cetak. */
+/** Identitas & footer nota dari pengaturan (Pengaturan → Nota & SPK). */
+export function shopOf(s?: Record<string, string> | null): ReceiptShop {
+  return { nama: s?.nama_usaha || 'Fortuner', alamat: s?.alamat, telp: s?.telp, catatan: s?.catatan_struk, footer_spk: s?.footer_spk, footer_kwitansi: s?.footer_kwitansi };
+}
+export { footerOf, no4 };
+export const tipeLabel = (t?: string) => (t === 'reseller' ? 'Reseller' : t === 'enduser' || t === 'end user' ? 'End user' : t || '');
+const JUDUL = { spk: 'NOTA / SPK', kwitansi: 'KWITANSI', struk: 'STRUK' } as const;
+
+/** Isi struk; dipakai untuk pratinjau di layar, cetak, dan gambar JPEG untuk WhatsApp. */
 export function ReceiptBody({ d, shop, width = 80 }: { d: ReceiptData; shop: ReceiptShop; width?: 58 | 80 }) {
   const sm = width === 58;
+  const footer = footerOf(d, shop);
+  const det: [string, string, boolean?][] = [
+    [d.csLabel || (d.jenis === 'kwitansi' ? 'Kasir' : 'FO'), d.cs],
+    ...(d.telp && d.telp !== '-' ? [['WA', d.telp] as [string, string]] : []),
+    ...(d.janji_selesai ? [['Selesai', tglJam(d.janji_selesai), true] as [string, string, boolean]] : []),
+    ...(d.jenis === 'spk' && d.desain ? [['Desain', d.desain, true] as [string, string, boolean]] : []),
+    ...(d.catatan ? [[d.jenis === 'kwitansi' ? 'Ket' : 'Catatan', d.catatan, true] as [string, string, boolean]] : []),
+  ];
   return (
-    <div className={`receipt font-mono text-black ${sm ? 'text-[10.5px]' : 'text-[12px]'} leading-[1.35]`}>
-      <div className="text-center">
-        <div className={`font-bold ${sm ? 'text-[12px]' : 'text-[14px]'}`}>{shop.nama}</div>
-        {shop.alamat && <div>{shop.alamat}</div>}
-        {shop.telp && <div>Telp/WA {shop.telp}</div>}
+    <div className={`receipt bg-white font-mono text-black ${sm ? 'text-[10.5px]' : 'text-[12px]'} leading-[1.4]`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className={`font-bold leading-tight ${sm ? 'text-[12px]' : 'text-[13.5px]'}`}>{shop.nama}</div>
+          {shop.alamat && <div className="text-[0.9em] text-neutral-700">{shop.alamat}</div>}
+          {shop.telp && <div className="text-[0.9em] text-neutral-700">Telp/WA {shop.telp}</div>}
+        </div>
+        <div className={`receipt-no shrink-0 rounded bg-black px-2 py-0.5 font-bold leading-tight tracking-wider text-white ${sm ? 'text-[18px]' : 'text-[24px]'}`}>{no4(d.nomor)}</div>
       </div>
       <Hr />
-      {d.jenis === 'spk' && <div className="text-center font-bold">NOTA / SPK</div>}
-      {d.jenis === 'kwitansi' && <div className="text-center font-bold">KWITANSI PEMBAYARAN</div>}
-      <Row l={d.nomor} r={d.ulang ? 'CETAK ULANG' : ''} bold />
-      <Row l={tglJam(d.waktu)} r={`CS ${d.cs}`} />
-      <div>Kepada: {d.customer}</div>
+      <Row l={JUDUL[d.jenis || 'struk']} r={d.ulang ? 'CETAK ULANG' : ''} bold />
+      <Row l={d.nomor} r={tglJam(d.waktu)} />
+      <Hr />
+      <div className="font-bold">{d.customer}{d.tipe ? <span className="font-normal"> ({d.tipe})</span> : null}</div>
+      <div className={`grid ${sm ? 'grid-cols-1' : 'grid-cols-2'} gap-x-3 text-[0.92em]`}>
+        {det.map(([k, v, full]) => <div key={k} className={`min-w-0 ${full ? 'col-span-full' : ''}`}>{k}: {v}</div>)}
+      </div>
       {d.offline && <div className="font-bold">* Dibuat saat offline</div>}
-      {d.janji_selesai && <div>Selesai: {tglJam(d.janji_selesai)}</div>}
-      {d.jenis === 'spk' && d.desain && <div>File: {d.desain}</div>}
       <Hr />
       {d.items.map((it, i) => (
         <div key={i} className="mb-1">
           <div className="font-bold">{it.nama}{it.sisi === 2 ? ' (BB)' : ''}{it.ukuran != null ? ` · ${CUT_SIZES[it.ukuran]}` : ''}</div>
-          {it.keterangan && <div>  {it.keterangan}</div>}
-          <Row l={`  ${nf(it.qty)} x ${nf(it.harga)}`} r={nf(it.subtotal)} />
+          <Row l={`  ${nf(it.qty)} x ${nf(it.harga)}${it.keterangan ? ` · ${it.keterangan}` : ''}`} r={nf(it.subtotal)} />
         </div>
       ))}
       <Hr />
@@ -64,13 +86,11 @@ export function ReceiptBody({ d, shop, width = 80 }: { d: ReceiptData; shop: Rec
       ) : (
         <Row l={d.sisa > 0 ? 'SISA TAGIHAN' : 'STATUS'} r={d.sisa > 0 ? nf(d.sisa) : 'LUNAS'} bold />
       )}
-      {d.catatan && <><Hr /><div>Catatan: {d.catatan}</div></>}
-      <Hr />
-      {shop.catatan && <div className="text-center">{shop.catatan}</div>}
+      {footer && <><Hr /><div className="whitespace-pre-line text-center text-[0.92em] text-neutral-700">{footer}</div></>}
     </div>
   );
 }
-const Hr = () => <div className="my-1 border-t border-dashed border-black" />;
+const Hr = () => <div className="my-1.5 border-t border-dashed border-black/60" />;
 function Row({ l, r, bold, big }: { l: string; r: string; bold?: boolean; big?: boolean }) {
   return <div className={`flex justify-between gap-2 ${bold ? 'font-bold' : ''} ${big ? 'text-[14px]' : ''}`}><span className="min-w-0">{l}</span><span className="shrink-0 text-right">{r}</span></div>;
 }

@@ -5,6 +5,7 @@
  */
 import { CUT_SIZES } from './pricing';
 import type { ReceiptData, ReceiptShop } from '@/components/Receipt';
+import { footerOf, no4 } from './receiptText';
 
 const ESC = 0x1b, GS = 0x1d;
 
@@ -51,6 +52,27 @@ export class EscPos {
   private bytesOf(s: string) { for (let i = 0; i < s.length; i++) this.b.push(s.charCodeAt(i) & 0x7f); }
   align(a: 'left' | 'center' | 'right') { return this.raw(ESC, 0x61, a === 'left' ? 0 : a === 'center' ? 1 : 2); }
   bold(on: boolean) { return this.raw(ESC, 0x45, on ? 1 : 0); }
+  /** Cetak terbalik: tulisan putih di blok hitam. */
+  reverse(on: boolean) { return this.raw(GS, 0x42, on ? 1 : 0); }
+  /** Teks kiri (tebal) + nomor besar terbalik di kanan dalam satu baris; kalau tidak muat, nomor di baris sendiri. */
+  leftBig(left: string, big: string) {
+    const l = toAscii(left), b = ` ${toAscii(big)} `;
+    if (l.length + 1 + b.length * 2 <= this.cols) {
+      this.bold(true); this.bytesOf(l + ' '.repeat(this.cols - l.length - b.length * 2)); this.bold(false);
+      this.size(2).reverse(true); this.bytesOf(b); this.reverse(false).size(0);
+      return this.raw(0x0a);
+    }
+    this.align('right').size(2).reverse(true); this.bytesOf(b); this.reverse(false).size(0).raw(0x0a).align('left');
+    return this.bold(true).text(left).bold(false);
+  }
+  /** Dua kolom sejajar; bila salah satu terlalu panjang, masing-masing satu baris. */
+  cols2(a: string, b?: string) {
+    const w = Math.floor(this.cols / 2);
+    const x = toAscii(a), y = toAscii(b || '');
+    if (!y) return this.text(x);
+    if (x.length < w && y.length <= this.cols - w) return this.line(x.padEnd(w) + y);
+    return this.text(x).text(y);
+  }
   /** 0 = normal, 1 = tinggi 2x, 2 = lebar & tinggi 2x */
   size(n: 0 | 1 | 2) { return this.raw(GS, 0x21, n === 0 ? 0x00 : n === 1 ? 0x01 : 0x11); }
   line(s = '') { this.bytesOf(toAscii(s)); return this.raw(0x0a); }
@@ -91,25 +113,28 @@ export function receiptEscPos(d: ReceiptData, shop: ReceiptShop, o: EscOptions):
   const p = new EscPos(o.cols);
   const narrow = o.cols < 40;
   if (o.drawer) p.drawer();
-  p.align('center').bold(true);
-  if (narrow) p.text(shop.nama); else p.bigText(shop.nama);
-  p.bold(false);
+  p.align('left');
+  p.leftBig(shop.nama, no4(d.nomor));
   if (shop.alamat) p.text(shop.alamat);
   if (shop.telp) p.text('Telp/WA ' + shop.telp);
-  p.align('left').hr();
-  if (d.jenis === 'spk') p.align('center').bold(true).line('NOTA / SPK').bold(false).align('left');
-  if (d.jenis === 'kwitansi') p.align('center').bold(true).line('KWITANSI PEMBAYARAN').bold(false).align('left');
-  p.bold(true).row(d.nomor, d.ulang ? 'CETAK ULANG' : '').bold(false);
-  p.row(tglJamS(d.waktu), 'CS ' + d.cs);
-  p.text('Kepada: ' + d.customer);
+  p.hr();
+  const judul = d.jenis === 'spk' ? 'NOTA / SPK' : d.jenis === 'kwitansi' ? 'KWITANSI' : 'STRUK';
+  p.bold(true).row(judul, d.ulang ? 'CETAK ULANG' : '').bold(false);
+  p.row(d.nomor, tglJamS(d.waktu));
+  p.hr();
+  p.bold(true).text(d.customer + (d.tipe ? ` (${d.tipe})` : '')).bold(false);
+  const cells: string[] = [`${d.csLabel || (d.jenis === 'kwitansi' ? 'Kasir' : 'FO')}: ${d.cs}`];
+  if (d.telp && d.telp !== '-') cells.push('WA: ' + d.telp);
+  if (d.janji_selesai) cells.push('Selesai: ' + tglJamS(d.janji_selesai));
+  if (narrow) cells.forEach((c) => p.text(c));
+  else for (let i = 0; i < cells.length; i += 2) p.cols2(cells[i], cells[i + 1]);
+  if (d.jenis === 'spk' && d.desain) p.text('Desain: ' + d.desain);
+  if (d.catatan) p.text((d.jenis === 'kwitansi' ? 'Ket: ' : 'Catatan: ') + d.catatan);
   if (d.offline) p.bold(true).line('* Dibuat saat offline').bold(false);
-  if (d.janji_selesai) p.text('Selesai: ' + tglJamS(d.janji_selesai));
-  if (d.jenis === 'spk' && d.desain) p.text('File: ' + d.desain);
   p.hr();
   d.items.forEach((it) => {
     p.bold(true).text(it.nama + (it.sisi === 2 ? ' (BB)' : '') + (it.ukuran != null ? ' - ' + CUT_SIZES[it.ukuran] : '')).bold(false);
-    if (it.keterangan) p.lines(wrap(it.keterangan, o.cols - 2).map((l) => '  ' + l));
-    p.row(`  ${nfi(it.qty)} x ${nfi(it.harga)}`, nfi(it.subtotal));
+    p.row(`  ${nfi(it.qty)} x ${nfi(it.harga)}${it.keterangan ? ' - ' + it.keterangan : ''}`, nfi(it.subtotal));
   });
   p.hr();
   p.bold(true);
@@ -121,10 +146,10 @@ export function receiptEscPos(d: ReceiptData, shop: ReceiptShop, o: EscOptions):
   if (d.kembalian != null && d.kembalian > 0) p.bold(true).row('Kembalian', nfi(d.kembalian)).bold(false);
   if (d.jenis === 'spk') p.align('center').bold(true).text('BELUM DIBAYAR - SILAKAN KE KASIR').bold(false).align('left');
   else p.bold(true).row(d.sisa > 0 ? 'SISA TAGIHAN' : 'STATUS', d.sisa > 0 ? nfi(d.sisa) : 'LUNAS').bold(false);
-  if (d.catatan) { p.hr(); p.text('Catatan: ' + d.catatan); }
   p.hr();
   if (o.barcode !== false && d.jenis === 'spk') p.barcode(d.nomor, narrow);
-  if (shop.catatan) p.align('center').text(shop.catatan).align('left');
+  const footer = footerOf(d, shop);
+  if (footer) p.align('center').text(footer).align('left');
   if (o.cut !== false) p.cut(); else p.feed(4);
   return p.bytes();
 }

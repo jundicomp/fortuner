@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { ErrorBox, Field, PageHeader } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
 import { api, IS_DEMO, purgeLocalData } from '@/lib/api';
@@ -30,7 +31,7 @@ export function GeneralPage() {
             <Field label="Nama usaha"><input {...f('nama_usaha')} /></Field>
             <Field label="Alamat"><input {...f('alamat')} /></Field>
             <Field label="Telepon / WhatsApp"><input {...f('telp')} inputMode="tel" /></Field>
-            <Field label="Catatan di bawah struk"><textarea {...f('catatan_struk')} className="input min-h-[80px]" /></Field>
+            <p className="text-xs text-muted">Footer nota, kwitansi, dan pesan WhatsApp diatur di <Link to="/pengaturan/nota" className="font-semibold text-brand">Pengaturan → Nota & SPK</Link>.</p>
           </div>
         </section>
         <section className="card p-5">
