@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import { nf } from '@/lib/format';
 import { dec, numIn, useStockMeta } from '@/pages/stok/stokApi';
 import type { Product } from '@/types';
+import { Money } from '@/components/ui/Money';
 
 interface Cost { bahan: number; klik: number; total: number; klik_per_unit: number; tarif_klik: number; resep: boolean; rincian: { material_id: string; nama: string; satuan: string; qty: number; harga: number; nilai: number }[] }
 interface Recipe { lines: { material_id: string; qty: number; per: 'unit' | 'klik' }[]; satu_sisi: Cost; bolak_balik: Cost; lihat_harga?: boolean }
@@ -66,7 +67,7 @@ export function RecipeTab({ product }: { product: Product }) {
                       <option value="unit">per {product.satuan || 'lembar'} jadi</option><option value="klik">per klik (sisi cetak)</option>
                     </select>
                   </td>
-                  {seeCost && <td className="num px-2 text-right">{m ? dec(m.harga_rata) : '–'}</td>}
+                  {seeCost && <td className="num px-2 text-right">{m ? <Money>{dec(m.harga_rata)}</Money> : '–'}</td>}
                   <td className="px-1">{canEdit && <button className="btn btn-ghost btn-sm px-1" aria-label="Hapus" onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}><X size={14} /></button>}</td>
                 </tr>
               );

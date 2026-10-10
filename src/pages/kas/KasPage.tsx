@@ -9,6 +9,7 @@ import { useToast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 import { useAuth } from '@/auth/AuthContext';
 import { nf, rp, tgl, tglJam, ymd } from '@/lib/format';
+import { Money } from '@/components/ui/Money';
 
 interface RekapRow { kasir_id: string; kasir_nama: string; method_id: string; method_nama: string; jenis: string; sistem: number; transaksi: number; aktual: number | null; selisih: number | null; keterangan: string; dicatat_oleh: string; dicatat_at: string }
 interface Rekap { tanggal: string; kas_kecil_keluar: number; rows: RekapRow[] }
@@ -83,10 +84,10 @@ function TutupKasir() {
                     <td className="px-3 py-2.5 font-semibold">{r.kasir_nama}</td>
                     <td className="px-3 py-2.5">{r.method_nama}<div className="text-[11px] text-muted">{r.jenis === 'tunai' ? 'hitung uang fisik' : 'cek mutasi bank'}</div></td>
                     <td className="num px-3 py-2.5 text-right">{r.transaksi}</td>
-                    <td className="num px-3 py-2.5 text-right font-semibold">{nf(r.sistem)}</td>
+                    <td className="num px-3 py-2.5 text-right font-semibold"><Money v={r.sistem} /></td>
                     <td className="px-3 py-2"><input aria-label={`Aktual ${r.kasir_nama} ${r.method_nama}`} className="input num w-36 text-right" inputMode="numeric" disabled={!editable} placeholder={nf(r.sistem)}
                       value={d.aktual === '' ? '' : nf(numIn(d.aktual))} onChange={(e) => setDraft({ ...draft, [key(r)]: { ...d, aktual: e.target.value.replace(/\D/g, '') } })} /></td>
-                    <td className="num px-3 py-2.5 text-right">{sel == null ? <span className="text-muted/60">–</span> : sel === 0 ? <span className="pill pill-ok">Cocok</span> : <b className="text-bad">{sel > 0 ? '+' : ''}{nf(sel)}</b>}</td>
+                    <td className="num px-3 py-2.5 text-right">{sel == null ? <span className="text-muted/60">–</span> : sel === 0 ? <span className="pill pill-ok">Cocok</span> : <b className="text-bad"><Money>{sel > 0 ? '+' : ''}{nf(sel)}</Money></b>}</td>
                     <td className="px-3 py-2"><input aria-label={`Keterangan ${r.kasir_nama} ${r.method_nama}`} className="input" disabled={!editable} placeholder={sel ? 'wajib bila ada selisih' : ''}
                       value={d.keterangan} onChange={(e) => setDraft({ ...draft, [key(r)]: { ...d, keterangan: e.target.value } })} />
                       {r.dicatat_oleh && <div className="mt-1 text-[11px] text-muted">dicatat {r.dicatat_oleh} · {tglJam(r.dicatat_at)}</div>}</td>
@@ -141,7 +142,7 @@ function KasKecil() {
     { accessorKey: 'item', header: 'Keterangan', cell: (c) => <span className="font-semibold">{c.getValue()}{c.row.original.keterangan && <span className="block text-xs font-normal text-muted">{c.row.original.keterangan}</span>}</span> },
     { accessorKey: 'masuk', header: 'Masuk', meta: { align: 'right', total: true, money: true }, cell: (c) => (c.getValue() ? <span className="text-ok">{nf(c.getValue())}</span> : '') },
     { accessorKey: 'keluar', header: 'Keluar', meta: { align: 'right', total: true, money: true }, cell: (c) => (c.getValue() ? <span className="text-bad">{nf(c.getValue())}</span> : '') },
-    { accessorKey: 'saldo', header: 'Saldo', meta: { align: 'right' }, cell: (c) => <b>{nf(c.getValue())}</b> },
+    { accessorKey: 'saldo', header: 'Saldo', meta: { money: true, align: 'right' }, cell: (c) => <b>{nf(c.getValue())}</b> },
     { accessorKey: 'oleh', header: 'Dicatat', meta: { filter: 'select', hideOnCard: true } },
     ...(can('kas', 'hapus') ? [{ id: 'aksi', header: '', enableSorting: false, meta: { noExport: true, hideOnCard: true }, cell: (c: { row: { original: PcRow } }) => <button className="btn btn-ghost btn-sm px-1.5 text-bad" aria-label="Hapus" onClick={(e) => { e.stopPropagation(); setDel(c.row.original); }}><Trash2 size={14} /></button> } as ColumnDef<PcRow, any>] : []),
   ];

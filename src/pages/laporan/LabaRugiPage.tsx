@@ -9,6 +9,7 @@ import { useAuth } from '@/auth/AuthContext';
 import { api } from '@/lib/api';
 import { nf, rp, tgl, ymd } from '@/lib/format';
 import { persen, type Pnl, type PnlReport } from './akuntansi';
+import { Money } from '@/components/ui/Money';
 
 /** Laba rugi dari buku besar: pendapatan, komponen HPP (bahan, klik, selisih opname), beban per kategori, dibanding periode sebelumnya. */
 export function LabaRugiPage() {
@@ -39,7 +40,8 @@ export function LabaRugiPage() {
 
   const exportIt = () => {
     if (!a || !d) return;
-    exportBook([{ name: 'Laba Rugi', rows: rows(a).filter((r) => r[3] !== 'head').map((r) => ({ Pos: r[1], [`${d.from} s/d ${d.to}`]: r[2], [`${d.sebelumnya.from} s/d ${d.sebelumnya.to}`]: prevMap[r[0]] ?? 0 })) }], `LabaRugi_${d.from}_sd_${d.to}.xlsx`);
+    const kini = `${d.from} s/d ${d.to}`, lalu = `${d.sebelumnya.from} s/d ${d.sebelumnya.to}`;
+    exportBook([{ name: 'Laba Rugi', money: [kini, lalu], rows: rows(a).filter((r) => r[3] !== 'head').map((r) => ({ Pos: r[1], [kini]: r[2], [lalu]: prevMap[r[0]] ?? 0 })) }], `LabaRugi_${d.from}_sd_${d.to}.xlsx`, { subtitle: `Periode ${tgl(d.from)} – ${tgl(d.to)}, dibanding ${tgl(d.sebelumnya.from)} – ${tgl(d.sebelumnya.to)}` });
   };
 
   return (
@@ -73,8 +75,8 @@ export function LabaRugiPage() {
                     return (
                       <tr key={k} className={`${cls} ${akun ? 'cursor-pointer hover:bg-sunk' : ''}`} onClick={akun ? () => open(akun) : undefined} title={akun ? 'Buka buku besar akun ini' : undefined}>
                         <td className={`py-2 ${kind === 'row' ? 'pl-7 pr-4' : 'px-4'}`}>{label}</td>
-                        <td className={`num px-3 text-right ${v < 0 ? 'text-bad' : ''}`}>{nf(v)}</td>
-                        <td className="num px-3 text-right text-muted">{nf(pv)}</td>
+                        <td className={`num px-3 text-right ${v < 0 ? 'text-bad' : ''}`}><Money v={v} /></td>
+                        <td className="num px-3 text-right text-muted"><Money v={pv} /></td>
                         <td className="num px-4 text-right text-xs text-muted">{kind === 'row' || kind === 'sub' ? persen(Math.abs(v), a.pendapatan) : ''}</td>
                       </tr>
                     );

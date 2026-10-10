@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { DateRangeFilter, rangeFor, type DateRange } from './DateRangeFilter';
 import { exportXlsx } from './exportXlsx';
 import { nf } from '@/lib/format';
+import { Money } from '@/components/ui/Money';
 
 declare module '@tanstack/react-table' {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -41,6 +42,8 @@ interface Props<T> {
   canExport?: boolean;
   searchPlaceholder?: string;
   cardTitle?: (row: T) => ReactNode; // judul kartu di HP
+  exportTitle?: string;        // judul di baris atas file Excel (default: title)
+  exportSubtitle?: string;     // mis. periode laporan
 }
 
 const PAGE_SIZES = [10, 25, 50, 100, 0]; // 0 = semua
@@ -62,7 +65,7 @@ function load<T>(key: string, fallback: T): T {
 
 export function DataTable<T>({
   data, columns, title, storageKey, dateField, loading, toolbar, onRowClick, emptyText = 'Belum ada data.', initialSort = [], canExport = true,
-  searchPlaceholder = 'Cari…', cardTitle,
+  searchPlaceholder = 'Cari…', cardTitle, exportTitle, exportSubtitle,
 }: Props<T>) {
   const saved = useMemo(() => load(storageKey, { pageSize: 25, visibility: {} as VisibilityState, preset: 'semua' as DateRange['preset'] }), [storageKey]);
   const [search, setSearch] = useState('');
@@ -144,7 +147,11 @@ export function DataTable<T>({
       return o;
     });
     const suffix = range.from || range.to ? `${range.from || 'awal'}_sd_${range.to || 'akhir'}` : new Date().toISOString().slice(0, 10);
-    exportXlsx(out, `${title.replace(/\s+/g, '_')}_${suffix}.xlsx`, title);
+    const periode = range.from || range.to ? `Periode ${range.from || 'awal'} s/d ${range.to || 'akhir'}` : '';
+    exportXlsx(out, `${title.replace(/\s+/g, '_')}_${suffix}.xlsx`, title, {
+      title: exportTitle || title, subtitle: [exportSubtitle || periode, activeFilters ? 'sesuai filter yang dipilih' : ''].filter(Boolean).join(' · '),
+      money: exportCols.filter((c) => metaOf(c).money).map((c) => labelOf(c)),
+    });
   };
 
   const resetAll = () => { setSearch(''); setFilters([]); setRange(rangeFor('semua')); };
@@ -223,7 +230,10 @@ export function DataTable<T>({
               <tr key={r.id} onClick={onRowClick ? () => onRowClick(r.original) : undefined} className={`border-b border-line last:border-0 ${onRowClick ? 'cursor-pointer hover:bg-sunk' : ''}`}>
                 {r.getVisibleCells().map((c) => {
                   const m = metaOf(c.column);
-                  return <td key={c.id} className={`px-3 py-2.5 align-top ${m.align === 'right' ? 'num text-right' : m.align === 'center' ? 'text-center' : ''} ${m.className || ''}`}>{flexRender(c.column.columnDef.cell, c.getContext())}</td>;
+                  const out = flexRender(c.column.columnDef.cell, c.getContext());
+                  const v = c.getValue();
+                  const empty = !(typeof v === 'number' && v !== 0); // sel kosong/nol tidak diberi "Rp"
+                  return <td key={c.id} className={`px-3 py-2.5 align-top ${m.align === 'right' ? 'num text-right' : m.align === 'center' ? 'text-center' : ''} ${m.className || ''}`}>{m.money && !empty ? <Money>{out}</Money> : out}</td>;
                 })}
               </tr>
             ))}
@@ -233,7 +243,7 @@ export function DataTable<T>({
               <tr className="border-t-2 border-ink/80 bg-sunk/60 font-bold">
                 {leafCols.map((c, i) => {
                   const m = metaOf(c);
-                  return <td key={c.id} className={`px-3 py-2.5 ${m.align === 'right' ? 'num text-right' : ''}`}>{m.total ? (m.money ? 'Rp ' : '') + nf(totals(c.id)) : i === 0 ? `Total (${filtered.length})` : ''}</td>;
+                  return <td key={c.id} className={`px-3 py-2.5 ${m.align === 'right' ? 'num text-right' : ''}`}>{m.total ? (m.money ? <Money v={totals(c.id)} /> : nf(totals(c.id))) : i === 0 ? `Total (${filtered.length})` : ''}</td>;
                 })}
               </tr>
             </tfoot>
@@ -255,7 +265,7 @@ export function DataTable<T>({
                 {(cardTitle ? cells : rest).filter((c) => !metaOf(c.column).hideOnCard).map((c) => (
                   <div key={c.id} className="contents">
                     <dt className="text-muted">{labelOf(c.column)}</dt>
-                    <dd className={`min-w-0 text-right ${metaOf(c.column).align === 'right' ? 'num' : ''}`}>{flexRender(c.column.columnDef.cell, c.getContext())}</dd>
+                    <dd className={`min-w-0 text-right ${metaOf(c.column).align === 'right' ? 'num' : ''}`}>{metaOf(c.column).money && typeof c.getValue() === 'number' && c.getValue() !== 0 ? <>Rp&nbsp;{flexRender(c.column.columnDef.cell, c.getContext())}</> : flexRender(c.column.columnDef.cell, c.getContext())}</dd>
                   </div>
                 ))}
               </dl>

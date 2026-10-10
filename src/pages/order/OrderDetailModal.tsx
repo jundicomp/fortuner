@@ -13,6 +13,7 @@ import { useSettings } from '@/lib/queries';
 import { CUT_SIZES } from '@/lib/pricing';
 import { nf, rp, tgl, tglJam } from '@/lib/format';
 import type { OrderDetail } from '@/types';
+import { Money } from '@/components/ui/Money';
 
 export const BAYAR: Record<string, [string, string]> = { lunas: ['Lunas', 'pill-ok'], dp: ['DP', 'pill-warn'], belum: ['Belum bayar', 'pill-bad'], batal: ['Batal', 'pill-mute'] };
 export const PRODUKSI: Record<string, [string, string]> = { antrian: ['Antrian', 'pill-brand'], proses: ['Proses', 'pill-warn'], selesai: ['Selesai', 'pill-ok'], batal: ['Batal', 'pill-mute'] };
@@ -100,16 +101,16 @@ export function OrderDetailModal({ orderId, onClose }: { orderId: string; onClos
                       <div className="text-xs text-muted">{[i.keterangan, i.mesin_nama, i.harga_manual ? 'harga manual' : ''].filter(Boolean).join(' · ')}</div>
                     </td>
                     <td className="num px-3 py-2 text-right">{nf(i.qty)}</td>
-                    <td className="num px-3 py-2 text-right">{nf(i.harga_satuan)}</td>
-                    <td className="num px-3 py-2 text-right font-semibold">{nf(i.subtotal)}</td>
+                    <td className="num px-3 py-2 text-right"><Money v={i.harga_satuan} /></td>
+                    <td className="num px-3 py-2 text-right font-semibold"><Money v={i.subtotal} /></td>
                     <td className="px-3 py-2"><span className={`pill ${PRODUKSI[i.status_produksi]?.[1]}`}>{PRODUKSI[i.status_produksi]?.[0]}</span></td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
-                <tr className="border-t-2 border-ink/70 font-bold"><td className="px-3 py-2" colSpan={3}>Total</td><td className="num px-3 py-2 text-right">{nf(o.total)}</td><td /></tr>
-                <tr><td className="px-3 py-1 text-muted" colSpan={3}>Terbayar</td><td className="num px-3 py-1 text-right">{nf(o.terbayar)}</td><td /></tr>
-                <tr className="font-bold"><td className="px-3 py-1.5" colSpan={3}>{o.sisa < 0 ? 'Lebih bayar' : 'Sisa'}</td><td className={`num px-3 py-1.5 text-right ${o.sisa > 0 ? 'text-bad' : o.sisa < 0 ? 'text-warn' : 'text-ok'}`}>{nf(Math.abs(o.sisa))}</td><td /></tr>
+                <tr className="border-t-2 border-ink/70 font-bold"><td className="px-3 py-2" colSpan={3}>Total</td><td className="num px-3 py-2 text-right"><Money v={o.total} /></td><td /></tr>
+                <tr><td className="px-3 py-1 text-muted" colSpan={3}>Terbayar</td><td className="num px-3 py-1 text-right"><Money v={o.terbayar} /></td><td /></tr>
+                <tr className="font-bold"><td className="px-3 py-1.5" colSpan={3}>{o.sisa < 0 ? 'Lebih bayar' : 'Sisa'}</td><td className={`num px-3 py-1.5 text-right ${o.sisa > 0 ? 'text-bad' : o.sisa < 0 ? 'text-warn' : 'text-ok'}`}><Money v={Math.abs(o.sisa)} /></td><td /></tr>
               </tfoot>
             </table>
           </div>

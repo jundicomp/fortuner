@@ -54,7 +54,7 @@ export function PengeluaranPage() {
     { accessorKey: 'kategori', header: 'Kategori', meta: { filter: 'select' } },
     { accessorKey: 'supplier', header: 'Supplier', meta: { filter: 'select' } },
     { id: 'jumlah', accessorFn: (r) => `${nf(r.qty)} ${r.satuan}`, header: 'Jumlah', meta: { align: 'right' } },
-    { accessorKey: 'harga', header: 'Harga', meta: { align: 'right', hideOnCard: true }, cell: (c) => nf(c.getValue()) },
+    { accessorKey: 'harga', header: 'Harga', meta: { money: true, align: 'right', hideOnCard: true }, cell: (c) => nf(c.getValue()) },
     { accessorKey: 'total', header: 'Total', meta: { align: 'right', total: true, money: true }, cell: (c) => <b>{nf(c.getValue())}</b> },
     { id: 'bayar', accessorFn: (r) => (r.cara_bayar === 'hutang' ? 'Hutang' : r.metode), header: 'Bayar', meta: { filter: 'select' },
       cell: (c) => c.row.original.cara_bayar === 'hutang'

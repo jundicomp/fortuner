@@ -114,3 +114,7 @@ body { @apply bg-canvas text-ink font-sans antialiased; font-size: 14px; }
 /* Kartu kanban produksi: warna sesuai progres (pakai bersama .tint .tint-*). */
 .kanban-card { border-left-width: 4px; border-left-color: rgb(var(--tint-fg)); }
 .tint-text { color: rgb(var(--tint-fg)); }
+
+/* Rupiah gaya akuntansi: Rp di kiri sel, angka di kanan. */
+.money { display: flex; align-items: baseline; justify-content: space-between; gap: 0.75rem; width: 100%; }
+.money-rp { font-weight: 400; opacity: 0.6; font-size: 0.92em; }

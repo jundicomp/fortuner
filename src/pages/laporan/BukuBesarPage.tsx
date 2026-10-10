@@ -13,6 +13,7 @@ import { api } from '@/lib/api';
 import { nf, rp, tgl, ymd } from '@/lib/format';
 import { numIn } from '@/pages/stok/stokApi';
 import { kodeTampil, SUMBER, TIPE, type Account, type JEntry, type TrialRow } from './akuntansi';
+import { Money } from '@/components/ui/Money';
 
 type Tab = 'neraca' | 'akun' | 'jurnal';
 interface Ledger { akun: Account; from: string; to: string; saldo_awal: number; saldo_akhir: number; rows: { tanggal: string; ref: string; sumber: string; keterangan: string; debit: number; kredit: number; saldo: number }[]; accounts: Account[] }
@@ -51,10 +52,10 @@ function NeracaTab({ from, to, onPick }: { from: string; to: string; onPick: (k:
     { id: 'kode', accessorFn: (r) => kodeTampil(r.kode), header: 'Kode', meta: { className: 'font-mono text-xs' } },
     { accessorKey: 'nama', header: 'Akun', cell: (c) => <span className="font-semibold">{c.getValue()}</span>, meta: { hideOnCard: true } },
     { id: 'tipe', accessorFn: (r) => TIPE[r.tipe], header: 'Kelompok', meta: { filter: 'select' } },
-    { accessorKey: 'saldo_awal', header: 'Saldo awal', meta: { align: 'right' }, cell: (c) => <span className="num text-muted">{nf(c.getValue())}</span> },
-    { accessorKey: 'debit', header: 'Debit', meta: { align: 'right', total: true }, cell: (c) => <span className="num">{nf(c.getValue())}</span> },
-    { accessorKey: 'kredit', header: 'Kredit', meta: { align: 'right', total: true }, cell: (c) => <span className="num">{nf(c.getValue())}</span> },
-    { accessorKey: 'saldo_akhir', header: 'Saldo akhir', meta: { align: 'right' }, cell: (c) => <b className={`num ${c.getValue() < 0 ? 'text-bad' : ''}`}>{nf(c.getValue())}</b> },
+    { accessorKey: 'saldo_awal', header: 'Saldo awal', meta: { money: true, align: 'right' }, cell: (c) => <span className="num text-muted">{nf(c.getValue())}</span> },
+    { accessorKey: 'debit', header: 'Debit', meta: { money: true, align: 'right', total: true }, cell: (c) => <span className="num">{nf(c.getValue())}</span> },
+    { accessorKey: 'kredit', header: 'Kredit', meta: { money: true, align: 'right', total: true }, cell: (c) => <span className="num">{nf(c.getValue())}</span> },
+    { accessorKey: 'saldo_akhir', header: 'Saldo akhir', meta: { money: true, align: 'right' }, cell: (c) => <b className={`num ${c.getValue() < 0 ? 'text-bad' : ''}`}>{nf(c.getValue())}</b> },
   ];
   const balanced = d && d.total_debit === d.total_kredit;
   return (
@@ -83,9 +84,9 @@ function AkunTab({ from, to, akun, onPick }: { from: string; to: string; akun: s
     { accessorKey: 'ref', header: 'Ref', meta: { className: 'font-mono text-xs' } },
     { id: 'sumber', accessorFn: (r) => SUMBER[r.sumber] || r.sumber, header: 'Sumber', meta: { filter: 'select' } },
     { accessorKey: 'keterangan', header: 'Keterangan', cell: (c) => <span className="text-xs">{c.getValue()}</span> },
-    { accessorKey: 'debit', header: 'Debit', meta: { align: 'right', total: true }, cell: (c) => (c.getValue() ? <span className="num">{nf(c.getValue())}</span> : '') },
-    { accessorKey: 'kredit', header: 'Kredit', meta: { align: 'right', total: true }, cell: (c) => (c.getValue() ? <span className="num">{nf(c.getValue())}</span> : '') },
-    { accessorKey: 'saldo', header: 'Saldo', meta: { align: 'right' }, cell: (c) => <b className="num">{nf(c.getValue())}</b> },
+    { accessorKey: 'debit', header: 'Debit', meta: { money: true, align: 'right', total: true }, cell: (c) => (c.getValue() ? <span className="num">{nf(c.getValue())}</span> : '') },
+    { accessorKey: 'kredit', header: 'Kredit', meta: { money: true, align: 'right', total: true }, cell: (c) => (c.getValue() ? <span className="num">{nf(c.getValue())}</span> : '') },
+    { accessorKey: 'saldo', header: 'Saldo', meta: { money: true, align: 'right' }, cell: (c) => <b className="num">{nf(c.getValue())}</b> },
   ];
   return (
     <>
@@ -193,7 +194,7 @@ function JournalForm({ accounts, onClose }: { accounts: Account[]; onClose: () =
             <td>{lines.length > 2 && <button className="btn btn-ghost btn-sm px-1" aria-label="Hapus baris" onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}><X size={14} /></button>}</td>
           </tr>
         ))}</tbody>
-        <tfoot><tr className="border-t border-line font-bold"><td className="py-2"><button className="btn btn-sm" onClick={() => setLines((ls) => [...ls, { akun: '', debit: '', kredit: '' }])}><Plus size={14} />Baris</button></td><td className="num text-right">{nf(d)}</td><td className="num text-right">{nf(k)}</td><td /></tr></tfoot>
+        <tfoot><tr className="border-t border-line font-bold"><td className="py-2"><button className="btn btn-sm" onClick={() => setLines((ls) => [...ls, { akun: '', debit: '', kredit: '' }])}><Plus size={14} />Baris</button></td><td className="num text-right"><Money v={d} /></td><td className="num text-right"><Money v={k} /></td><td /></tr></tfoot>
       </table>
       {d !== k && <p className="mt-2 text-sm text-bad">Selisih {rp(Math.abs(d - k))}. Debit dan kredit harus sama.</p>}
       <div className="mt-3"><ErrorBox error={save.error} /></div>

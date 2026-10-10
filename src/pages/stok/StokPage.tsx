@@ -12,6 +12,7 @@ import { api } from '@/lib/api';
 import { nf, rp, tgl, tglJam } from '@/lib/format';
 import { dec, JENIS_MOVE, numIn, saranBeli, STATUS_STOK, useStockMeta, type Material, type Opname, type StockMove } from './stokApi';
 import { lastBuy, PurchaseForm, usePurchases } from './PembelianPage';
+import { Money } from '@/components/ui/Money';
 
 type Tab = 'bahan' | 'kartu' | 'opname' | 'belanja';
 
@@ -61,7 +62,7 @@ function BahanTab({ mats, loading, seeCost, onCard }: { mats: Material[]; loadin
     { accessorKey: 'stok_min', header: 'Minimum', meta: { align: 'right' }, cell: (c) => <span className="num text-muted">{dec(c.getValue())}</span> },
     { id: 'status', accessorFn: (r) => STATUS_STOK[r.status][0], header: 'Status', meta: { filter: 'select' }, cell: (c) => <span className={`pill ${STATUS_STOK[c.row.original.status][1]}`}>{c.getValue()}</span> },
     ...(seeCost ? [
-      { accessorKey: 'harga_rata', header: 'Harga rata-rata', meta: { align: 'right' }, cell: (c: any) => <span className="num">{dec(c.getValue())}</span> },
+      { accessorKey: 'harga_rata', header: 'Harga rata-rata', meta: { money: true, align: 'right' }, cell: (c: any) => <span className="num">{dec(c.getValue())}</span> },
       { accessorKey: 'nilai', header: 'Nilai stok', meta: { align: 'right', total: true, money: true }, cell: (c: any) => <span className="num">{nf(c.getValue())}</span> },
     ] as ColumnDef<Material, any>[] : []),
     { id: 'aksi', header: '', enableSorting: false, meta: { noExport: true, hideOnCard: true }, cell: (c) => <span className="flex justify-end gap-1">
@@ -132,7 +133,7 @@ function KartuTab({ mats, id, onPick, seeCost }: { mats: Material[]; id: string;
     { id: 'masuk', accessorFn: (r) => (r.qty > 0 ? r.qty : 0), header: 'Masuk', meta: { align: 'right', total: true }, cell: (c) => (c.getValue() ? <span className="num text-ok">{dec(c.getValue())}</span> : '') },
     { id: 'keluar', accessorFn: (r) => (r.qty < 0 ? -r.qty : 0), header: 'Keluar', meta: { align: 'right', total: true }, cell: (c) => (c.getValue() ? <span className="num text-bad">{dec(c.getValue())}</span> : '') },
     { accessorKey: 'saldo_berjalan', header: 'Saldo', meta: { align: 'right' }, cell: (c) => <b className="num">{dec(c.getValue())}</b> },
-    ...(seeCost ? [{ accessorKey: 'harga', header: 'Harga', meta: { align: 'right' }, cell: (c: any) => <span className="num text-xs">{dec(c.getValue())}</span> } as ColumnDef<StockMove, any>] : []),
+    ...(seeCost ? [{ accessorKey: 'harga', header: 'Harga', meta: { align: 'right', money: true }, cell: (c: any) => <span className="num text-xs">{dec(c.getValue())}</span> } as ColumnDef<StockMove, any>] : []),
   ];
   return (
     <>
@@ -191,7 +192,7 @@ function OpnameTab({ mats }: { mats: Material[] }) {
             <thead className="text-left text-xs text-muted"><tr><th className="py-1">Bahan</th><th className="text-right">Sistem</th><th className="text-right">Fisik</th><th className="text-right">Selisih</th><th className="text-right">Nilai</th></tr></thead>
             <tbody className="divide-y divide-line">{view.items.map((i) => (
               <tr key={i.id}><td className="py-1.5"><b>{i.nama}</b>{i.keterangan && <span className="block text-xs text-muted">{i.keterangan}</span>}</td><td className="num text-right">{dec(i.stok_sistem)}</td><td className="num text-right">{dec(i.stok_fisik)}</td>
-                <td className={`num text-right font-bold ${i.selisih < 0 ? 'text-bad' : i.selisih > 0 ? 'text-ok' : 'text-muted'}`}>{i.selisih > 0 ? '+' : ''}{dec(i.selisih)}</td><td className="num text-right">{nf(i.nilai)}</td></tr>
+                <td className={`num text-right font-bold ${i.selisih < 0 ? 'text-bad' : i.selisih > 0 ? 'text-ok' : 'text-muted'}`}>{i.selisih > 0 ? '+' : ''}{dec(i.selisih)}</td><td className="num text-right">{i.nilai == null ? '–' : <Money v={i.nilai} />}</td></tr>
             ))}</tbody>
           </table>
         </Modal>

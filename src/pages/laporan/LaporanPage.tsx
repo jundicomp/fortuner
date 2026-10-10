@@ -73,15 +73,15 @@ export function LaporanPage() {
       ] : []),
     ];
     exportBook([
-      { name: 'Ringkasan', rows: ring },
-      { name: 'Harian', rows: d.harian.map((x) => ({ Tanggal: x.tanggal, Nota: x.nota, Omzet: x.omzet, 'Uang masuk': x.masuk })) },
-      { name: 'Produk', rows: d.per_produk.map((x) => ({ Produk: x.nama, Nota: x.nota, Qty: x.qty, Klik: x.klik, Omzet: x.omzet, ...(d.can_laba ? { HPP: x.hpp, Laba: x.laba, 'HPP lengkap': x.hpp_lengkap ? 'ya' : 'tidak' } : {}) })) },
-      { name: 'CS', rows: d.per_cs.map((x) => ({ CS: x.nama, Nota: x.nota, Klik: x.klik, Omzet: x.omzet })) },
-      { name: 'Mesin', rows: d.per_mesin.map((x) => ({ Mesin: x.nama, Item: x.item, Klik: x.klik, Omzet: x.omzet })) },
-      { name: 'Metode bayar', rows: d.per_metode.map((x) => ({ Metode: x.nama, Jenis: x.jenis, Transaksi: x.transaksi, Masuk: x.masuk })) },
-      { name: 'Konsumen', rows: d.per_konsumen.map((x) => ({ Konsumen: x.nama, Tipe: x.tipe, Nota: x.nota, Omzet: x.omzet, 'Sisa piutang': x.sisa })) },
-      { name: 'Pengeluaran', rows: d.per_kategori.map((x) => ({ Kategori: x.nama, Jenis: x.jenis, Transaksi: x.transaksi, Total: x.total })) },
-    ], `${name}.xlsx`);
+      { name: 'Ringkasan', rows: ring, moneyRow: (r) => !/jumlah nota|klik|cakupan/i.test(String(r.Pos)) },
+      { name: 'Harian', money: ['Omzet', 'Uang masuk'], rows: d.harian.map((x) => ({ Tanggal: x.tanggal, Nota: x.nota, Omzet: x.omzet, 'Uang masuk': x.masuk })) },
+      { name: 'Produk', money: ['Omzet', 'HPP', 'Laba'], rows: d.per_produk.map((x) => ({ Produk: x.nama, Nota: x.nota, Qty: x.qty, Klik: x.klik, Omzet: x.omzet, ...(d.can_laba ? { HPP: x.hpp, Laba: x.laba, 'HPP lengkap': x.hpp_lengkap ? 'ya' : 'tidak' } : {}) })) },
+      { name: 'CS', money: ['Omzet'], rows: d.per_cs.map((x) => ({ CS: x.nama, Nota: x.nota, Klik: x.klik, Omzet: x.omzet })) },
+      { name: 'Mesin', money: ['Omzet'], rows: d.per_mesin.map((x) => ({ Mesin: x.nama, Item: x.item, Klik: x.klik, Omzet: x.omzet })) },
+      { name: 'Metode bayar', money: ['Masuk'], rows: d.per_metode.map((x) => ({ Metode: x.nama, Jenis: x.jenis, Transaksi: x.transaksi, Masuk: x.masuk })) },
+      { name: 'Konsumen', money: ['Omzet', 'Sisa piutang'], rows: d.per_konsumen.map((x) => ({ Konsumen: x.nama, Tipe: x.tipe, Nota: x.nota, Omzet: x.omzet, 'Sisa piutang': x.sisa })) },
+      { name: 'Pengeluaran', money: ['Total'], rows: d.per_kategori.map((x) => ({ Kategori: x.nama, Jenis: x.jenis, Transaksi: x.transaksi, Total: x.total })) },
+    ], `${name}.xlsx`, { subtitle: `Periode ${tgl(d.from)} – ${tgl(d.to)}` });
   };
 
   return (
@@ -206,11 +206,11 @@ function Rincian({ tab, d, loading }: { tab: string; d: Report; loading: boolean
       { accessorKey: 'nota', header: 'Nota', meta: right },
       { accessorKey: 'qty', header: 'Qty', meta: right, cell: money },
       { accessorKey: 'klik', header: 'Klik', meta: { ...right, hideOnCard: true }, cell: money },
-      { accessorKey: 'omzet', header: 'Omzet', meta: right, cell: (c) => <b className="num">{nf(c.getValue())}</b> },
+      { accessorKey: 'omzet', header: 'Omzet', meta: { ...right, money: true }, cell: (c) => <b className="num">{nf(c.getValue())}</b> },
       { id: 'porsi', accessorFn: (x) => x.omzet, header: 'Porsi', enableSorting: false, meta: { align: 'right', hideOnCard: true }, cell: (c) => share(c.getValue(), omzet) },
       ...(d.can_laba ? [
-        { id: 'hpp', accessorFn: (x) => (x.hpp ? x.hpp : x.hpp_lengkap ? 0 : null), header: 'HPP', meta: right, cell: (c) => c.getValue() == null ? <span className="text-xs text-warn" title="Produk ini belum punya harga beli">belum ada</span> : <span className="num">{c.row.original.hpp_lengkap ? nf(c.getValue()) : <span className="text-warn" title="Sebagian item belum punya harga beli">{nf(c.getValue())}*</span>}</span> },
-        { id: 'laba', accessorFn: (x) => (x.hpp_lengkap ? x.laba : null), header: 'Laba kotor', meta: right, cell: (c) => c.getValue() == null ? <span className="text-muted">–</span> : <span className={`num font-semibold ${c.getValue() < 0 ? 'text-bad' : 'text-ok'}`}>{nf(c.getValue())}</span> },
+        { id: 'hpp', accessorFn: (x) => (x.hpp ? x.hpp : x.hpp_lengkap ? 0 : null), header: 'HPP', meta: { ...right, money: true }, cell: (c) => c.getValue() == null ? <span className="text-xs text-warn" title="Produk ini belum punya harga beli">belum ada</span> : <span className="num">{c.row.original.hpp_lengkap ? nf(c.getValue()) : <span className="text-warn" title="Sebagian item belum punya harga beli">{nf(c.getValue())}*</span>}</span> },
+        { id: 'laba', accessorFn: (x) => (x.hpp_lengkap ? x.laba : null), header: 'Laba kotor', meta: { ...right, money: true }, cell: (c) => c.getValue() == null ? <span className="text-muted">–</span> : <span className={`num font-semibold ${c.getValue() < 0 ? 'text-bad' : 'text-ok'}`}>{nf(c.getValue())}</span> },
         { id: 'margin', accessorFn: (x) => (x.hpp_lengkap && x.omzet ? (x.laba || 0) / x.omzet : null), header: 'Margin', meta: { align: 'right' }, cell: (c) => <span className="num text-xs">{c.getValue() == null ? '–' : `${(c.getValue() * 100).toFixed(0)}%`}</span> },
       ] as ColumnDef<Produk, any>[] : []),
     ];
@@ -221,8 +221,8 @@ function Rincian({ tab, d, loading }: { tab: string; d: Report; loading: boolean
       { accessorKey: 'nama', header: 'CS / FO', cell: (c) => <span className="font-semibold">{c.getValue()}</span> },
       { accessorKey: 'nota', header: 'Nota', meta: right },
       { accessorKey: 'klik', header: 'Klik', meta: right, cell: money },
-      { accessorKey: 'omzet', header: 'Omzet', meta: right, cell: (c) => <b className="num">{nf(c.getValue())}</b> },
-      { id: 'rata', accessorFn: (x) => (x.nota ? x.omzet / x.nota : 0), header: 'Rata-rata nota', meta: { align: 'right' }, cell: money },
+      { accessorKey: 'omzet', header: 'Omzet', meta: { ...right, money: true }, cell: (c) => <b className="num">{nf(c.getValue())}</b> },
+      { id: 'rata', accessorFn: (x) => (x.nota ? x.omzet / x.nota : 0), header: 'Rata-rata nota', meta: { align: 'right', money: true }, cell: money },
       { id: 'porsi', accessorFn: (x) => x.omzet, header: 'Porsi', enableSorting: false, meta: { align: 'right', hideOnCard: true }, cell: (c) => share(c.getValue(), omzet) },
     ];
     return <DataTable<Cs> key="c" data={d.per_cs} columns={cols} title="Laporan_CS" storageKey="lap-cs" {...common} cardTitle={(x) => x.nama} />;
@@ -232,7 +232,7 @@ function Rincian({ tab, d, loading }: { tab: string; d: Report; loading: boolean
       { accessorKey: 'nama', header: 'Mesin', cell: (c) => <span className="font-semibold">{c.getValue()}</span> },
       { accessorKey: 'item', header: 'Item', meta: right },
       { accessorKey: 'klik', header: 'Klik', meta: right, cell: money },
-      { accessorKey: 'omzet', header: 'Omzet', meta: right, cell: (c) => <b className="num">{nf(c.getValue())}</b> },
+      { accessorKey: 'omzet', header: 'Omzet', meta: { ...right, money: true }, cell: (c) => <b className="num">{nf(c.getValue())}</b> },
       { id: 'porsi', accessorFn: (x) => x.omzet, header: 'Porsi', enableSorting: false, meta: { align: 'right', hideOnCard: true }, cell: (c) => share(c.getValue(), omzet) },
     ];
     return <DataTable<Mesin> key="m" data={d.per_mesin} columns={cols} title="Laporan_mesin" storageKey="lap-mesin" {...common} cardTitle={(x) => x.nama} />;
@@ -242,7 +242,7 @@ function Rincian({ tab, d, loading }: { tab: string; d: Report; loading: boolean
       { accessorKey: 'nama', header: 'Metode', cell: (c) => <span className="font-semibold">{c.getValue()}</span> },
       { accessorKey: 'jenis', header: 'Jenis', meta: { filter: 'select' } },
       { accessorKey: 'transaksi', header: 'Transaksi', meta: right },
-      { accessorKey: 'masuk', header: 'Uang masuk', meta: right, cell: (c) => <b className="num">{nf(c.getValue())}</b> },
+      { accessorKey: 'masuk', header: 'Uang masuk', meta: { ...right, money: true }, cell: (c) => <b className="num">{nf(c.getValue())}</b> },
       { id: 'porsi', accessorFn: (x) => x.masuk, header: 'Porsi', enableSorting: false, meta: { align: 'right', hideOnCard: true }, cell: (c) => share(c.getValue(), d.ringkas.masuk) },
     ];
     return <DataTable<Metode> key="t" data={d.per_metode} columns={cols} title="Laporan_metode_bayar" storageKey="lap-metode" {...common} cardTitle={(x) => x.nama} />;
@@ -252,8 +252,8 @@ function Rincian({ tab, d, loading }: { tab: string; d: Report; loading: boolean
       { accessorKey: 'nama', header: 'Konsumen', cell: (c) => <span className="font-semibold">{c.getValue()}</span> },
       { accessorKey: 'tipe', header: 'Tipe', meta: { filter: 'select' }, cell: (c) => <span className="capitalize">{c.getValue() === 'end_user' ? 'end user' : c.getValue()}</span> },
       { accessorKey: 'nota', header: 'Nota', meta: right },
-      { accessorKey: 'omzet', header: 'Omzet', meta: right, cell: (c) => <b className="num">{nf(c.getValue())}</b> },
-      { accessorKey: 'sisa', header: 'Sisa piutang', meta: right, cell: (c) => <span className={`num ${c.getValue() ? 'font-semibold text-bad' : 'text-muted'}`}>{nf(c.getValue())}</span> },
+      { accessorKey: 'omzet', header: 'Omzet', meta: { ...right, money: true }, cell: (c) => <b className="num">{nf(c.getValue())}</b> },
+      { accessorKey: 'sisa', header: 'Sisa piutang', meta: { ...right, money: true }, cell: (c) => <span className={`num ${c.getValue() ? 'font-semibold text-bad' : 'text-muted'}`}>{nf(c.getValue())}</span> },
     ];
     return <DataTable<Konsumen> key="k" data={d.per_konsumen} columns={cols} title="Laporan_konsumen" storageKey="lap-konsumen" {...common} cardTitle={(x) => x.nama} />;
   }
@@ -261,7 +261,7 @@ function Rincian({ tab, d, loading }: { tab: string; d: Report; loading: boolean
     { accessorKey: 'nama', header: 'Kategori', cell: (c) => <span className="font-semibold">{c.getValue()}</span> },
     { accessorKey: 'jenis', header: 'Jenis', meta: { filter: 'select' }, cell: (c) => <span className="capitalize">{c.getValue()}</span> },
     { accessorKey: 'transaksi', header: 'Transaksi', meta: right },
-    { accessorKey: 'total', header: 'Total', meta: right, cell: (c) => <b className="num">{nf(c.getValue())}</b> },
+    { accessorKey: 'total', header: 'Total', meta: { ...right, money: true }, cell: (c) => <b className="num">{nf(c.getValue())}</b> },
     { id: 'porsi', accessorFn: (x) => x.total, header: 'Porsi', enableSorting: false, meta: { align: 'right', hideOnCard: true }, cell: (c) => share(c.getValue(), d.ringkas.pengeluaran_total) },
   ];
   return <DataTable<Kategori> key="g" data={d.per_kategori} columns={cols} title="Laporan_pengeluaran" storageKey="lap-kategori" {...common} emptyText="Belum ada pengeluaran di periode ini." cardTitle={(x) => x.nama} />;

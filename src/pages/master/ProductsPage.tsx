@@ -283,7 +283,7 @@ function ImportModal({ onClose, products, mName }: { onClose: () => void; produc
     const data = products.length
       ? products.map((p) => { const o: Record<string, unknown> = { kode: p.kode, nama: p.nama, kategori: p.kategori, mesin: mName[p.mesin_id] || '', jenis_harga: p.jenis_harga, satuan: p.satuan, aktif: p.aktif ? 'ya' : 'tidak', kertas_sendiri: p.kertas_sendiri ? 'ya' : 'tidak' }; TIERS.forEach((t) => (o[t.key] = p.harga?.[t.key] ?? '')); return o; })
       : [Object.fromEntries(IMPORT_COLS.map((c) => [c, '']))];
-    exportXlsx(data, `Template_Produk_${ymd()}.xlsx`, 'Produk');
+    exportXlsx(data, `Template_Produk_${ymd()}.xlsx`, 'Produk', { title: '' }); // tanpa judul: file ini dibaca ulang saat import
   };
 
   const onFile = async (f?: File) => {

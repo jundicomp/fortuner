@@ -11,6 +11,7 @@ import { useAuth } from '@/auth/AuthContext';
 import { api } from '@/lib/api';
 import { addDays, nf, rp, tgl, ymd } from '@/lib/format';
 import { dec, numIn, useStockMeta, type Purchase, type StockMeta } from './stokApi';
+import { Money } from '@/components/ui/Money';
 
 export const usePurchases = (from = '', to = '', enabled = true) => useQuery({ queryKey: ['purchases', from, to], queryFn: () => api<Purchase[]>('purchase.list', { from, to }), enabled });
 
@@ -76,10 +77,10 @@ export function PembelianPage() {
           <table className="tbl w-full text-sm">
             <thead className="text-left text-xs text-muted"><tr><th className="py-1">Bahan</th><th className="text-right">Beli</th><th className="text-right">Harga</th><th className="text-right">Masuk stok</th><th className="text-right">Subtotal</th></tr></thead>
             <tbody className="divide-y divide-line">{view.items.map((i) => (
-              <tr key={i.id}><td className="py-1.5 font-semibold">{i.nama}</td><td className="num text-right">{dec(i.qty_beli)} {i.satuan_beli}</td><td className="num text-right">{nf(i.harga_beli)}</td>
-                <td className="num text-right">{dec(i.qty_stok)} {i.satuan}<span className="block text-[11px] text-muted">@ {dec(i.harga_stok)}</span></td><td className="num text-right font-semibold">{nf(i.subtotal)}</td></tr>
+              <tr key={i.id}><td className="py-1.5 font-semibold">{i.nama}</td><td className="num text-right">{dec(i.qty_beli)} {i.satuan_beli}</td><td className="num text-right"><Money v={i.harga_beli} /></td>
+                <td className="num text-right">{dec(i.qty_stok)} {i.satuan}<span className="block text-[11px] text-muted">@ {dec(i.harga_stok)}</span></td><td className="num text-right font-semibold"><Money v={i.subtotal} /></td></tr>
             ))}</tbody>
-            <tfoot><tr className="border-t-2 border-line font-bold"><td colSpan={4} className="py-2">Total</td><td className="num text-right">{rp(view.total)}</td></tr></tfoot>
+            <tfoot><tr className="border-t-2 border-line font-bold"><td colSpan={4} className="py-2">Total</td><td className="num text-right"><Money v={view.total} /></td></tr></tfoot>
           </table>
           {view.keterangan && <p className="mt-3 text-sm text-muted">{view.keterangan}</p>}
         </Modal>
@@ -161,7 +162,7 @@ export function PurchaseForm({ meta, last, initial, onClose }: { meta: StockMeta
                   <td className="px-2"><input id={`pur-isi-${i}`} className="input num text-right" inputMode="decimal" value={l.isi} onChange={(e) => setLine(l.key, { isi: e.target.value })} title={`Isi ${m?.satuan || 'satuan stok'} per ${l.satuan_beli || 'satuan beli'}`} /></td>
                   <td className="px-2"><input id={`pur-harga-${i}`} className="input num text-right" inputMode="numeric" value={l.harga_beli ? nf(numIn(l.harga_beli)) : ''} onChange={(e) => setLine(l.key, { harga_beli: e.target.value })} /></td>
                   <td className="num px-2 text-right text-xs" title={m?.harga_rata ? `Harga rata-rata sekarang ${dec(m.harga_rata)} per ${m.satuan}` : undefined}>{m ? <>{dec(calc[i].stok)} {m.satuan}<span className="block text-muted">@ {dec(calc[i].hs)}</span></> : '–'}</td>
-                  <td className="num px-2 text-right font-semibold">{nf(calc[i].sub)}</td>
+                  <td className="num px-2 text-right font-semibold"><Money v={calc[i].sub} /></td>
                   <td className="px-1">{lines.length > 1 && <button className="btn btn-ghost btn-sm px-1" aria-label="Hapus baris" onClick={() => setLines((ls) => ls.filter((x) => x.key !== l.key))}><X size={14} /></button>}</td>
                 </tr>
               );
