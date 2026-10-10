@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { ColumnDef } from '@tanstack/react-table';
 import { DataTable } from '@/components/table/DataTable';
-import { DateRangeFilter, rangeFor, type DateRange } from '@/components/table/DateRangeFilter';
+import { DateRangeFilter, periodeLabel, rangeFor, type DateRange } from '@/components/table/DateRangeFilter';
 import { PageHeader } from '@/components/ui/Field';
 import { api } from '@/lib/api';
 import { useAuth } from '@/auth/AuthContext';
@@ -66,7 +66,7 @@ export function OrderPage() {
         data={sorted} loading={q.isLoading} columns={columns} title="Order" storageKey="order-list"
         canExport={can('order', 'ekspor')} searchPlaceholder="Cari nomor nota, konsumen, atau isi…" onRowClick={(r) => setOpen(r.id)}
         cardTitle={(r) => <span className="flex items-center justify-between gap-2"><span className="font-mono text-sm">{r.nomor}</span><span className="text-sm">{r.customer_nama}</span></span>}
-        toolbar={<DateRangeFilter value={range} onChange={setRange} id="order-range" />}
+        exportSubtitle={periodeLabel(range.from, range.to)} toolbar={<DateRangeFilter value={range} onChange={setRange} id="order-range" />}
         emptyText="Belum ada nota di periode ini."
       />
       {open && <OrderDetailModal orderId={open} onClose={() => setOpen('')} />}

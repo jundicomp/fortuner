@@ -4,7 +4,8 @@ import {
 } from '@tanstack/react-table';
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Columns3, Download, Search, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { DateRangeFilter, rangeFor, type DateRange } from './DateRangeFilter';
+import { DateRangeFilter, periodeLabel, rangeFor, type DateRange } from './DateRangeFilter';
+import { useToast } from '@/components/ui/Toast';
 import { exportXlsx } from './exportXlsx';
 import { nf } from '@/lib/format';
 import { Money } from '@/components/ui/Money';
@@ -67,6 +68,7 @@ export function DataTable<T>({
   data, columns, title, storageKey, dateField, loading, toolbar, onRowClick, emptyText = 'Belum ada data.', initialSort = [], canExport = true,
   searchPlaceholder = 'Cari…', cardTitle, exportTitle, exportSubtitle,
 }: Props<T>) {
+  const toast = useToast();
   const saved = useMemo(() => load(storageKey, { pageSize: 25, visibility: {} as VisibilityState, preset: 'semua' as DateRange['preset'] }), [storageKey]);
   const [search, setSearch] = useState('');
   const [sorting, setSorting] = useState<SortingState>(initialSort);
@@ -142,16 +144,22 @@ export function DataTable<T>({
       const o: Record<string, unknown> = {};
       exportCols.forEach((c) => {
         const m = metaOf(c);
-        o[labelOf(c)] = m.exportValue ? m.exportValue(r.original) : r.getValue(c.id);
+        const v = r.getValue(c.id);
+        o[labelOf(c)] = m.exportValue ? m.exportValue(r.original) : m.filterLabel && v != null && v !== '' ? m.filterLabel(v) : v;
       });
       return o;
     });
     const suffix = range.from || range.to ? `${range.from || 'awal'}_sd_${range.to || 'akhir'}` : new Date().toISOString().slice(0, 10);
-    const periode = range.from || range.to ? `Periode ${range.from || 'awal'} s/d ${range.to || 'akhir'}` : '';
+    const filt = [
+      ...filters.map((f) => { const col = table.getColumn(f.id); if (!col) return ''; const m = metaOf(col); return `${labelOf(col)}: ${m.filterLabel ? m.filterLabel(f.value) : String(f.value)}`; }),
+      search ? `pencarian "${search}"` : '',
+    ].filter(Boolean);
+    const subtitle = [exportSubtitle || periodeLabel(range.from, range.to), filt.length ? `Filter: ${filt.join(', ')}` : ''].filter(Boolean).join(' · ');
+    const tot: Record<string, unknown> | undefined = hasTotal ? Object.fromEntries(exportCols.map((c, i) => [labelOf(c), metaOf(c).total ? totals(c.id) : i === 0 ? `Total (${filtered.length})` : ''])) : undefined;
     exportXlsx(out, `${title.replace(/\s+/g, '_')}_${suffix}.xlsx`, title, {
-      title: exportTitle || title, subtitle: [exportSubtitle || periode, activeFilters ? 'sesuai filter yang dipilih' : ''].filter(Boolean).join(' · '),
+      title: exportTitle || title, subtitle, totals: tot,
       money: exportCols.filter((c) => metaOf(c).money).map((c) => labelOf(c)),
-    });
+    }).catch((e) => toast('Gagal export: ' + ((e as Error)?.message || e), 'err'));
   };
 
   const resetAll = () => { setSearch(''); setFilters([]); setRange(rangeFor('semua')); };

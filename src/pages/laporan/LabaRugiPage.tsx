@@ -40,8 +40,8 @@ export function LabaRugiPage() {
 
   const exportIt = () => {
     if (!a || !d) return;
-    const kini = `${d.from} s/d ${d.to}`, lalu = `${d.sebelumnya.from} s/d ${d.sebelumnya.to}`;
-    exportBook([{ name: 'Laba Rugi', money: [kini, lalu], rows: rows(a).filter((r) => r[3] !== 'head').map((r) => ({ Pos: r[1], [kini]: r[2], [lalu]: prevMap[r[0]] ?? 0 })) }], `LabaRugi_${d.from}_sd_${d.to}.xlsx`, { subtitle: `Periode ${tgl(d.from)} – ${tgl(d.to)}, dibanding ${tgl(d.sebelumnya.from)} – ${tgl(d.sebelumnya.to)}` });
+    const kini = `${tgl(d.from)} – ${tgl(d.to)}`, lalu = `Sebelumnya (${tgl(d.sebelumnya.from)} – ${tgl(d.sebelumnya.to)})`;
+    exportBook([{ name: 'Laba Rugi', money: [kini, lalu], rows: rows(a).filter((r) => r[3] !== 'head').map((r) => ({ Pos: r[1], [kini]: r[2], [lalu]: prevMap[r[0]] ?? 0 })) }], `LabaRugi_${d.from}_sd_${d.to}.xlsx`, { subtitle: `Periode ${tgl(d.from)} – ${tgl(d.to)}` });
   };
 
   return (

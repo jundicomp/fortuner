@@ -3,7 +3,7 @@ import { Plus, Tags, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { DataTable } from '@/components/table/DataTable';
-import { DateRangeFilter, rangeFor, type DateRange } from '@/components/table/DateRangeFilter';
+import { DateRangeFilter, periodeLabel, rangeFor, type DateRange } from '@/components/table/DateRangeFilter';
 import { ErrorBox, Field, PageHeader, StatusPill, Switch } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
@@ -80,7 +80,7 @@ export function PengeluaranPage() {
         </section>
       </div>
       <DataTable<Expense> data={rows} loading={q.isLoading} columns={cols} title="Pengeluaran" storageKey="pengeluaran" canExport={can('pengeluaran', 'ekspor')}
-        toolbar={<DateRangeFilter value={range} onChange={setRange} id="exp-range" />} searchPlaceholder="Cari barang, nota, supplier…"
+        exportSubtitle={periodeLabel(range.from, range.to)} toolbar={<DateRangeFilter value={range} onChange={setRange} id="exp-range" />} searchPlaceholder="Cari barang, nota, supplier…"
         cardTitle={(r) => <span className="flex justify-between gap-2"><span>{r.item}</span><span className="num text-sm">{tgl(r.tanggal)}</span></span>} emptyText="Belum ada pengeluaran di periode ini." />
       {form && meta.data && <ExpenseForm meta={meta.data} onClose={() => setForm(false)} />}
       {cats && meta.data && <CategoryModal cats={meta.data.categories} onClose={() => setCats(false)} />}

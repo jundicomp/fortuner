@@ -10,6 +10,13 @@ const LABEL: Record<Preset, string> = {
   bulan_ini: 'Bulan ini', bulan_lalu: 'Bulan lalu', tahun_ini: 'Tahun ini', custom: 'Pilih tanggal',
 };
 
+/** "Periode 01 Okt 2026 – 10 Okt 2026" untuk judul export; kosong bila semua tanggal. */
+export function periodeLabel(from?: string, to?: string) {
+  if (!from && !to) return '';
+  if (from && from === to) return `Tanggal ${tgl(from)}`;
+  return `Periode ${from ? tgl(from) : 'awal'} – ${to ? tgl(to) : 'sekarang'}`;
+}
+
 export function rangeFor(p: Preset): DateRange {
   const t = ymd();
   const d = new Date();

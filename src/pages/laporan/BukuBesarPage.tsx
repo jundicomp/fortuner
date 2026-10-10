@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import type { ColumnDef } from '@tanstack/react-table';
 import { DataTable } from '@/components/table/DataTable';
-import { DateRangeFilter, rangeFor, type DateRange } from '@/components/table/DateRangeFilter';
+import { DateRangeFilter, periodeLabel, rangeFor, type DateRange } from '@/components/table/DateRangeFilter';
 import { ErrorBox, Field, PageHeader } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
@@ -66,7 +66,7 @@ function NeracaTab({ from, to, onPick }: { from: string; to: string; onPick: (k:
           <div className={`card flex items-center gap-2 p-3 text-sm font-semibold ${balanced ? 'text-ok' : 'text-bad'}`}>{balanced ? <CheckCircle2 size={18} /> : <Scale size={18} />}{balanced ? 'Debit = kredit, seimbang' : 'Tidak seimbang!'}</div>
         </div>
       )}
-      <DataTable<TrialRow> data={d?.rows || []} loading={q.isLoading} columns={cols} title={`Neraca saldo ${from} sd ${to}`} storageKey="bb-neraca" canExport={can('laporan.laba', 'ekspor')} onRowClick={(r) => onPick(r.kode)}
+      <DataTable<TrialRow> exportSubtitle={periodeLabel(from, to)} data={d?.rows || []} loading={q.isLoading} columns={cols} title={`Neraca saldo ${from} sd ${to}`} storageKey="bb-neraca" canExport={can('laporan.laba', 'ekspor')} onRowClick={(r) => onPick(r.kode)}
         cardTitle={(r) => <span className="flex justify-between gap-2"><span>{r.nama}</span><span className="num">{nf(r.saldo_akhir)}</span></span>} emptyText="Belum ada transaksi." />
       <p className="mt-2 text-xs text-muted">Saldo ditampilkan sesuai sisi normal akun: aset, HPP, beban bertambah di debit; kewajiban, modal, pendapatan bertambah di kredit. Klik akun untuk melihat rinciannya.</p>
     </>
@@ -96,7 +96,7 @@ function AkunTab({ from, to, akun, onPick }: { from: string; to: string; akun: s
         <div className="card p-3"><div className="text-[11px] font-bold uppercase tracking-wider text-muted">Saldo akhir</div><div className="num mt-0.5 text-lg font-extrabold">{d ? nf(d.saldo_akhir) : '…'}</div></div>
       </div>
       <ErrorBox error={q.error} />
-      <DataTable<R> data={rows} loading={q.isLoading} columns={cols} title={`Buku besar ${d?.akun.nama || akun}`} storageKey="bb-akun" canExport={can('laporan.laba', 'ekspor')}
+      <DataTable<R> exportSubtitle={periodeLabel(from, to)} data={rows} loading={q.isLoading} columns={cols} title={`Buku besar ${d?.akun.nama || akun}`} storageKey="bb-akun" canExport={can('laporan.laba', 'ekspor')}
         toolbar={<select id="bb-akun" className="input w-auto min-w-[240px]" value={akun} onChange={(e) => onPick(e.target.value)}>
           {(d?.accounts || [{ kode: akun, nama: akun, tipe: 'aset' as const }]).map((a) => <option key={a.kode} value={a.kode}>{kodeTampil(a.kode)} · {a.nama}</option>)}
         </select>}

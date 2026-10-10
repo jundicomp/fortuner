@@ -6,6 +6,8 @@ import { Header } from './Header';
 import { ChangePasswordModal } from '@/pages/ChangePassword';
 import { useAuth } from '@/auth/AuthContext';
 import { useSettings } from '@/lib/queries';
+import { setExportMeta } from '@/components/table/exportXlsx';
+import { useToast } from '@/components/ui/Toast';
 
 const KEY = 'fortuner-sidebar-collapsed';
 
@@ -17,6 +19,15 @@ export function AppLayout() {
   const [pwOpen, setPwOpen] = useState(false);
   const loc = useLocation();
   useEffect(() => setMobileOpen(false), [loc.pathname]);
+  // kop & catatan kaki file Excel
+  useEffect(() => { setExportMeta({ company: settings.data?.nama_usaha, user: user?.nama }); }, [settings.data?.nama_usaha, user?.nama]);
+  // aplikasi PC: beri tahu lokasi file hasil export
+  const toast = useToast();
+  useEffect(() => {
+    const on = (e: Event) => toast(`Tersimpan di Downloads: ${(e as CustomEvent<{ name: string }>).detail.name}`);
+    window.addEventListener('fortuner:file-saved', on);
+    return () => window.removeEventListener('fortuner:file-saved', on);
+  }, [toast]);
 
   const burger = () => {
     if (window.matchMedia('(min-width: 1024px)').matches) {

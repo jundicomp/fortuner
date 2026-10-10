@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.1.5",
+    "tanggal": "2026-10-10",
+    "catatan": [
+      "Export Excel di aplikasi PC sudah berfungsi: file tersimpan di folder Downloads lalu langsung terbuka.",
+      "Tampilan file Excel lebih rapi: nama usaha, judul tabel, dan periode/filter di atas; header kolom hijau tua tulisan putih rata tengah; baris total; catatan waktu export di bawah tabel.",
+      "Header kolom tabel di aplikasi rata tengah, sama dengan file Excel."
+    ]
+  },
+  {
     "version": "1.1.4",
     "tanggal": "2026-10-10",
     "catatan": [

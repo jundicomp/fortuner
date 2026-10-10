@@ -3,7 +3,7 @@ import { AlertTriangle, ClipboardCheck, PackagePlus, Plus, ShoppingBag } from 'l
 import { useEffect, useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { DataTable } from '@/components/table/DataTable';
-import { DateRangeFilter, rangeFor, type DateRange } from '@/components/table/DateRangeFilter';
+import { DateRangeFilter, periodeLabel, rangeFor, type DateRange } from '@/components/table/DateRangeFilter';
 import { ErrorBox, Field, PageHeader, Switch } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
@@ -143,7 +143,7 @@ function KartuTab({ mats, id, onPick, seeCost }: { mats: Material[]; id: string;
         <Stat label="Keluar" v={d ? dec(d.keluar) : '…'} tone="text-bad" />
         <Stat label="Saldo akhir" v={d ? `${dec(d.saldo_akhir)} ${d.material.satuan}` : '…'} />
       </div>
-      <DataTable<StockMove> data={rows} loading={q.isLoading} columns={cols} title={`Kartu stok ${d?.material.nama || ''}`} storageKey="stok-kartu" canExport={can('stok', 'ekspor')}
+      <DataTable<StockMove> exportSubtitle={periodeLabel(range.from, range.to)} data={rows} loading={q.isLoading} columns={cols} title={`Kartu stok ${d?.material.nama || ''}`} storageKey="stok-kartu" canExport={can('stok', 'ekspor')}
         toolbar={<>
           <select id="kartu-bahan" className="input w-auto min-w-[200px]" value={id} onChange={(e) => onPick(e.target.value)}>{mats.map((m) => <option key={m.id} value={m.id}>{m.nama}</option>)}</select>
           <DateRangeFilter value={range} onChange={setRange} id="kartu-range" />

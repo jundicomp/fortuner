@@ -4,7 +4,7 @@ import { Link } from 'react-router-dom';
 import type { ColumnDef } from '@tanstack/react-table';
 import { Download, Info, Lock } from 'lucide-react';
 import { DataTable } from '@/components/table/DataTable';
-import { DateRangeFilter, rangeFor, type DateRange } from '@/components/table/DateRangeFilter';
+import { DateRangeFilter, periodeLabel, rangeFor, type DateRange } from '@/components/table/DateRangeFilter';
 import { exportBook } from '@/components/table/exportXlsx';
 import { TrendBars } from '@/components/TrendBars';
 import { ErrorBox, PageHeader } from '@/components/ui/Field';
@@ -214,7 +214,7 @@ function Rincian({ tab, d, loading }: { tab: string; d: Report; loading: boolean
         { id: 'margin', accessorFn: (x) => (x.hpp_lengkap && x.omzet ? (x.laba || 0) / x.omzet : null), header: 'Margin', meta: { align: 'right' }, cell: (c) => <span className="num text-xs">{c.getValue() == null ? '–' : `${(c.getValue() * 100).toFixed(0)}%`}</span> },
       ] as ColumnDef<Produk, any>[] : []),
     ];
-    return <DataTable<Produk> key="p" data={d.per_produk} columns={cols} title="Laporan_produk" storageKey="lap-produk" {...common} cardTitle={(x) => x.nama} />;
+    return <DataTable<Produk> key="p" exportSubtitle={periodeLabel(d.from, d.to)} data={d.per_produk} columns={cols} title="Laporan_produk" storageKey="lap-produk" {...common} cardTitle={(x) => x.nama} />;
   }
   if (tab === 'cs') {
     const cols: ColumnDef<Cs, any>[] = [
@@ -225,7 +225,7 @@ function Rincian({ tab, d, loading }: { tab: string; d: Report; loading: boolean
       { id: 'rata', accessorFn: (x) => (x.nota ? x.omzet / x.nota : 0), header: 'Rata-rata nota', meta: { align: 'right', money: true }, cell: money },
       { id: 'porsi', accessorFn: (x) => x.omzet, header: 'Porsi', enableSorting: false, meta: { align: 'right', hideOnCard: true }, cell: (c) => share(c.getValue(), omzet) },
     ];
-    return <DataTable<Cs> key="c" data={d.per_cs} columns={cols} title="Laporan_CS" storageKey="lap-cs" {...common} cardTitle={(x) => x.nama} />;
+    return <DataTable<Cs> key="c" exportSubtitle={periodeLabel(d.from, d.to)} data={d.per_cs} columns={cols} title="Laporan_CS" storageKey="lap-cs" {...common} cardTitle={(x) => x.nama} />;
   }
   if (tab === 'mesin') {
     const cols: ColumnDef<Mesin, any>[] = [
@@ -235,7 +235,7 @@ function Rincian({ tab, d, loading }: { tab: string; d: Report; loading: boolean
       { accessorKey: 'omzet', header: 'Omzet', meta: { ...right, money: true }, cell: (c) => <b className="num">{nf(c.getValue())}</b> },
       { id: 'porsi', accessorFn: (x) => x.omzet, header: 'Porsi', enableSorting: false, meta: { align: 'right', hideOnCard: true }, cell: (c) => share(c.getValue(), omzet) },
     ];
-    return <DataTable<Mesin> key="m" data={d.per_mesin} columns={cols} title="Laporan_mesin" storageKey="lap-mesin" {...common} cardTitle={(x) => x.nama} />;
+    return <DataTable<Mesin> key="m" exportSubtitle={periodeLabel(d.from, d.to)} data={d.per_mesin} columns={cols} title="Laporan_mesin" storageKey="lap-mesin" {...common} cardTitle={(x) => x.nama} />;
   }
   if (tab === 'metode') {
     const cols: ColumnDef<Metode, any>[] = [
@@ -245,7 +245,7 @@ function Rincian({ tab, d, loading }: { tab: string; d: Report; loading: boolean
       { accessorKey: 'masuk', header: 'Uang masuk', meta: { ...right, money: true }, cell: (c) => <b className="num">{nf(c.getValue())}</b> },
       { id: 'porsi', accessorFn: (x) => x.masuk, header: 'Porsi', enableSorting: false, meta: { align: 'right', hideOnCard: true }, cell: (c) => share(c.getValue(), d.ringkas.masuk) },
     ];
-    return <DataTable<Metode> key="t" data={d.per_metode} columns={cols} title="Laporan_metode_bayar" storageKey="lap-metode" {...common} cardTitle={(x) => x.nama} />;
+    return <DataTable<Metode> key="t" exportSubtitle={periodeLabel(d.from, d.to)} data={d.per_metode} columns={cols} title="Laporan_metode_bayar" storageKey="lap-metode" {...common} cardTitle={(x) => x.nama} />;
   }
   if (tab === 'konsumen') {
     const cols: ColumnDef<Konsumen, any>[] = [
@@ -255,7 +255,7 @@ function Rincian({ tab, d, loading }: { tab: string; d: Report; loading: boolean
       { accessorKey: 'omzet', header: 'Omzet', meta: { ...right, money: true }, cell: (c) => <b className="num">{nf(c.getValue())}</b> },
       { accessorKey: 'sisa', header: 'Sisa piutang', meta: { ...right, money: true }, cell: (c) => <span className={`num ${c.getValue() ? 'font-semibold text-bad' : 'text-muted'}`}>{nf(c.getValue())}</span> },
     ];
-    return <DataTable<Konsumen> key="k" data={d.per_konsumen} columns={cols} title="Laporan_konsumen" storageKey="lap-konsumen" {...common} cardTitle={(x) => x.nama} />;
+    return <DataTable<Konsumen> key="k" exportSubtitle={periodeLabel(d.from, d.to)} data={d.per_konsumen} columns={cols} title="Laporan_konsumen" storageKey="lap-konsumen" {...common} cardTitle={(x) => x.nama} />;
   }
   const cols: ColumnDef<Kategori, any>[] = [
     { accessorKey: 'nama', header: 'Kategori', cell: (c) => <span className="font-semibold">{c.getValue()}</span> },
@@ -264,5 +264,5 @@ function Rincian({ tab, d, loading }: { tab: string; d: Report; loading: boolean
     { accessorKey: 'total', header: 'Total', meta: { ...right, money: true }, cell: (c) => <b className="num">{nf(c.getValue())}</b> },
     { id: 'porsi', accessorFn: (x) => x.total, header: 'Porsi', enableSorting: false, meta: { align: 'right', hideOnCard: true }, cell: (c) => share(c.getValue(), d.ringkas.pengeluaran_total) },
   ];
-  return <DataTable<Kategori> key="g" data={d.per_kategori} columns={cols} title="Laporan_pengeluaran" storageKey="lap-kategori" {...common} emptyText="Belum ada pengeluaran di periode ini." cardTitle={(x) => x.nama} />;
+  return <DataTable<Kategori> key="g" exportSubtitle={periodeLabel(d.from, d.to)} data={d.per_kategori} columns={cols} title="Laporan_pengeluaran" storageKey="lap-kategori" {...common} emptyText="Belum ada pengeluaran di periode ini." cardTitle={(x) => x.nama} />;
 }

@@ -3,7 +3,7 @@ import { Plus, Trash2, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { DataTable } from '@/components/table/DataTable';
-import { DateRangeFilter, rangeFor, type DateRange } from '@/components/table/DateRangeFilter';
+import { DateRangeFilter, periodeLabel, rangeFor, type DateRange } from '@/components/table/DateRangeFilter';
 import { ErrorBox, Field, PageHeader } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
@@ -68,7 +68,7 @@ export function PembelianPage() {
         </section>
       </div>
       <DataTable<Purchase> data={rows} loading={q.isLoading} columns={cols} title="Pembelian bahan" storageKey="pembelian" canExport={can('pembelian', 'ekspor')} onRowClick={setView}
-        toolbar={<DateRangeFilter value={range} onChange={setRange} id="pur-range" />} searchPlaceholder="Cari nota, supplier, bahan…"
+        exportSubtitle={periodeLabel(range.from, range.to)} toolbar={<DateRangeFilter value={range} onChange={setRange} id="pur-range" />} searchPlaceholder="Cari nota, supplier, bahan…"
         cardTitle={(r) => <span className="flex justify-between gap-2"><span>{r.supplier || 'Tanpa supplier'}</span><span className="num text-sm">{tgl(r.tanggal)}</span></span>} emptyText="Belum ada pembelian di periode ini." />
       {form && meta.data && <PurchaseForm meta={meta.data} last={lastBuy(all.data)} onClose={() => setForm(false)} />}
       {view && (

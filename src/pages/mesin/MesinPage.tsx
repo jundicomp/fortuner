@@ -3,7 +3,7 @@ import { Gauge, Save } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { DataTable } from '@/components/table/DataTable';
-import { DateRangeFilter, rangeFor, type DateRange } from '@/components/table/DateRangeFilter';
+import { DateRangeFilter, periodeLabel, rangeFor, type DateRange } from '@/components/table/DateRangeFilter';
 import { ErrorBox, Field, PageHeader } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
@@ -59,7 +59,7 @@ export function MesinPage() {
       <h2 className="mb-3 mt-8 text-base font-bold">Riwayat counter</h2>
       <DataTable<CRow> data={(hist.data?.rows || []).filter((r) => r.id || r.klik_fo)} loading={hist.isLoading} columns={cols} title="Counter_mesin" storageKey="mesin-history"
         initialSort={[{ id: 'tanggal', desc: true }]} canExport={can('mesin', 'ekspor') || can('mesin', 'lihat')}
-        toolbar={<DateRangeFilter value={range} onChange={setRange} id="mesin-range" />} emptyText="Belum ada data counter di periode ini."
+        exportSubtitle={periodeLabel(range.from, range.to)} toolbar={<DateRangeFilter value={range} onChange={setRange} id="mesin-range" />} emptyText="Belum ada data counter di periode ini."
         cardTitle={(r) => <span className="flex justify-between"><span>{mName[r.mesin_id]}</span><span className="num text-sm text-muted">{tgl(r.tanggal)}</span></span>} />
     </>
   );
