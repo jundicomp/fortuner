@@ -9,7 +9,7 @@ import { ReceiptModal } from '@/components/ReceiptModal';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/auth/AuthContext';
 import { loadPos, newClientId, sync, useSync, type OutboxOp } from '@/lib/offline';
-import { CUT_SIZES, namaSisi } from '@/lib/pricing';
+import { CUT_SIZES, namaSisi, sisiLabel } from '@/lib/pricing';
 import { jam, nf, rp, ymd } from '@/lib/format';
 import { directReady, drawerForCash, openDrawer, paperWidth, printerSettings } from '@/platform/printer';
 import type { Order, OrderDetail } from '@/types';
@@ -190,8 +190,8 @@ function PayPanel({ row, methods, onBack, onDone, kasirNama, active }: { row: Qu
   const s = useSync();
   const detail = useQuery({ queryKey: ['order', row.id], queryFn: () => api<OrderDetail>('orders.get', { order_id: row.id }), enabled: !row.pending && s.online, retry: 0 });
   const op = s.outbox.find((o) => o.id === row.id);
-  const items = detail.data?.items.map((i) => ({ nama: namaSisi(i.nama_produk, i.sisi) + (i.jenis_harga === 'cutting' ? ` · ${CUT_SIZES[i.ukuran_cutting]}` : ''), keterangan: i.keterangan, qty: i.qty, harga: i.harga_satuan }))
-    || op?.view?.items || [];
+  const items = detail.data?.items.map((i) => ({ nama: namaSisi(i.nama_produk, i.sisi) + (i.jenis_harga === 'cutting' ? ` · ${CUT_SIZES[i.ukuran_cutting]}` : ''), keterangan: i.keterangan, qty: i.qty, harga: i.harga_satuan, sisi: i.sisi, jenis: i.jenis_harga }))
+    || (op?.view?.items || []).map((i) => ({ ...i, sisi: undefined as number | undefined, jenis: undefined as string | undefined }));
   const methodList: Method[] = methods.length ? methods : detail.data?.payment_methods || [];
   const sisa = row.sisa;
   const [methodId, setMethodId] = useState(methodList.find((m) => m.jenis === 'tunai')?.id || methodList[0]?.id || '');
@@ -297,7 +297,7 @@ function PayPanel({ row, methods, onBack, onDone, kasirNama, active }: { row: Qu
             {detail.isLoading && <tr><td colSpan={4} className="px-3 py-3 text-muted">Memuat isi nota…</td></tr>}
             {items.map((i, k) => (
               <tr key={k}>
-                <td className="px-2.5 py-2"><span className="font-semibold">{i.nama}</span>{i.keterangan && <span className="text-muted"> · {i.keterangan}</span>}</td>
+                <td className="px-2.5 py-2"><span className="font-semibold">{i.nama}</span>{i.jenis === 'matriks' && <span className={`pill ${i.sisi === 2 ? 'pill-brand' : 'pill-mute'} !text-ink ml-1.5 align-middle`}>{sisiLabel(i.sisi)}</span>}{i.keterangan && <span className="text-muted"> · {i.keterangan}</span>}</td>
                 <td className="num px-2 py-2 text-right">{nf(i.qty)}</td>
                 <td className="px-2 py-2"><Money v={i.harga} /></td>
                 <td className="px-2 py-2 font-semibold"><Money v={i.qty * i.harga} /></td>

@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.2.2",
+    "tanggal": "2026-10-15",
+    "catatan": [
+      "Keterangan 1 sisi / 2 sisi (BB) tampil di tabel isi nota Front Office, tabel Kasir, dan di setiap item Nota/SPK (layar, cetak thermal, gambar WhatsApp)."
+    ]
+  },
+  {
     "version": "1.2.1",
     "tanggal": "2026-10-15",
     "catatan": [

@@ -3,7 +3,7 @@ import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import { CheckCircle2, Printer, TriangleAlert, X } from 'lucide-react';
 import { directReady, printDirect, printerSettings } from '@/platform/printer';
 import { nf, tglJam } from '@/lib/format';
-import { CUT_SIZES, namaSisi } from '@/lib/pricing';
+import { CUT_SIZES, namaSisi, sisiLabel } from '@/lib/pricing';
 import { footerOf, KEEP_NOTE, no4, SAH_NOTE, statusOf, terbilang, untukLabel, viaLabel } from '@/lib/receiptText';
 import { code128 } from '@/lib/code128';
 import '@fontsource/inter/latin-600.css';
@@ -16,7 +16,7 @@ export interface ReceiptData {
   waktu: string;
   customer: string;
   cs: string;
-  items: { nama: string; keterangan?: string; qty: number; sisi?: number; ukuran?: number | null; harga: number; subtotal: number; manual?: boolean }[];
+  items: { nama: string; keterangan?: string; qty: number; sisi?: number; jenis?: string; ukuran?: number | null; harga: number; subtotal: number; manual?: boolean }[];
   total: number;
   payments: { label: string; nominal: number }[];
   sisa: number;
@@ -99,7 +99,7 @@ function NotaPart({ d }: { d: ReceiptData }) {
       {d.items.map((it, i) => (
         <div key={i} className="rc-item">
           <div className="rc-b">{namaSisi(it.nama, it.sisi)}{it.ukuran != null ? ` · ${CUT_SIZES[it.ukuran]}` : ''}</div>
-          <R l={`${nf(it.qty)} × ${nf(it.harga)}${it.keterangan ? ` · ${it.keterangan}` : ''}`} r={nf(it.subtotal)} />
+          <R l={`${nf(it.qty)} × ${nf(it.harga)}${it.jenis === 'matriks' ? ` · ${sisiLabel(it.sisi)}` : ''}${it.keterangan ? ` · ${it.keterangan}` : ''}`} r={nf(it.subtotal)} />
         </div>
       ))}
       <div className="rc-hr" />

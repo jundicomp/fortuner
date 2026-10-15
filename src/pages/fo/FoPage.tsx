@@ -142,7 +142,7 @@ export function FoPage() {
     };
     const receipt = (nomor: string, offline: boolean): ReceiptData => ({
       nomor, waktu: nowIso, customer: customer.nama, tipe: tipeLabel(customer.tipe), telp: customer.telp, cs: user?.nama?.split(' ')[0] || '', offline, catatan: catatan.trim(), jenis: 'spk', desain: desain.trim(), janji_selesai: janji,
-      items: cart.map((i) => ({ nama: i.nama, keterangan: i.keterangan, qty: i.qty, sisi: i.sisi, ukuran: i.jenis === 'cutting' ? i.ukuran : null, harga: i.harga || 0, subtotal: (i.harga || 0) * i.qty })),
+      items: cart.map((i) => ({ nama: i.nama, keterangan: i.keterangan, qty: i.qty, sisi: i.sisi, jenis: i.jenis, ukuran: i.jenis === 'cutting' ? i.ukuran : null, harga: i.harga || 0, subtotal: (i.harga || 0) * i.qty })),
       total, payments: [], sisa: total,
     });
     const finish = (r: Done) => {
@@ -208,7 +208,7 @@ export function FoPage() {
   const preview: ReceiptData = {
     jenis: 'spk', nomor: nextNomor || '----', waktu: new Date().toISOString(), customer: customer?.nama || '-', tipe: tipeLabel(customer?.tipe), telp: customer?.telp,
     cs: user?.nama?.split(' ')[0] || '', catatan: catatan.trim(), desain: desain.trim(), janji_selesai: janji, offline: !syncState.online,
-    items: cart.map((i) => ({ nama: i.nama, keterangan: i.keterangan, qty: i.qty, sisi: i.sisi, ukuran: i.jenis === 'cutting' ? i.ukuran : null, harga: i.harga || 0, subtotal: (i.harga || 0) * i.qty })),
+    items: cart.map((i) => ({ nama: i.nama, keterangan: i.keterangan, qty: i.qty, sisi: i.sisi, jenis: i.jenis, ukuran: i.jenis === 'cutting' ? i.ukuran : null, harga: i.harga || 0, subtotal: (i.harga || 0) * i.qty })),
     total, payments: [], sisa: total,
   };
   const telpOk = customer?.telp && customer.telp !== '-';
@@ -291,18 +291,19 @@ export function FoPage() {
               {cart.length > 0 && <button className="btn btn-ghost btn-sm" onClick={() => setCart([])}><Trash2 size={14} />Kosongkan</button>}
             </div>
             <div className="overflow-x-auto">
-              <table className="tbl w-full text-sm">
+              <table className="tbl w-full min-w-[700px] text-sm">
                 <thead><tr>
-                  <th className="w-14 px-2 py-2 text-[11px]">KODE</th>
-                  <th className="px-2 py-2 text-[11px]">PRODUK · KETERANGAN</th>
-                  <th className="w-36 px-2 py-2 text-[11px]">JUMLAH</th>
-                  <th className="w-16 px-2 py-2 text-[11px]">KLIK</th>
-                  <th className="w-28 px-2 py-2 text-[11px]">HARGA</th>
-                  <th className="w-32 px-2 py-2 text-[11px]">SUBTOTAL</th>
+                  <th className="w-12 px-1 py-2 text-[11px]">KODE</th>
+                  <th className="min-w-[160px] px-2 py-2 text-[11px]">PRODUK · KETERANGAN</th>
+                  <th className="w-[118px] px-2 py-2 text-[11px]">JUMLAH</th>
+                  <th className="w-[88px] px-1 py-2 text-[11px]">SISI</th>
+                  <th className="w-12 px-2 py-2 text-[11px]">KLIK</th>
+                  <th className="w-24 px-2 py-2 text-[11px]">HARGA</th>
+                  <th className="w-28 px-2 py-2 text-[11px]">SUBTOTAL</th>
                   <th className="w-10 px-1 py-2"><span className="sr-only">Hapus</span></th>
                 </tr></thead>
                 <tbody>
-                  {!cart.length && <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-muted">Ketik kode atau nama produk di atas lalu tekan Enter.</td></tr>}
+                  {!cart.length && <tr><td colSpan={8} className="px-4 py-10 text-center text-sm text-muted">Ketik kode atau nama produk di atas lalu tekan Enter.</td></tr>}
                   {cart.map((it) => (
                     <tr key={it.key}>
                       <td className="px-2 py-2 text-center font-mono text-xs">{prodById[it.product_id]?.kode || '–'}</td>
@@ -315,10 +316,11 @@ export function FoPage() {
                       <td className="px-1.5 py-1.5">
                         <div className="flex items-center justify-center gap-1">
                           <button className="btn btn-sm px-1.5" onClick={() => setQty(it.key, it.qty - 1)} aria-label="Kurangi"><Minus size={13} /></button>
-                          <input aria-label={`Jumlah ${it.nama}`} className="input num w-16 px-1.5 py-1 text-center" inputMode="numeric" value={it.qty} onChange={(e) => setQty(it.key, numIn(e.target.value))} />
+                          <input aria-label={`Jumlah ${it.nama}`} className="input num w-12 px-1 py-1 text-center" inputMode="numeric" value={it.qty} onChange={(e) => setQty(it.key, numIn(e.target.value))} />
                           <button className="btn btn-sm px-1.5" onClick={() => setQty(it.key, it.qty + 1)} aria-label="Tambah"><Plus size={13} /></button>
                         </div>
                       </td>
+                      <td className="px-2 py-2 text-center">{it.jenis === 'matriks' ? <span className={`pill ${it.sisi === 2 ? 'pill-brand' : 'pill-mute'} !text-ink`}>{sisiLabel(it.sisi)}</span> : <span className="text-muted">–</span>}</td>
                       <td className="num px-2 py-2 text-right text-muted">{it.jenis === 'matriks' ? nf(it.qty * it.sisi) : '–'}</td>
                       <td className="px-2 py-2"><Money v={it.harga} /></td>
                       <td className="px-2 py-2 font-bold"><Money v={(it.harga || 0) * it.qty} /></td>
@@ -326,7 +328,7 @@ export function FoPage() {
                     </tr>
                   ))}
                 </tbody>
-                {cart.length > 0 && <tfoot><tr><td colSpan={5} className="px-2.5 py-2 text-right font-bold">Total</td><td className="px-2 py-2 font-extrabold"><Money v={total} /></td><td /></tr></tfoot>}
+                {cart.length > 0 && <tfoot><tr><td colSpan={6} className="px-2.5 py-2 text-right font-bold">Total</td><td className="px-2 py-2 font-extrabold"><Money v={total} /></td><td /></tr></tfoot>}
               </table>
             </div>
           </section>

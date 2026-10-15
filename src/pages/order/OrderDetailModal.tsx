@@ -68,7 +68,7 @@ export function OrderDetailModal({ orderId, onClose }: { orderId: string; onClos
     const oo = dd.order;
     return {
       nomor: oo.nomor, customer: oo.customer_nama || '', tipe: tipeLabel(oo.customer_tipe), telp: oo.customer_telp, offline: oo.dibuat_offline, total: oo.total, item_count: dd.items.length,
-      items: dd.items.map((i) => ({ nama: i.nama_produk, keterangan: i.keterangan, qty: i.qty, sisi: i.sisi, ukuran: i.jenis_harga === 'cutting' ? i.ukuran_cutting : null, harga: i.harga_satuan, subtotal: i.subtotal })),
+      items: dd.items.map((i) => ({ nama: i.nama_produk, keterangan: i.keterangan, qty: i.qty, sisi: i.sisi, jenis: i.jenis_harga, ukuran: i.jenis_harga === 'cutting' ? i.ukuran_cutting : null, harga: i.harga_satuan, subtotal: i.subtotal })),
     };
   };
   /** Kwitansi untuk pembayaran ke-(i+1): nominal pembayaran itu saja, merujuk ke nota. */

@@ -3,7 +3,7 @@
  * Hasilnya array byte yang dikirim mentah ke printer (USB lewat spooler Windows, atau LAN port 9100).
  * Tidak bergantung pada browser/Tauri supaya bisa diuji di Node.
  */
-import { CUT_SIZES, namaSisi } from './pricing';
+import { CUT_SIZES, namaSisi, sisiLabel } from './pricing';
 import type { ReceiptData, ReceiptShop } from '@/components/Receipt';
 import { footerOf, KEEP_NOTE, no4, SAH_NOTE, statusOf, terbilang, untukLabel, viaLabel } from './receiptText';
 
@@ -157,7 +157,7 @@ export function receiptEscPos(d: ReceiptData, shop: ReceiptShop, o: EscOptions):
     p.kv(rows).hr('=');
     d.items.forEach((it) => {
       p.bold(true).text(namaSisi(it.nama, it.sisi) + (it.ukuran != null ? ' - ' + CUT_SIZES[it.ukuran] : '')).bold(false);
-      p.row(`${nfi(it.qty)} x ${nfi(it.harga)}${it.keterangan ? ' - ' + it.keterangan : ''}`, nfi(it.subtotal));
+      p.row(`${nfi(it.qty)} x ${nfi(it.harga)}${it.jenis === 'matriks' ? ' - ' + sisiLabel(it.sisi) : ''}${it.keterangan ? ' - ' + it.keterangan : ''}`, nfi(it.subtotal));
     });
     p.hr();
     p.bold(true);
