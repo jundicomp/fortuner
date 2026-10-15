@@ -5,7 +5,7 @@ import { PageHeader } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 import { useAuth } from '@/auth/AuthContext';
-import { CUT_SIZES } from '@/lib/pricing';
+import { CUT_SIZES, namaSisi } from '@/lib/pricing';
 import { nf, tglJam } from '@/lib/format';
 import { OrderDetailModal } from '@/pages/order/OrderDetailModal';
 
@@ -69,7 +69,7 @@ export function ProduksiPage() {
         <button className="font-mono font-bold hover:text-brand" onClick={() => setOpen(i.order_id)}>{i.nomor}</button>
         {!mesin && <span className="font-mono uppercase text-brand">{mName[i.mesin_id] || '–'}</span>}
       </div>
-      <div className="mt-1.5 font-bold leading-snug">{i.nama_produk}{i.sisi === 2 ? ' · BB' : ''}{i.jenis_harga === 'cutting' ? ` · ${CUT_SIZES[i.ukuran_cutting]}` : ''}{i.kertas_sendiri && <span className="pill pill-warn ml-1.5 align-middle">Kertas konsumen</span>}</div>
+      <div className="mt-1.5 font-bold leading-snug">{namaSisi(i.nama_produk, i.sisi)}{i.jenis_harga === 'cutting' ? ` · ${CUT_SIZES[i.ukuran_cutting]}` : ''}{i.kertas_sendiri && <span className="pill pill-warn ml-1.5 align-middle">Kertas konsumen</span>}</div>
       <div className="num mt-0.5 text-sm">{nf(i.qty)} lembar{i.klik !== i.qty ? ` · ${nf(i.klik)} klik` : ''}</div>
       {i.keterangan && <div className="mt-1 text-sm text-muted">{i.keterangan}</div>}
       <div className="mt-2 flex flex-col gap-1 text-xs text-muted">

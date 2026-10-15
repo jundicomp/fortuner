@@ -255,7 +255,7 @@ function createOrder(c: Ctx, p: any) {
     const qty = Math.round(Number(r.qty));
     if (!(qty >= 1 && qty <= 1000000)) fail('VALIDATION', `Item ${idx + 1}: jumlah tidak valid.`);
     const jenis = str(prod!.jenis_harga);
-    const sisi = jenis === 'matriks' && Number(r.sisi) === 2 ? 2 : 1;
+    const sisi = jenis === 'matriks' && Number(prod!.sisi) === 2 ? 2 : 1; // 1 sisi / 2 sisi (BB) melekat di produk
     const ukuran = jenis === 'cutting' ? Math.max(0, Math.min(3, Math.round(Number(r.ukuran) || 0))) : 0;
     const prow = hargaBerlaku(prices.filter((x) => x.product_id === prod!.id) as any, tanggal) as any;
     const calc = hitungHarga({ jenis: jenis as any, harga: prow, tipe, qty, sisi: sisi as 1 | 2, ukuran, minQtyBanyak: minQty });
@@ -345,6 +345,29 @@ function tiersFrom(p: any): Row {
   const o: Row = {};
   TIERS.forEach((t) => (o[t.key] = numOrNull(p[t.key])));
   return o;
+}
+
+const BB_KEYS = ['rb_bb', 'rs_bb', 'eb_bb', 'es_bb'] as const;
+/**
+ * Harga BB (2 sisi) model lama → produk 2 sisi tersendiri: kode "<kode>BB", nama "<nama> BB",
+ * mesin/kategori/resep sama, harga diambil dari kolom BB. Dipakai saat import dan tombol "Pisahkan BB".
+ */
+function splitBB(c: Ctx, base: Row, harga: Row, mulai: string, catatan: string): 'baru' | 'ubah' | '' {
+  const tiers: Row = { rb: harga.rb_bb ?? null, rs: harga.rs_bb ?? null, eb: harga.eb_bb ?? null, es: harga.es_bb ?? null, rb_bb: null, rs_bb: null, eb_bb: null, es_bb: null };
+  if (['rb', 'rs', 'eb', 'es'].every((k) => tiers[k] == null)) return '';
+  const kode = `${str(base.kode)}BB`;
+  const nama = /(^|\s)bb(\s|$)/i.test(str(base.nama)) ? str(base.nama) : `${str(base.nama)} BB`;
+  const data = { kode, nama, kategori: base.kategori, mesin_id: base.mesin_id, jenis_harga: 'matriks', satuan: base.satuan || 'lembar', aktif: base.aktif !== false, kertas_sendiri: bool(base.kertas_sendiri), sisi: 2 };
+  let row = c.s.all('products').find((x) => str(x.kode).toLowerCase() === kode.toLowerCase());
+  let hasil: 'baru' | 'ubah';
+  if (row) { c.s.update('products', 'id', str(row.id), { ...data, ...stamp(c, false) }); hasil = 'ubah'; }
+  else {
+    row = c.s.insert('products', { id: newId(c.env, 'prd'), ...data, ...stamp(c, true) }); hasil = 'baru';
+    c.s.all('recipes').filter((r) => r.product_id === base.id).forEach((r) => c.s.insert('recipes', { ...r, id: newId(c.env, 'rcp'), product_id: row!.id, ...stamp(c, true) }));
+  }
+  const cur = hargaBerlaku(c.s.all('price_history').filter((x) => x.product_id === row!.id) as any, mulai) as any;
+  if (!cur || ['rb', 'rs', 'eb', 'es'].some((k) => (cur[k] ?? null) !== (tiers[k] ?? null))) { try { addPrice(c, str(row!.id), mulai, tiers, catatan); } catch { /* harga terjadwal lebih baru: biarkan */ } }
+  return hasil;
 }
 
 /** Tambah harga baru untuk produk. Harga lama diberi tanggal akhir, tidak pernah dihapus. */
@@ -554,18 +577,41 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
       return c.s.withLock(() => {
         if (c.s.all('products').some((x) => str(x.kode).toLowerCase() === str(r.kode).toLowerCase() && x.id !== r.id)) fail('VALIDATION', `Kode produk ${r.kode} sudah dipakai.`);
         const ks = bool(r.kertas_sendiri);
-        const data = { kode: str(r.kode), nama: str(r.nama), kategori: str(r.kategori) || (ks ? 'Kertas sendiri' : ''), mesin_id: str(r.mesin_id), jenis_harga: r.jenis_harga, satuan: str(r.satuan) || 'lembar', aktif: r.aktif !== false, kertas_sendiri: ks };
+        const data = { kode: str(r.kode), nama: str(r.nama), kategori: str(r.kategori) || (ks ? 'Kertas sendiri' : ''), mesin_id: str(r.mesin_id), jenis_harga: r.jenis_harga, satuan: str(r.satuan) || 'lembar', aktif: r.aktif !== false, kertas_sendiri: ks, sisi: r.jenis_harga === 'matriks' && Number(r.sisi) === 2 ? 2 : 1 };
         if (ks) c.s.all('recipes').filter((x) => x.product_id === r.id).forEach((x) => c.s.remove('recipes', 'id', str(x.id))); // upah print: tidak memakai bahan stok
         let row: Row;
         if (isNew) row = c.s.insert('products', { id: newId(c.env, 'prd'), ...data, ...stamp(c, true) });
         else row = c.s.update('products', 'id', r.id, { ...data, ...stamp(c, false) }) || fail('NOT_FOUND', 'Produk tidak ditemukan.');
         if (isNew && p.harga && data.jenis_harga !== 'manual') {
           const t = tiersFrom(p.harga);
+          if (data.jenis_harga === 'matriks') BB_KEYS.forEach((k) => { t[k] = null; });
           if (Object.values(t).some((v) => v != null)) addPrice(c, str(row.id), str(p.harga.berlaku_mulai) || c.env.today(), t, 'Harga awal');
         }
         log(c, isNew ? 'tambah' : 'ubah', 'products', str(row.id), `${isNew ? 'Menambah' : 'Mengubah'} produk ${data.kode} ${data.nama}`);
         return productWithPrice(c.s, row, c.env.today());
       });
+    },
+  },
+  /** Ubah harga BB model lama (kolom BB di produk 1 sisi) menjadi produk 2 sisi tersendiri. */
+  'products.split_bb': {
+    auth: true,
+    fn: (c) => {
+      need(c, 'master.produk', 'tambah');
+      const today = c.env.today();
+      const res = { dibuat: 0, diperbarui: 0 };
+      c.s.withLock(() => {
+        const prices = c.s.all('price_history');
+        c.s.all('products').filter((p) => p.jenis_harga === 'matriks' && Number(p.sisi) !== 2).forEach((p) => {
+          const h = hargaBerlaku(prices.filter((x) => x.product_id === p.id) as any, today) as any;
+          if (!h || !BB_KEYS.some((k) => h[k] != null)) return;
+          const r = splitBB(c, p, h, today, 'Dipisah dari harga BB');
+          if (r === 'baru') res.dibuat++; else if (r === 'ubah') res.diperbarui++;
+          // harga 1 sisi tetap; kolom BB lama dikosongkan supaya tidak membingungkan
+          try { addPrice(c, str(p.id), today, { rb: h.rb ?? null, rs: h.rs ?? null, eb: h.eb ?? null, es: h.es ?? null, rb_bb: null, rs_bb: null, eb_bb: null, es_bb: null }, 'Harga BB dipindah ke produk 2 sisi'); } catch { /* ada harga terjadwal: kolom BB lama dibiarkan, tidak dipakai lagi */ }
+        });
+      });
+      log(c, 'pisah_bb', 'products', '', `Pisahkan harga BB: ${res.dibuat} produk 2 sisi baru, ${res.diperbarui} diperbarui`);
+      return res;
     },
   },
   'price.history': {
@@ -582,7 +628,9 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
       const prod = c.s.all('products').find((x) => x.id === p.product_id) || fail('NOT_FOUND', 'Produk tidak ditemukan.');
       return c.s.withLock(() => {
         const mulai = str(p.berlaku_mulai) || c.env.today();
-        const res = addPrice(c, str(p.product_id), mulai, tiersFrom(p), str(p.catatan));
+        const t = tiersFrom(p);
+        if ((prod as Row).jenis_harga === 'matriks') BB_KEYS.forEach((k) => { t[k] = null; }); // 2 sisi = produk tersendiri
+        const res = addPrice(c, str(p.product_id), mulai, t, str(p.catatan));
         log(c, res.koreksi ? 'koreksi_harga' : 'harga_baru', 'price_history', str(res.row!.id),
           `${res.koreksi ? 'Koreksi' : 'Harga baru'} ${(prod as Row).nama} berlaku ${mulai}${pctLabel(res.sebelum, res.row)}`, str(p.catatan));
         return res.row;
@@ -613,11 +661,20 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
           }
           // kolom kertas_sendiri (ya/tidak); bila kolom tidak ada, nama berawalan/berisi "KS" dianggap kertas sendiri (kebiasaan di Basis data)
           const ks = r.kertas_sendiri === undefined || r.kertas_sendiri === '' ? /(^|\s)ks(\s|$)/i.test(nama) : bool(r.kertas_sendiri);
-          const data = { kode, nama, kategori: str(r.kategori) || (ks ? 'Kertas sendiri' : ''), mesin_id: mesinId, jenis_harga: jenis, satuan: str(r.satuan) || 'lembar', aktif: r.aktif === undefined || r.aktif === '' ? true : bool(r.aktif), kertas_sendiri: ks };
+          // kolom sisi (1/2, "BB"); bila kosong, nama yang mengandung "BB" dianggap 2 sisi
+          const sisiRaw = str(r.sisi).toLowerCase();
+          const sisi = jenis === 'matriks' && (sisiRaw ? /^(2|bb|2 sisi|bolak)/.test(sisiRaw) : /(^|\s)bb(\s|$)/i.test(nama)) ? 2 : 1;
+          const data = { kode, nama, kategori: str(r.kategori) || (ks ? 'Kertas sendiri' : ''), mesin_id: mesinId, jenis_harga: jenis, satuan: str(r.satuan) || 'lembar', aktif: r.aktif === undefined || r.aktif === '' ? true : bool(r.aktif), kertas_sendiri: ks, sisi };
           let prod = c.s.all('products').find((x) => str(x.kode).toLowerCase() === kode.toLowerCase());
           if (prod) { c.s.update('products', 'id', str(prod.id), { ...data, ...stamp(c, false) }); res.diperbarui++; }
           else { prod = c.s.insert('products', { id: newId(c.env, 'prd'), ...data, ...stamp(c, true) }); res.dibuat++; }
           const t = tiersFrom(r);
+          // format lama (kolom harga BB di baris yang sama): pecah jadi produk 2 sisi tersendiri
+          if (jenis === 'matriks' && sisi === 1 && BB_KEYS.some((k) => t[k] != null)) {
+            const bb = splitBB(c, prod as Row, t, mulai, 'Import Excel');
+            if (bb === 'baru') res.dibuat++; else if (bb === 'ubah') res.diperbarui++;
+          }
+          if (jenis === 'matriks') BB_KEYS.forEach((k) => { t[k] = null; });
           if (jenis !== 'manual' && Object.values(t).some((v) => v != null)) {
             const cur = hargaBerlaku(c.s.all('price_history').filter((x) => x.product_id === prod!.id) as any, mulai) as any;
             const same = cur && TIERS.every((tt) => (cur[tt.key] ?? null) === (t[tt.key] ?? null));

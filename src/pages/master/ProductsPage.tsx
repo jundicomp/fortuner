@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarClock, FileSpreadsheet, Plus, Upload } from 'lucide-react';
+import { CalendarClock, FileSpreadsheet, Plus, Split, Upload } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { DataTable } from '@/components/table/DataTable';
@@ -10,7 +10,7 @@ import { useToast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 import { useAuth } from '@/auth/AuthContext';
 import { useMachines, useSettings } from '@/lib/queries';
-import { CUT_SIZES, JENIS_HARGA, TIERS, hitungHarga, type TierKey } from '@/lib/pricing';
+import { CUT_SIZES, JENIS_HARGA, TIERS, hitungHarga, sisiLabel, type TierKey } from '@/lib/pricing';
 import { nf, rp, tgl, tglJam, ymd } from '@/lib/format';
 import { PriceGrid, priceSummary } from './PriceGrid';
 import { RecipeTab } from './RecipeTab';
@@ -36,6 +36,8 @@ export function ProductsPage() {
     { accessorKey: 'nama', header: 'Nama produk', cell: (c) => <span className="font-semibold">{c.getValue()}{c.row.original.kertas_sendiri && <span className="pill pill-mute ml-1.5 align-middle">Kertas sendiri</span>}</span>, meta: { hideOnCard: true } },
     { accessorKey: 'kategori', header: 'Kategori', meta: { filter: 'select' } },
     { id: 'mesin', accessorFn: (r) => mName[r.mesin_id] || '', header: 'Mesin', meta: { filter: 'select' } },
+    { id: 'sisi', accessorFn: (r) => (r.jenis_harga === 'matriks' ? sisiLabel(r.sisi) : '–'), header: 'Sisi', meta: { filter: 'select' },
+      cell: (c) => c.row.original.jenis_harga === 'matriks' ? <span className={`pill ${Number(c.row.original.sisi) === 2 ? 'pill-brand' : 'pill-mute'}`}>{c.getValue()}</span> : <span className="text-muted/60">–</span> },
     { id: 'jenis', accessorFn: (r) => JENIS_HARGA.find((j) => j.value === r.jenis_harga)?.label || r.jenis_harga, header: 'Jenis harga', meta: { filter: 'select' } },
     {
       id: 'harga', accessorFn: (r) => priceSummary(r.jenis_harga, r.harga), header: 'Harga berlaku', enableSorting: false,
@@ -59,6 +61,7 @@ export function ProductsPage() {
       <PageHeader title="Produk & Harga"
         desc={`Harga tidak pernah ditimpa: setiap perubahan menambah riwayat dengan tanggal berlaku, jadi nota lama tidak berubah. Harga "banyak" mulai qty ${minQty}.`}
         actions={can('master.produk', 'tambah') && <button className="btn" onClick={() => setImporting(true)}><Upload size={16} />Import Excel</button>} />
+      {can('master.produk', 'tambah') && <SplitBBBanner products={q.data || []} />}
       <DataTable<Product>
         data={q.data || []} loading={q.isLoading} columns={columns} title="Produk" storageKey="master-products"
         initialSort={[{ id: 'nama', desc: false }]} canExport={can('master.produk', 'ekspor')} searchPlaceholder="Cari kode atau nama produk…"
@@ -74,6 +77,29 @@ export function ProductsPage() {
   );
 }
 
+/** Produk lama yang masih menyimpan harga BB di kolomnya: tawarkan pecah jadi produk 2 sisi tersendiri. */
+function SplitBBBanner({ products }: { products: Product[] }) {
+  const qc = useQueryClient();
+  const toast = useToast();
+  const lama = products.filter((p) => p.jenis_harga === 'matriks' && Number(p.sisi) !== 2 && p.harga && (['rb_bb', 'rs_bb', 'eb_bb', 'es_bb'] as TierKey[]).some((k) => p.harga![k] != null));
+  const run = useMutation({
+    mutationFn: () => api<{ dibuat: number; diperbarui: number }>('products.split_bb'),
+    onSuccess: (r) => { qc.invalidateQueries({ queryKey: ['products'] }); qc.invalidateQueries({ queryKey: ['pos'] }); toast(`${r.dibuat} produk 2 sisi (BB) dibuat${r.diperbarui ? `, ${r.diperbarui} diperbarui` : ''}`); },
+  });
+  if (!lama.length) return null;
+  return (
+    <div className="card mb-4 flex flex-wrap items-center gap-3 border-brand/40 bg-brand/5 p-4">
+      <Split size={20} className="shrink-0 text-brand" />
+      <div className="min-w-0 flex-1 text-sm">
+        <b>{lama.length} produk masih menyimpan harga BB (2 sisi) di dalam produk 1 sisi.</b>
+        <div className="text-xs text-muted">Sekarang 1 sisi dan 2 sisi adalah produk terpisah. Klik untuk membuat produk 2 sisi otomatis: kode "<span className="font-mono">kodeBB</span>", nama "… BB", harga dari kolom BB, mesin & resep sama.</div>
+      </div>
+      <ErrorBox error={run.error} />
+      <button className="btn btn-primary" disabled={run.isPending} onClick={() => run.mutate()}><Split size={16} />{run.isPending ? 'Memproses…' : 'Jadikan produk 2 sisi'}</button>
+    </div>
+  );
+}
+
 // ---------------- detail produk ----------------
 function ProductModal({ product, onClose, minQty }: { product: Product; onClose: () => void; minQty: number }) {
   const { can } = useAuth();
@@ -82,7 +108,7 @@ function ProductModal({ product, onClose, minQty }: { product: Product; onClose:
   const tabs = [['harga', 'Harga'], ['riwayat', 'Riwayat'], ['simulasi', 'Simulasi'], ...(product.jenis_harga !== 'manual' ? [['resep', 'Resep & HPP']] : []), ...(can('master.produk', 'ubah') ? [['data', 'Data produk']] : [])] as const;
 
   return (
-    <Modal open onClose={onClose} size="lg" title={product.nama} subtitle={<>Kode <span className="font-mono">{product.kode}</span> · {JENIS_HARGA.find((j) => j.value === product.jenis_harga)?.label}</>}>
+    <Modal open onClose={onClose} size="lg" title={product.nama} subtitle={<>Kode <span className="font-mono">{product.kode}</span> · {JENIS_HARGA.find((j) => j.value === product.jenis_harga)?.label}{product.jenis_harga === 'matriks' ? ` · ${sisiLabel(product.sisi)}` : ''}</>}>
       <div className="-mt-1 mb-4 flex gap-1 overflow-x-auto border-b border-line">
         {tabs.map(([k, l]) => (
           <button key={k} onClick={() => setTab(k as typeof tab)} className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm font-semibold ${tab === k ? 'border-brand text-brand' : 'border-transparent text-muted hover:text-ink'}`}>{l}</button>
@@ -121,7 +147,7 @@ function PriceTab({ product, minQty }: { product: Product; minQty: number }) {
           <h3 className="text-sm font-bold">Berlaku hari ini</h3>
           {product.harga && <span className="text-xs text-muted">sejak {tgl(product.harga.berlaku_mulai)}{product.harga.catatan ? ` · ${product.harga.catatan}` : ''}</span>}
         </div>
-        {product.harga ? <PriceGrid jenis={product.jenis_harga} vals={product.harga} minQty={minQty} /> : <p className="text-sm text-bad">Belum ada harga yang berlaku.</p>}
+        {product.harga ? <PriceGrid jenis={product.jenis_harga} vals={product.harga} minQty={minQty} sisi={product.jenis_harga === "matriks" ? product.sisi || 1 : undefined} /> : <p className="text-sm text-bad">Belum ada harga yang berlaku.</p>}
       </section>
       {product.harga_berikutnya && (
         <section className="rounded-xl border border-warn/30 bg-warn/5 p-4">
@@ -143,7 +169,7 @@ function PriceTab({ product, minQty }: { product: Product; minQty: number }) {
             </Field>
             <Field label="Catatan / alasan"><input id="price-catatan" className="input" value={form.catatan} placeholder="mis. kenaikan harga kertas" onChange={(e) => setForm({ ...form, catatan: e.target.value })} /></Field>
           </div>
-          <PriceGrid jenis={product.jenis_harga} vals={form.tiers} before={base} minQty={minQty} idPrefix="new" onChange={(k, v) => setForm({ ...form, tiers: { ...form.tiers, [k]: v } })} />
+          <PriceGrid jenis={product.jenis_harga} vals={form.tiers} before={base} minQty={minQty} idPrefix="new" sisi={product.jenis_harga === "matriks" ? product.sisi || 1 : undefined} onChange={(k, v) => setForm({ ...form, tiers: { ...form.tiers, [k]: v } })} />
           <p className="mt-3 text-xs text-muted">Persentase dibanding harga {product.harga_berikutnya ? 'terjadwal' : 'saat ini'}. Kosongkan sel bila tier itu tidak dipakai.</p>
           <div className="mt-3"><ErrorBox error={add.error} /></div>
           <div className="mt-3 flex justify-end gap-2">
@@ -183,9 +209,8 @@ function HistoryTab({ rows, loading, product, minQty }: { rows: PriceRow[]; load
 function SimTab({ product, minQty }: { product: Product; minQty: number }) {
   const [tipe, setTipe] = useState<'reseller' | 'enduser'>('enduser');
   const [qty, setQty] = useState(10);
-  const [sisi, setSisi] = useState<1 | 2>(1);
   const [ukuran, setUkuran] = useState(0);
-  const r = hitungHarga({ jenis: product.jenis_harga, harga: product.harga, tipe, qty, sisi, ukuran, minQtyBanyak: minQty });
+  const r = hitungHarga({ jenis: product.jenis_harga, harga: product.harga, tipe, qty, ukuran, minQtyBanyak: minQty });
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-muted">Coba hitung harga persis seperti nanti di kasir.</p>
@@ -197,7 +222,7 @@ function SimTab({ product, minQty }: { product: Product; minQty: number }) {
         {product.jenis_harga === 'cutting' ? (
           <Field label="Ukuran stiker"><select id="sim-ukuran" className="input" value={ukuran} onChange={(e) => setUkuran(Number(e.target.value))}>{CUT_SIZES.map((s, i) => <option key={s} value={i}>{s}</option>)}</select></Field>
         ) : (
-          <Field label="Sisi"><select id="sim-sisi" className="input" value={sisi} onChange={(e) => setSisi(Number(e.target.value) as 1 | 2)}><option value={1}>1 sisi</option><option value={2}>2 sisi (BB)</option></select></Field>
+          <Field label="Sisi"><div className="input bg-sunk">{product.jenis_harga === 'matriks' ? sisiLabel(product.sisi) : '–'}</div></Field>
         )}
       </div>
       <div className="rounded-xl bg-sunk p-4">
@@ -238,16 +263,27 @@ function ProductForm({ product, onClose, minQty, embedded }: { product?: Product
           </select>
         </Field>
         <Field label="Satuan"><input id="prd-satuan" className="input" value={p.satuan || ''} onChange={(e) => set('satuan', e.target.value)} /></Field>
-        <Field label="Jenis harga" className="sm:col-span-3" hint={JENIS_HARGA.find((j) => j.value === p.jenis_harga)?.hint}>
+        <Field label="Jenis harga" className={p.jenis_harga === 'matriks' ? 'sm:col-span-2' : 'sm:col-span-3'} hint={JENIS_HARGA.find((j) => j.value === p.jenis_harga)?.hint}>
           <select id="prd-jenis" className="input" value={p.jenis_harga} onChange={(e) => set('jenis_harga', e.target.value as JenisHarga)} disabled={!!product?.harga && !!product}>
             {JENIS_HARGA.map((j) => <option key={j.value} value={j.value}>{j.label}</option>)}
           </select>
         </Field>
+        {p.jenis_harga === 'matriks' && (
+          <div className="label"><span>Sisi cetak</span>
+            <div className="flex overflow-hidden rounded-lg border border-line" role="group" aria-label="Sisi cetak">
+              {[1, 2].map((n) => (
+                <button key={n} type="button" id={`prd-sisi-${n}`} onClick={() => set('sisi', n)}
+                  className={`flex-1 px-2 py-2.5 text-xs font-bold transition ${(Number(p.sisi) === 2 ? 2 : 1) === n ? 'bg-ink text-canvas' : 'bg-surface text-muted hover:text-ink'}`}>{n === 1 ? '1 sisi' : '2 sisi (BB)'}</button>
+              ))}
+            </div>
+            <span className="font-normal">{Number(p.sisi) === 2 ? 'Dihitung 2 klik per lembar.' : 'Dihitung 1 klik per lembar.'}</span>
+          </div>
+        )}
       </div>
       {!product && p.jenis_harga !== 'manual' && (
         <div className="rounded-xl border border-line p-4">
           <h3 className="mb-3 text-sm font-bold">Harga awal <span className="font-normal text-muted">(berlaku hari ini)</span></h3>
-          <PriceGrid jenis={p.jenis_harga as JenisHarga} vals={tiers} minQty={minQty} idPrefix="init" onChange={(k, v) => setTiers((t) => ({ ...t, [k]: v }))} />
+          <PriceGrid jenis={p.jenis_harga as JenisHarga} vals={tiers} minQty={minQty} idPrefix="init" sisi={p.jenis_harga === 'matriks' ? (Number(p.sisi) === 2 ? 2 : 1) : undefined} onChange={(k, v) => setTiers((t) => ({ ...t, [k]: v }))} />
         </div>
       )}
       <Switch id="prd-ks" checked={!!p.kertas_sendiri} onChange={(v) => setP((x) => ({ ...x, kertas_sendiri: v, kategori: v && !x.kategori ? 'Kertas sendiri' : x.kategori }))}
@@ -265,7 +301,9 @@ function ProductForm({ product, onClose, minQty, embedded }: { product?: Product
 }
 
 // ---------------- import excel ----------------
-const IMPORT_COLS = ['kode', 'nama', 'kategori', 'mesin', 'jenis_harga', 'satuan', 'aktif', 'kertas_sendiri', ...TIERS.map((t) => t.key)];
+// rb_bb & rs_bb hanya dipakai produk cutting (ukuran ke-2 dan ke-4)
+const PRICE_COLS: TierKey[] = ['rb', 'rs', 'eb', 'es', 'rb_bb', 'rs_bb'];
+const IMPORT_COLS = ['kode', 'nama', 'kategori', 'mesin', 'jenis_harga', 'sisi', 'satuan', 'aktif', 'kertas_sendiri', ...PRICE_COLS];
 
 function ImportModal({ onClose, products, mName }: { onClose: () => void; products: Product[]; mName: Record<string, string> }) {
   const qc = useQueryClient();
@@ -281,7 +319,7 @@ function ImportModal({ onClose, products, mName }: { onClose: () => void; produc
 
   const template = () => {
     const data = products.length
-      ? products.map((p) => { const o: Record<string, unknown> = { kode: p.kode, nama: p.nama, kategori: p.kategori, mesin: mName[p.mesin_id] || '', jenis_harga: p.jenis_harga, satuan: p.satuan, aktif: p.aktif ? 'ya' : 'tidak', kertas_sendiri: p.kertas_sendiri ? 'ya' : 'tidak' }; TIERS.forEach((t) => (o[t.key] = p.harga?.[t.key] ?? '')); return o; })
+      ? products.map((p) => { const o: Record<string, unknown> = { kode: p.kode, nama: p.nama, kategori: p.kategori, mesin: mName[p.mesin_id] || '', jenis_harga: p.jenis_harga, sisi: p.jenis_harga === 'matriks' ? (Number(p.sisi) === 2 ? 2 : 1) : '', satuan: p.satuan, aktif: p.aktif ? 'ya' : 'tidak', kertas_sendiri: p.kertas_sendiri ? 'ya' : 'tidak' }; PRICE_COLS.forEach((k) => (o[k] = p.harga?.[k] ?? '')); return o; })
       : [Object.fromEntries(IMPORT_COLS.map((c) => [c, '']))];
     exportXlsx(data, `Template_Produk_${ymd()}.xlsx`, 'Produk', { title: '' }); // tanpa judul: file ini dibaca ulang saat import
   };
@@ -304,7 +342,8 @@ function ImportModal({ onClose, products, mName }: { onClose: () => void; produc
       <div className="flex flex-col gap-4">
         <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
           <li>Unduh template. Isinya produk dan harga yang sekarang, jadi bisa langsung diedit.</li>
-          <li>Kolom harga: <span className="font-mono text-xs">rb, rb_bb, rs, rs_bb</span> (reseller banyak/BB/sedikit/BB) dan <span className="font-mono text-xs">eb … es_bb</span> (end user). Cutting memakai rb–rs_bb untuk 4 ukuran; harga tetap cukup di rb.</li>
+          <li>Kolom harga matriks: <span className="font-mono text-xs">rb, rs</span> (reseller banyak/sedikit) dan <span className="font-mono text-xs">eb, es</span> (end user). Kolom <span className="font-mono text-xs">sisi</span> diisi 1 atau 2 (BB); produk 2 sisi dibuat sebagai baris tersendiri. Cutting memakai rb, rb_bb, rs, rs_bb untuk 4 ukuran (urut dari besar ke kecil); harga tetap cukup di rb.</li>
+          <li>File format lama yang masih punya kolom <span className="font-mono text-xs">rb_bb … es_bb</span> tetap bisa dipakai: harga BB otomatis dibuat menjadi produk 2 sisi (kode + "BB").</li>
           <li>Harga yang berubah dicatat sebagai harga baru mulai tanggal di bawah; harga lama tetap tersimpan.</li>
         </ol>
         <button className="btn btn-excel self-start" onClick={template}><FileSpreadsheet size={16} />Unduh template</button>

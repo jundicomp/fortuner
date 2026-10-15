@@ -11,7 +11,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/auth/AuthContext';
 import { newClientId, posCache } from '@/lib/offline';
 import { useSettings } from '@/lib/queries';
-import { CUT_SIZES } from '@/lib/pricing';
+import { CUT_SIZES, namaSisi } from '@/lib/pricing';
 import { nf, rp, tgl, tglJam } from '@/lib/format';
 import type { OrderDetail } from '@/types';
 import { Money } from '@/components/ui/Money';
@@ -131,7 +131,7 @@ export function OrderDetailModal({ orderId, onClose }: { orderId: string; onClos
                 {d.items.map((i) => (
                   <tr key={i.id} className="border-t border-line">
                     <td className="px-3 py-2">
-                      <div className="font-semibold">{i.nama_produk}{i.sisi === 2 ? ' · BB' : ''}{i.jenis_harga === 'cutting' ? ` · ${CUT_SIZES[i.ukuran_cutting]}` : ''}</div>
+                      <div className="font-semibold">{namaSisi(i.nama_produk, i.sisi)}{i.jenis_harga === 'cutting' ? ` · ${CUT_SIZES[i.ukuran_cutting]}` : ''}</div>
                       <div className="text-xs text-muted">{[i.keterangan, i.mesin_nama, i.harga_manual ? 'harga manual' : ''].filter(Boolean).join(' · ')}</div>
                     </td>
                     <td className="num px-3 py-2 text-right">{nf(i.qty)}</td>

@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.2.0",
+    "tanggal": "2026-10-15",
+    "catatan": [
+      "Cetak 1 sisi dan 2 sisi (BB) sekarang produk terpisah: pilih \"Sisi cetak\" saat menambah produk; harga matriks jadi 4 tier (Reseller/End user × Banyak/Sedikit).",
+      "Front Office tidak lagi memakai tombol 1/2 sisi: sisi mengikuti produk yang dipilih (mis. kode 7 = 1 sisi, 7BB = 2 sisi), klik dihitung otomatis.",
+      "Kolom Sisi di tabel Produk & Harga dan Margin Produk; nama produk BB tampil di FO, kasir, nota, dan produksi.",
+      "Produk lama yang masih menyimpan harga BB bisa dipecah sekali klik menjadi produk 2 sisi (kode + \"BB\", resep ikut). Import Excel format lama otomatis memecah kolom BB.",
+      "Form pengeluaran menyesuaikan kategori: pengeluaran umum (listrik, gaji, sewa, operasional, lain-lain) cukup isi keperluan dan nominal; bahan & klik tetap jumlah × harga."
+    ]
+  },
+  {
     "version": "1.1.9",
     "tanggal": "2026-10-10",
     "catatan": [

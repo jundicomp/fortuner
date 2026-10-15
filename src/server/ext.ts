@@ -464,14 +464,14 @@ export function makeExt(h: Helpers) {
           margin_min: minMargin,
           rows: c.s.all('products').filter((x) => bool(x.aktif) && x.jenis_harga !== 'manual').map((x) => {
             const h = hargaBerlaku(prices.filter((r) => r.product_id === x.id), t);
-            const c1 = productCost(c, str(x.id), 1, cache), c2 = productCost(c, str(x.id), 2, cache);
+            const c1 = productCost(c, str(x.id), Number(x.sisi) === 2 ? 2 : 1, cache);
             const pr = (k: string, cost: number) => { const v = h ? num((h as any)[k]) : 0; return v ? { harga: v, margin: Math.round(((v - cost) / v) * 1000) / 10 } : null; };
-            const cells = { es: pr('es', c1.total), rb: pr('rb', c1.total), es_bb: x.jenis_harga === 'matriks' ? pr('es_bb', c2.total) : null, rb_bb: x.jenis_harga === 'matriks' ? pr('rb_bb', c2.total) : null };
+            const cells = { es: pr('es', c1.total), rb: pr('rb', c1.total) };
             const margins = Object.values(cells).filter(Boolean).map((v) => (v as { margin: number }).margin);
             const terendah = margins.length ? Math.min(...margins) : null;
             return {
               id: x.id, kode: x.kode, nama: x.nama, kategori: x.kategori, jenis_harga: x.jenis_harga, mesin: str(cache.machines[str(x.mesin_id)]?.nama),
-              kertas_sendiri: bool(x.kertas_sendiri), resep: c1.resep || bool(x.kertas_sendiri), hpp_bahan: c1.bahan, hpp_klik: c1.klik, hpp: c1.total, hpp_bb: x.jenis_harga === 'matriks' ? c2.total : null, ...cells, margin_terendah: terendah,
+              kertas_sendiri: bool(x.kertas_sendiri), resep: c1.resep || bool(x.kertas_sendiri), hpp_bahan: c1.bahan, hpp_klik: c1.klik, hpp: c1.total, sisi: Number(x.sisi) === 2 ? 2 : 1, ...cells, margin_terendah: terendah,
               status: !c1.resep && !bool(x.kertas_sendiri) ? 'tanpa_resep' : terendah == null ? 'tanpa_harga' : terendah < 0 ? 'rugi' : terendah < minMargin ? 'tipis' : 'aman',
             };
           }),

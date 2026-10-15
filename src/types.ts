@@ -55,6 +55,7 @@ export interface Product {
   satuan: string;
   aktif: boolean;
   kertas_sendiri?: boolean; // upah print: kertas dibawa konsumen, tidak memotong stok
+  sisi?: number; // produk matriks: 1 = cetak 1 sisi, 2 = cetak 2 sisi (BB, 2 klik)
   harga?: PriceRow | null; // harga yang berlaku hari ini (diisi server)
   harga_berikutnya?: PriceRow | null; // harga terjadwal (bila ada)
 }

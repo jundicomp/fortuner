@@ -9,7 +9,7 @@ import { ReceiptModal } from '@/components/ReceiptModal';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/auth/AuthContext';
 import { loadPos, newClientId, sync, useSync, type OutboxOp } from '@/lib/offline';
-import { CUT_SIZES } from '@/lib/pricing';
+import { CUT_SIZES, namaSisi } from '@/lib/pricing';
 import { jam, nf, rp, ymd } from '@/lib/format';
 import { directReady, drawerForCash, openDrawer, paperWidth, printerSettings } from '@/platform/printer';
 import type { Order, OrderDetail } from '@/types';
@@ -190,7 +190,7 @@ function PayPanel({ row, methods, onBack, onDone, kasirNama, active }: { row: Qu
   const s = useSync();
   const detail = useQuery({ queryKey: ['order', row.id], queryFn: () => api<OrderDetail>('orders.get', { order_id: row.id }), enabled: !row.pending && s.online, retry: 0 });
   const op = s.outbox.find((o) => o.id === row.id);
-  const items = detail.data?.items.map((i) => ({ nama: i.nama_produk + (i.sisi === 2 ? ' · BB' : '') + (i.jenis_harga === 'cutting' ? ` · ${CUT_SIZES[i.ukuran_cutting]}` : ''), keterangan: i.keterangan, qty: i.qty, harga: i.harga_satuan }))
+  const items = detail.data?.items.map((i) => ({ nama: namaSisi(i.nama_produk, i.sisi) + (i.jenis_harga === 'cutting' ? ` · ${CUT_SIZES[i.ukuran_cutting]}` : ''), keterangan: i.keterangan, qty: i.qty, harga: i.harga_satuan }))
     || op?.view?.items || [];
   const methodList: Method[] = methods.length ? methods : detail.data?.payment_methods || [];
   const sisa = row.sisa;

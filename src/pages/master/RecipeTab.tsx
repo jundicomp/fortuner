@@ -39,8 +39,7 @@ export function RecipeTab({ product }: { product: Product }) {
       <div className="rounded-xl border border-warn/40 bg-warn/5 p-4 text-sm"><b>Kertas sendiri / upah print.</b> Konsumen membawa kertasnya sendiri, jadi produk ini tidak memakai bahan dari stok. HPP-nya hanya biaya klik mesin. Untuk mengubahnya, matikan pilihan "Kertas sendiri" di tab Data produk.</div>
       {seeCost && q.data && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <CostCard title={matriks ? 'HPP 1 sisi' : 'HPP per unit'} c={q.data.satu_sisi} />
-          {matriks && <CostCard title="HPP bolak-balik" c={q.data.bolak_balik} />}
+          {matriks && Number(product.sisi) === 2 ? <CostCard title="HPP per lembar · 2 sisi (BB)" c={q.data.bolak_balik} /> : <CostCard title={matriks ? 'HPP per lembar · 1 sisi' : 'HPP per unit'} c={q.data.satu_sisi} />}
         </div>
       )}
     </div>
@@ -87,8 +86,7 @@ export function RecipeTab({ product }: { product: Product }) {
       <ErrorBox error={save.error} />
       {seeCost && q.data && (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <CostCard title={matriks ? 'HPP 1 sisi' : 'HPP per unit'} c={q.data.satu_sisi} />
-          {matriks && <CostCard title="HPP bolak-balik" c={q.data.bolak_balik} />}
+          {matriks && Number(product.sisi) === 2 ? <CostCard title="HPP per lembar · 2 sisi (BB)" c={q.data.bolak_balik} /> : <CostCard title={matriks ? 'HPP per lembar · 1 sisi' : 'HPP per unit'} c={q.data.satu_sisi} />}
         </div>
       )}
     </div>

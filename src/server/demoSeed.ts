@@ -45,21 +45,32 @@ export function seedDemo(s: Store, env: Env) {
     ['42', 'Desain', 'Jasa', 'desain', 'manual', []],
   ];
   const keys = ['rb', 'rb_bb', 'rs', 'rs_bb', 'eb', 'eb_bb', 'es', 'es_bb'];
+  // produk 1 sisi + (bila ada harga BB) produk 2 sisi tersendiri "<kode>BB"
+  const bbKeys = ['rb_bb', 'rs_bb', 'eb_bb', 'es_bb'];
   products.forEach(([kode, nama, kat, m, jenis, harga]) => {
+    const baseRow = { kategori: kat, mesin_id: mesin(m), jenis_harga: jenis, satuan: 'lembar', aktif: true, kertas_sendiri: kat === 'Kertas sendiri' };
     const id = _newId(env, 'prd');
-    s.insert('products', { id, kode, nama, kategori: kat, mesin_id: mesin(m), jenis_harga: jenis, satuan: 'lembar', aktif: true, kertas_sendiri: kat === 'Kertas sendiri', ...st });
+    s.insert('products', { id, kode, nama, ...baseRow, sisi: 1, ...st });
     if (!harga.length) return;
     const tiers: Record<string, number | null> = {};
     keys.forEach((k, i) => (tiers[k] = harga[i] ?? null));
+    const hasBB = jenis === 'matriks' && bbKeys.some((k) => tiers[k] != null);
+    const bbId = hasBB ? _newId(env, 'prd') : '';
+    if (hasBB) s.insert('products', { id: bbId, kode: `${kode}BB`, nama: `${nama} BB`, ...baseRow, sisi: 2, ...st });
+    const put = (mulai: string, sampai: string, t: Record<string, number | null>, catatan: string) => {
+      const one: Record<string, number | null> = { ...t }; if (jenis === 'matriks') bbKeys.forEach((k) => (one[k] = null));
+      s.insert('price_history', { id: _newId(env, 'prc'), product_id: id, berlaku_mulai: mulai, berlaku_sampai: sampai, ...one, catatan, ...st });
+      if (hasBB) s.insert('price_history', { id: _newId(env, 'prc'), product_id: bbId, berlaku_mulai: mulai, berlaku_sampai: sampai, rb: t.rb_bb, rs: t.rs_bb, eb: t.eb_bb, es: t.es_bb, rb_bb: null, rs_bb: null, eb_bb: null, es_bb: null, catatan, ...st });
+    };
     if (kode === '5') {
       // contoh riwayat: harga lama, harga sekarang, dan kenaikan terjadwal
       const old: Record<string, number | null> = {}; keys.forEach((k) => (old[k] = tiers[k] == null ? null : (tiers[k] as number) - 100));
-      s.insert('price_history', { id: _newId(env, 'prc'), product_id: id, berlaku_mulai: shift(-120), berlaku_sampai: shift(-31), ...old, catatan: 'Harga awal', ...st });
-      s.insert('price_history', { id: _newId(env, 'prc'), product_id: id, berlaku_mulai: shift(-30), berlaku_sampai: shift(13), ...tiers, catatan: 'Kenaikan kertas', ...st });
+      put(shift(-120), shift(-31), old, 'Harga awal');
+      put(shift(-30), shift(13), tiers, 'Kenaikan kertas');
       const nxt: Record<string, number | null> = {}; keys.forEach((k) => (nxt[k] = tiers[k] == null ? null : (tiers[k] as number) + 200));
-      s.insert('price_history', { id: _newId(env, 'prc'), product_id: id, berlaku_mulai: shift(14), berlaku_sampai: '', ...nxt, catatan: 'Kenaikan terjadwal', ...st });
+      put(shift(14), '', nxt, 'Kenaikan terjadwal');
     } else {
-      s.insert('price_history', { id: _newId(env, 'prc'), product_id: id, berlaku_mulai: shift(-60), berlaku_sampai: '', ...tiers, catatan: 'Harga awal', ...st });
+      put(shift(-60), '', tiers, 'Harga awal');
     }
   });
   const custs: [string, string, string, string][] = [
@@ -111,7 +122,7 @@ function seedOrders(s: Store, env: Env) {
         const prod = pick(products);
         const jenis = String(prod.jenis_harga);
         const qty = jenis === 'tetap' ? 1 + Math.floor(rnd() * 4) : pick(qtys);
-        const sisi = jenis === 'matriks' && rnd() < 0.3 ? 2 : 1;
+        const sisi = jenis === 'matriks' && Number(prod.sisi) === 2 ? 2 : 1;
         const ukuran = Math.floor(rnd() * 4);
         const prow = hargaBerlaku(prices.filter((x) => x.product_id === prod.id) as any, tanggal) as any;
         const r = hitungHarga({ jenis: jenis as any, harga: prow, tipe, qty, sisi: sisi as 1 | 2, ukuran, minQtyBanyak: 26 });
@@ -227,6 +238,8 @@ function seedFinance(s: Store, env: Env, rnd: () => number, pick: <T>(a: T[]) =>
     ['1', 'HVS80', 1, 'unit'], ['22', 'HVS80', 1, 'unit'], ['2', 'AP120', 1, 'unit'], ['3', 'AP150', 1, 'unit'], ['5', 'AC210', 1, 'unit'], ['7', 'AC260', 1, 'unit'],
     ['16', 'LIN', 1, 'unit'], ['9', 'SKR', 1, 'unit'], ['12', 'SGL', 1, 'unit'], ['44', 'LAM', 1, 'unit'], ['81', 'DTF', 0.25, 'unit'], ['80', 'DTF', 0.45, 'unit'],
   ];
+  // produk 2 sisi (BB) memakai bahan yang sama dengan versi 1 sisinya
+  resep.slice().forEach(([pk, mk, qty, per]) => { if (prod(`${pk}BB`)) resep.push([`${pk}BB`, mk, qty, per]); });
   resep.forEach(([pk, mk, qty, per]) => { const p = prod(pk); if (p) s.insert('recipes', { id: id('rcp'), product_id: p.id, material_id: mat[mk].id, qty, per, ...st }); });
   const ext = _ext;
 

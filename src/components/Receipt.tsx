@@ -3,7 +3,7 @@ import { Fragment, useEffect, useState, type ReactNode } from 'react';
 import { CheckCircle2, Printer, TriangleAlert, X } from 'lucide-react';
 import { directReady, printDirect, printerSettings } from '@/platform/printer';
 import { nf, tglJam } from '@/lib/format';
-import { CUT_SIZES } from '@/lib/pricing';
+import { CUT_SIZES, namaSisi } from '@/lib/pricing';
 import { footerOf, KEEP_NOTE, no4, SAH_NOTE, statusOf, terbilang, untukLabel, viaLabel } from '@/lib/receiptText';
 import { code128 } from '@/lib/code128';
 import '@fontsource/inter/latin-600.css';
@@ -98,7 +98,7 @@ function NotaPart({ d }: { d: ReceiptData }) {
       <div className="rc-dbl" />
       {d.items.map((it, i) => (
         <div key={i} className="rc-item">
-          <div className="rc-b">{it.nama}{it.sisi === 2 ? ' (BB)' : ''}{it.ukuran != null ? ` · ${CUT_SIZES[it.ukuran]}` : ''}</div>
+          <div className="rc-b">{namaSisi(it.nama, it.sisi)}{it.ukuran != null ? ` · ${CUT_SIZES[it.ukuran]}` : ''}</div>
           <R l={`${nf(it.qty)} × ${nf(it.harga)}${it.keterangan ? ` · ${it.keterangan}` : ''}`} r={nf(it.subtotal)} />
         </div>
       ))}

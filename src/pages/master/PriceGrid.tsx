@@ -4,9 +4,9 @@ import type { JenisHarga, PriceRow } from '@/types';
 
 type Vals = Partial<Record<TierKey, number | null>>;
 
-const ROWS: { label: string; keys: [TierKey, TierKey, TierKey, TierKey] }[] = [
-  { label: 'Reseller', keys: ['rb', 'rb_bb', 'rs', 'rs_bb'] },
-  { label: 'End user', keys: ['eb', 'eb_bb', 'es', 'es_bb'] },
+const ROWS: { label: string; keys: [TierKey, TierKey] }[] = [
+  { label: 'Reseller', keys: ['rb', 'rs'] },
+  { label: 'End user', keys: ['eb', 'es'] },
 ];
 
 function Cell({ k, vals, before, onChange, idPrefix }: { k: TierKey; vals: Vals; before?: Vals | null; onChange?: (k: TierKey, v: number | null) => void; idPrefix: string }) {
@@ -24,7 +24,7 @@ function Cell({ k, vals, before, onChange, idPrefix }: { k: TierKey; vals: Vals;
 }
 
 /** Tampilan/isian harga sesuai jenis harga produk. */
-export function PriceGrid({ jenis, vals, before, onChange, minQty = 26, idPrefix = 'price' }: { jenis: JenisHarga; vals: Vals | PriceRow; before?: Vals | PriceRow | null; onChange?: (k: TierKey, v: number | null) => void; minQty?: number; idPrefix?: string }) {
+export function PriceGrid({ jenis, vals, before, onChange, minQty = 26, idPrefix = 'price', sisi }: { jenis: JenisHarga; vals: Vals | PriceRow; before?: Vals | PriceRow | null; onChange?: (k: TierKey, v: number | null) => void; minQty?: number; idPrefix?: string; sisi?: number }) {
   const V = vals as Vals, B = before as Vals | null | undefined;
   if (jenis === 'manual') return <p className="text-sm text-muted">Harga produk ini diisi CS saat transaksi.</p>;
   if (jenis === 'tetap') {
@@ -46,14 +46,13 @@ export function PriceGrid({ jenis, vals, before, onChange, minQty = 26, idPrefix
   }
   return (
     <div className="overflow-x-auto">
-      <table className="tbl w-full min-w-[420px] border-collapse text-[13px]">
+      {sisi != null && <div className="mb-1.5 text-xs text-muted">Harga per lembar untuk cetak <b className="text-ink">{Number(sisi) === 2 ? '2 sisi (BB)' : '1 sisi'}</b>.</div>}
+      <table className="tbl w-full min-w-[320px] border-collapse text-[13px]">
         <thead>
           <tr className="text-[11px] uppercase tracking-wider text-muted">
             <th className="py-1.5 pr-2 text-left font-bold" />
             <th className="px-1.5 py-1.5 text-right font-bold">Banyak<div className="normal-case tracking-normal text-muted/70">≥ {minQty}</div></th>
-            <th className="px-1.5 py-1.5 text-right font-bold">Banyak BB<div className="normal-case tracking-normal text-muted/70">2 sisi</div></th>
             <th className="px-1.5 py-1.5 text-right font-bold">Sedikit<div className="normal-case tracking-normal text-muted/70">&lt; {minQty}</div></th>
-            <th className="px-1.5 py-1.5 text-right font-bold">Sedikit BB<div className="normal-case tracking-normal text-muted/70">2 sisi</div></th>
           </tr>
         </thead>
         <tbody>

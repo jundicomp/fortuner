@@ -103,10 +103,13 @@ function ExpenseForm({ meta, onClose }: { meta: ExpenseMeta; onClose: () => void
   });
   const set = (k: keyof typeof f, v: string) => setF((x) => ({ ...x, [k]: v }));
   const jenis = cats.find((c) => c.id === f.kategori_id)?.jenis;
-  const qty = numIn(f.qty), harga = numIn(f.harga), total = Math.round(qty * harga), isi = numIn(f.isi);
+  // bahan & klik: jumlah × harga per satuan. Pengeluaran umum (operasional, gaji, sewa, aset, lain-lain): cukup nominal.
+  const [rinciManual, setRinci] = useState<boolean | null>(null);
+  const rinci = rinciManual ?? (jenis === 'bahan' || jenis === 'klik');
+  const qty = rinci ? numIn(f.qty) : 1, harga = numIn(f.harga), total = Math.round(qty * harga), isi = numIn(f.isi);
   const prod = meta.products.find((p) => p.id === f.product_id);
   const save = useMutation({
-    mutationFn: () => api<{ harga_beli_baru: number | null }>('expense.save', { expense: { ...f, qty, harga, isi_per_satuan: isi || null, product_id: jenis === 'bahan' ? f.product_id : '' } }),
+    mutationFn: () => api<{ harga_beli_baru: number | null }>('expense.save', { expense: { ...f, qty, harga, satuan: rinci ? f.satuan : '', isi_per_satuan: isi || null, product_id: jenis === 'bahan' ? f.product_id : '' } }),
     onSuccess: (r) => {
       ['expenses', 'bills', 'products', 'dashboard'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
       toast(r.harga_beli_baru != null ? `Tersimpan. Harga beli ${prod?.nama} jadi ${nf(r.harga_beli_baru)}/${prod?.satuan || 'lembar'}` : 'Pengeluaran dicatat');
@@ -118,20 +121,34 @@ function ExpenseForm({ meta, onClose }: { meta: ExpenseMeta; onClose: () => void
       footer={<><button className="btn" onClick={onClose}>Batal</button><button className="btn btn-primary" disabled={save.isPending || !f.item || !total} onClick={() => save.mutate()}>Simpan {total ? rp(total) : ''}</button></>}>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
         <Field label="Tanggal" className="sm:col-span-2"><input id="ex-tanggal" type="date" className="input" max={ymd()} value={f.tanggal} onChange={(e) => set('tanggal', e.target.value)} /></Field>
-        <Field label="Kategori" className="sm:col-span-4">
-          <select id="ex-kategori" className="input" value={f.kategori_id} onChange={(e) => set('kategori_id', e.target.value)}>{cats.map((c) => <option key={c.id} value={c.id}>{c.nama}</option>)}</select>
+        <Field label="Kategori" className="sm:col-span-4" hint={jenis && !['bahan', 'klik'].includes(jenis) ? 'Pengeluaran umum: cukup isi keperluan dan nominalnya.' : undefined}>
+          <select id="ex-kategori" className="input" value={f.kategori_id} onChange={(e) => { set('kategori_id', e.target.value); setRinci(null); }}>
+            {Object.entries(JENIS).map(([j, label]) => { const list = cats.filter((c) => c.jenis === j); return list.length ? <optgroup key={j} label={label}>{list.map((c) => <option key={c.id} value={c.id}>{c.nama}</option>)}</optgroup> : null; })}
+            {cats.filter((c) => !JENIS[c.jenis]).map((c) => <option key={c.id} value={c.id}>{c.nama}</option>)}
+          </select>
         </Field>
-        <Field label="Barang / keperluan" className="sm:col-span-4"><input id="ex-item" className="input" autoFocus value={f.item} onChange={(e) => set('item', e.target.value)} placeholder="mis. Art carton 260 A3+, listrik Oktober" /></Field>
-        <Field label="No. nota supplier" className="sm:col-span-2"><input id="ex-nota" className="input" value={f.nota} onChange={(e) => set('nota', e.target.value)} /></Field>
-        <Field label="Supplier" className="sm:col-span-3">
-          <select id="ex-supplier" className="input" value={f.supplier_id} onChange={(e) => set('supplier_id', e.target.value)}><option value="">– tanpa supplier –</option>{meta.suppliers.map((s) => <option key={s.id} value={s.id}>{s.nama}</option>)}</select>
+        <Field label="Barang / keperluan" className="sm:col-span-4"><input id="ex-item" className="input" autoFocus value={f.item} onChange={(e) => set('item', e.target.value)} placeholder={rinci ? 'mis. Art carton 260 A3+, film DTF' : 'mis. Listrik Oktober, gaji Riska, sewa ruko'} /></Field>
+        <Field label={rinci ? 'No. nota supplier' : 'No. bukti (opsional)'} className="sm:col-span-2"><input id="ex-nota" className="input" value={f.nota} onChange={(e) => set('nota', e.target.value)} /></Field>
+        <Field label={rinci ? 'Supplier' : 'Dibayar ke (opsional)'} className="sm:col-span-3" hint={!rinci && f.cara_bayar === 'hutang' ? 'Wajib dipilih bila dicatat sebagai hutang.' : undefined}>
+          <select id="ex-supplier" className="input" value={f.supplier_id} onChange={(e) => set('supplier_id', e.target.value)}><option value="">{rinci ? '– tanpa supplier –' : '– tidak perlu –'}</option>{meta.suppliers.map((s) => <option key={s.id} value={s.id}>{s.nama}</option>)}</select>
         </Field>
-        <Field label="Untuk mesin (opsional)" className="sm:col-span-3">
+        {(jenis === 'operasional' || jenis === 'klik' || jenis === 'bahan' || f.mesin_id) ? (
+          <Field label="Untuk mesin (opsional)" className="sm:col-span-3">
           <select id="ex-mesin" className="input" value={f.mesin_id} onChange={(e) => set('mesin_id', e.target.value)}><option value="">–</option>{meta.machines.map((m) => <option key={m.id} value={m.id}>{m.nama}</option>)}</select>
         </Field>
-        <Field label="Jumlah" className="sm:col-span-2"><input id="ex-qty" className="input num text-right" inputMode="decimal" value={f.qty} onChange={(e) => set('qty', e.target.value)} /></Field>
-        <Field label="Satuan" className="sm:col-span-1"><input id="ex-satuan" className="input" value={f.satuan} onChange={(e) => set('satuan', e.target.value)} placeholder="rim" /></Field>
-        <Field label="Harga per satuan" className="sm:col-span-3"><input id="ex-harga" className="input num text-right" inputMode="numeric" value={f.harga ? nf(numIn(f.harga)) : ''} onChange={(e) => set('harga', e.target.value)} /></Field>
+        ) : <div className="hidden sm:col-span-3 sm:block" />}
+        {rinci ? (
+          <>
+            <Field label="Jumlah" className="sm:col-span-2"><input id="ex-qty" className="input num text-right" inputMode="decimal" value={f.qty} onChange={(e) => set('qty', e.target.value)} /></Field>
+            <Field label="Satuan" className="sm:col-span-1"><input id="ex-satuan" className="input" value={f.satuan} onChange={(e) => set('satuan', e.target.value)} placeholder="rim" /></Field>
+            <Field label="Harga per satuan" className="sm:col-span-3"><input id="ex-harga" className="input num text-right" inputMode="numeric" value={f.harga ? nf(numIn(f.harga)) : ''} onChange={(e) => set('harga', e.target.value)} /></Field>
+          </>
+        ) : (
+          <Field label="Nominal (Rp)" className="sm:col-span-6"><input id="ex-harga" className="input num py-2.5 text-right text-lg font-bold" inputMode="numeric" value={f.harga ? nf(numIn(f.harga)) : ''} onChange={(e) => set('harga', e.target.value)} placeholder="0" /></Field>
+        )}
+        {jenis !== 'bahan' && jenis !== 'klik' && (
+          <button type="button" className="-mt-2 justify-self-start text-xs font-semibold text-brand sm:col-span-6" onClick={() => setRinci(!rinci)}>{rinci ? 'Cukup isi nominal saja' : 'Isi dengan jumlah × harga satuan'}</button>
+        )}
 
         {jenis === 'bahan' && <p className="rounded-lg bg-sunk px-3 py-2 text-xs text-muted sm:col-span-6">Bahan yang dihitung stoknya (kertas, stiker, film) sebaiknya dicatat lewat menu <b className="text-ink">Pembelian Bahan</b> supaya stok dan HPP ikut terhitung. Yang dicatat di sini masuk HPP sebagai "bahan di luar stok".</p>}
         {jenis === 'klik' && <p className="rounded-lg bg-sunk px-3 py-2 text-xs text-muted sm:col-span-6">Tagihan klik/sewa mesin dari vendor. Biaya klik sudah masuk HPP per nota (dari tarif di Master Mesin), jadi tagihan ini melunasi hutang biaya klik, tidak dihitung dua kali.</p>}

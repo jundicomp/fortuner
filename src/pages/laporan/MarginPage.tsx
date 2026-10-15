@@ -8,11 +8,12 @@ import { useAuth } from '@/auth/AuthContext';
 import { api } from '@/lib/api';
 import { nf } from '@/lib/format';
 import { dec } from '@/pages/stok/stokApi';
+import { sisiLabel } from '@/lib/pricing';
 
 type Cell = { harga: number; margin: number } | null;
 interface Row {
   id: string; kode: string; nama: string; kategori: string; jenis_harga: string; mesin: string; resep: boolean; kertas_sendiri?: boolean;
-  hpp_bahan: number; hpp_klik: number; hpp: number; hpp_bb: number | null; es: Cell; rb: Cell; es_bb: Cell; rb_bb: Cell; margin_terendah: number | null;
+  hpp_bahan: number; hpp_klik: number; hpp: number; sisi?: number; es: Cell; rb: Cell; margin_terendah: number | null;
   status: 'tanpa_resep' | 'tanpa_harga' | 'rugi' | 'tipis' | 'aman';
 }
 const STATUS: Record<Row['status'], [string, string]> = { rugi: ['Rugi', 'pill-bad'], tipis: ['Tipis', 'pill-warn'], aman: ['Aman', 'pill-ok'], tanpa_resep: ['Belum ada resep', 'pill-mute'], tanpa_harga: ['Belum ada harga', 'pill-mute'] };
@@ -24,17 +25,15 @@ export function MarginPage() {
   const min = q.data?.margin_min ?? 20;
   const rows = q.data?.rows || [];
   const cell = (c: Cell) => (c ? <span className="num whitespace-nowrap"><span className="text-muted">{nf(c.harga)}</span> <b className={c.margin < 0 ? 'text-bad' : c.margin < min ? 'text-warn' : 'text-ok'}>{c.margin.toFixed(1).replace('.', ',')}%</b></span> : <span className="text-muted">–</span>);
-  const ex = (k: 'es' | 'rb' | 'es_bb' | 'rb_bb') => (r: Row) => (r[k] ? r[k]!.margin : '');
+  const ex = (k: 'es' | 'rb') => (r: Row) => (r[k] ? r[k]!.margin : '');
   const cols: ColumnDef<Row, any>[] = [
     { accessorKey: 'kode', header: 'Kode', meta: { className: 'font-mono text-xs', hideOnCard: true } },
     { accessorKey: 'nama', header: 'Produk', cell: (c) => <span className="font-semibold">{c.getValue()}<span className="block text-[11px] font-normal text-muted">{c.row.original.mesin}{c.row.original.kertas_sendiri ? ' · kertas sendiri' : ''}</span></span>, meta: { hideOnCard: true } },
     { accessorKey: 'kategori', header: 'Kategori', meta: { filter: 'select' } },
     { accessorKey: 'hpp', header: 'HPP / unit', meta: { money: true, align: 'right' }, cell: (c) => <span className="num" title={`bahan ${dec(c.row.original.hpp_bahan)} + klik ${dec(c.row.original.hpp_klik)}`}>{dec(c.getValue())}</span> },
-    { accessorKey: 'hpp_bb', header: 'HPP BB', meta: { money: true, align: 'right' }, cell: (c) => (c.getValue() != null ? <span className="num">{dec(c.getValue())}</span> : <span className="text-muted">–</span>) },
+    { id: 'sisi', accessorFn: (r) => (r.jenis_harga === 'matriks' ? sisiLabel(r.sisi) : '–'), header: 'Sisi', meta: { filter: 'select' } },
     { id: 'es', accessorFn: (r) => r.es?.margin ?? null, header: 'End user sedikit', meta: { align: 'right', exportValue: ex('es') }, cell: (c) => cell(c.row.original.es) },
     { id: 'rb', accessorFn: (r) => r.rb?.margin ?? null, header: 'Reseller banyak', meta: { align: 'right', exportValue: ex('rb') }, cell: (c) => cell(c.row.original.rb) },
-    { id: 'es_bb', accessorFn: (r) => r.es_bb?.margin ?? null, header: 'End user sedikit BB', meta: { align: 'right', exportValue: ex('es_bb') }, cell: (c) => cell(c.row.original.es_bb) },
-    { id: 'rb_bb', accessorFn: (r) => r.rb_bb?.margin ?? null, header: 'Reseller banyak BB', meta: { align: 'right', exportValue: ex('rb_bb') }, cell: (c) => cell(c.row.original.rb_bb) },
     { id: 'status', accessorFn: (r) => STATUS[r.status][0], header: 'Status', meta: { filter: 'select' }, cell: (c) => <span className={`pill ${STATUS[c.row.original.status][1]}`}>{c.getValue()}</span> },
   ];
   const n = (s: Row['status']) => rows.filter((r) => r.status === s).length;
@@ -52,7 +51,7 @@ export function MarginPage() {
       <DataTable<Row> data={rows} loading={q.isLoading} columns={cols} title="Margin produk" storageKey="margin" canExport={can('laporan.laba', 'ekspor')}
         initialSort={[{ id: 'rb', desc: false }]} searchPlaceholder="Cari produk…"
         cardTitle={(r) => <span className="flex justify-between gap-2"><span>{r.nama}</span><span className={`pill ${STATUS[r.status][1]}`}>{STATUS[r.status][0]}</span></span>} emptyText="Belum ada produk." />
-      <p className="mt-2 text-xs text-muted">Ditampilkan harga tertinggi (end user sedikit) dan terendah (reseller banyak). Kolom BB (bolak-balik) memakai HPP 2 klik. Semua per lembar.</p>
+      <p className="mt-2 text-xs text-muted">Ditampilkan harga tertinggi (end user sedikit) dan terendah (reseller banyak). Produk 2 sisi (BB) memakai HPP 2 klik. Semua per lembar.</p>
     </>
   );
 }

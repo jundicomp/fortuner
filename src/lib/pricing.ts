@@ -18,7 +18,7 @@ export const CUT_SIZES = ['di atas 5 cm', '3,1 – 5 cm', '2 – 3 cm', 'di bawa
 export const CUT_KEYS: TierKey[] = ['rb', 'rb_bb', 'rs', 'rs_bb'];
 
 export const JENIS_HARGA: { value: JenisHarga; label: string; hint: string }[] = [
-  { value: 'matriks', label: 'Matriks 8 tier', hint: 'Reseller/End user × Banyak/Sedikit × 1 sisi/BB' },
+  { value: 'matriks', label: 'Matriks 4 tier', hint: 'Reseller/End user × Banyak/Sedikit. Cetak 1 sisi dan 2 sisi (BB) dibuat sebagai produk terpisah.' },
   { value: 'cutting', label: 'Cutting per ukuran', hint: '4 harga sesuai ukuran stiker' },
   { value: 'tetap', label: 'Harga tetap', hint: 'Satu harga untuk semua konsumen' },
   { value: 'manual', label: 'Manual', hint: 'Harga diisi CS saat transaksi' },
@@ -29,7 +29,7 @@ export interface PriceInput {
   harga: PriceRow | null | undefined;
   tipe: 'reseller' | 'enduser';
   qty: number;
-  sisi: 1 | 2;
+  sisi?: 1 | 2; // tidak lagi memengaruhi harga: produk 2 sisi (BB) punya harga sendiri
   ukuran?: number; // index CUT_SIZES
   minQtyBanyak: number; // default 26
 }
@@ -49,16 +49,14 @@ export function hitungHarga(i: PriceInput): PriceResult {
   let fallback = false;
   let base: TierKey = (`${i.tipe === 'enduser' ? 'e' : 'r'}${banyak ? 'b' : 's'}`) as TierKey;
   if (i.tipe === 'enduser' && h[base] == null) { base = (`r${banyak ? 'b' : 's'}`) as TierKey; fallback = true; }
-  let tier: TierKey = base;
-  if (i.sisi === 2 && h[(base + '_bb') as TierKey] != null) tier = (base + '_bb') as TierKey;
-  const label = `${base.startsWith('e') ? 'End user' : 'Reseller'} · ${banyak ? `Banyak (≥${i.minQtyBanyak})` : 'Sedikit'}${tier.endsWith('_bb') ? ' · BB' : ''}`;
-  return {
-    harga: h[tier],
-    tier,
-    label,
-    peringatan: fallback ? 'Harga end user kosong, memakai harga reseller.' : i.sisi === 2 && !tier.endsWith('_bb') ? 'Tidak ada harga BB, memakai harga 1 sisi.' : undefined,
-  };
+  const tier: TierKey = base;
+  const label = `${base.startsWith('e') ? 'End user' : 'Reseller'} · ${banyak ? `Banyak (≥${i.minQtyBanyak})` : 'Sedikit'}`;
+  return { harga: h[tier], tier, label, peringatan: fallback ? 'Harga end user kosong, memakai harga reseller.' : undefined };
 }
+
+/** Nama produk + penanda BB untuk item 2 sisi (tanpa dobel bila nama produk sudah memuat "BB"). */
+export const namaSisi = (nama: string, sisi?: number | null) => (Number(sisi) === 2 && !/(^|\s)bb(\s|$)|2 sisi/i.test(nama) ? `${nama} BB` : nama);
+export const sisiLabel = (sisi?: number | null) => (Number(sisi) === 2 ? '2 sisi (BB)' : '1 sisi');
 
 /** Pilih baris harga yang berlaku pada tanggal tertentu (YYYY-MM-DD). */
 export function hargaBerlaku(rows: PriceRow[], tanggal: string): PriceRow | null {

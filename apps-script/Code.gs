@@ -254,15 +254,9 @@ var FortunerServer = (() => {
       base = `r${banyak ? "b" : "s"}`;
       fallback = true;
     }
-    let tier = base;
-    if (i.sisi === 2 && h[base + "_bb"] != null) tier = base + "_bb";
-    const label = `${base.startsWith("e") ? "End user" : "Reseller"} \xB7 ${banyak ? `Banyak (\u2265${i.minQtyBanyak})` : "Sedikit"}${tier.endsWith("_bb") ? " \xB7 BB" : ""}`;
-    return {
-      harga: h[tier],
-      tier,
-      label,
-      peringatan: fallback ? "Harga end user kosong, memakai harga reseller." : i.sisi === 2 && !tier.endsWith("_bb") ? "Tidak ada harga BB, memakai harga 1 sisi." : void 0
-    };
+    const tier = base;
+    const label = `${base.startsWith("e") ? "End user" : "Reseller"} \xB7 ${banyak ? `Banyak (\u2265${i.minQtyBanyak})` : "Sedikit"}`;
+    return { harga: h[tier], tier, label, peringatan: fallback ? "Harga end user kosong, memakai harga reseller." : void 0 };
   }
   function hargaBerlaku(rows, tanggal) {
     const ok = rows.filter((r) => r.berlaku_mulai <= tanggal && (!r.berlaku_sampai || r.berlaku_sampai >= tanggal));
@@ -788,12 +782,12 @@ var FortunerServer = (() => {
             rows: c.s.all("products").filter((x) => bool2(x.aktif) && x.jenis_harga !== "manual").map((x) => {
               var _a;
               const h2 = hargaBerlaku(prices.filter((r) => r.product_id === x.id), t);
-              const c1 = productCost(c, str2(x.id), 1, cache), c2 = productCost(c, str2(x.id), 2, cache);
+              const c1 = productCost(c, str2(x.id), Number(x.sisi) === 2 ? 2 : 1, cache);
               const pr = (k, cost) => {
                 const v = h2 ? num(h2[k]) : 0;
                 return v ? { harga: v, margin: Math.round((v - cost) / v * 1e3) / 10 } : null;
               };
-              const cells = { es: pr("es", c1.total), rb: pr("rb", c1.total), es_bb: x.jenis_harga === "matriks" ? pr("es_bb", c2.total) : null, rb_bb: x.jenis_harga === "matriks" ? pr("rb_bb", c2.total) : null };
+              const cells = { es: pr("es", c1.total), rb: pr("rb", c1.total) };
               const margins = Object.values(cells).filter(Boolean).map((v) => v.margin);
               const terendah = margins.length ? Math.min(...margins) : null;
               return {
@@ -808,7 +802,7 @@ var FortunerServer = (() => {
                 hpp_bahan: c1.bahan,
                 hpp_klik: c1.klik,
                 hpp: c1.total,
-                hpp_bb: x.jenis_harga === "matriks" ? c2.total : null,
+                sisi: Number(x.sisi) === 2 ? 2 : 1,
                 ...cells,
                 margin_terendah: terendah,
                 status: !c1.resep && !bool2(x.kertas_sendiri) ? "tanpa_resep" : terendah == null ? "tanpa_harga" : terendah < 0 ? "rugi" : terendah < minMargin ? "tipis" : "aman"
@@ -1361,7 +1355,7 @@ var FortunerServer = (() => {
       const qty = Math.round(Number(r.qty));
       if (!(qty >= 1 && qty <= 1e6)) fail("VALIDATION", `Item ${idx + 1}: jumlah tidak valid.`);
       const jenis = str(prod.jenis_harga);
-      const sisi = jenis === "matriks" && Number(r.sisi) === 2 ? 2 : 1;
+      const sisi = jenis === "matriks" && Number(prod.sisi) === 2 ? 2 : 1;
       const ukuran = jenis === "cutting" ? Math.max(0, Math.min(3, Math.round(Number(r.ukuran) || 0))) : 0;
       const prow = hargaBerlaku(prices.filter((x) => x.product_id === prod.id), tanggal);
       const calc = hitungHarga({ jenis, harga: prow, tipe, qty, sisi, ukuran, minQtyBanyak: minQty });
@@ -1479,6 +1473,36 @@ var FortunerServer = (() => {
     const o = {};
     TIERS.forEach((t) => o[t.key] = numOrNull(p[t.key]));
     return o;
+  }
+  var BB_KEYS = ["rb_bb", "rs_bb", "eb_bb", "es_bb"];
+  function splitBB(c, base, harga, mulai, catatan) {
+    var _a, _b, _c, _d;
+    const tiers = { rb: (_a = harga.rb_bb) != null ? _a : null, rs: (_b = harga.rs_bb) != null ? _b : null, eb: (_c = harga.eb_bb) != null ? _c : null, es: (_d = harga.es_bb) != null ? _d : null, rb_bb: null, rs_bb: null, eb_bb: null, es_bb: null };
+    if (["rb", "rs", "eb", "es"].every((k) => tiers[k] == null)) return "";
+    const kode = `${str(base.kode)}BB`;
+    const nama = /(^|\s)bb(\s|$)/i.test(str(base.nama)) ? str(base.nama) : `${str(base.nama)} BB`;
+    const data = { kode, nama, kategori: base.kategori, mesin_id: base.mesin_id, jenis_harga: "matriks", satuan: base.satuan || "lembar", aktif: base.aktif !== false, kertas_sendiri: bool(base.kertas_sendiri), sisi: 2 };
+    let row = c.s.all("products").find((x) => str(x.kode).toLowerCase() === kode.toLowerCase());
+    let hasil;
+    if (row) {
+      c.s.update("products", "id", str(row.id), { ...data, ...stamp(c, false) });
+      hasil = "ubah";
+    } else {
+      row = c.s.insert("products", { id: newId(c.env, "prd"), ...data, ...stamp(c, true) });
+      hasil = "baru";
+      c.s.all("recipes").filter((r) => r.product_id === base.id).forEach((r) => c.s.insert("recipes", { ...r, id: newId(c.env, "rcp"), product_id: row.id, ...stamp(c, true) }));
+    }
+    const cur = hargaBerlaku(c.s.all("price_history").filter((x) => x.product_id === row.id), mulai);
+    if (!cur || ["rb", "rs", "eb", "es"].some((k) => {
+      var _a2, _b2;
+      return ((_a2 = cur[k]) != null ? _a2 : null) !== ((_b2 = tiers[k]) != null ? _b2 : null);
+    })) {
+      try {
+        addPrice(c, str(row.id), mulai, tiers, catatan);
+      } catch {
+      }
+    }
+    return hasil;
   }
   function addPrice(c, productId, mulai, tiers, catatan) {
     if (!isYmd(mulai)) fail("VALIDATION", "Tanggal berlaku tidak valid.");
@@ -1707,18 +1731,47 @@ var FortunerServer = (() => {
         return c.s.withLock(() => {
           if (c.s.all("products").some((x) => str(x.kode).toLowerCase() === str(r.kode).toLowerCase() && x.id !== r.id)) fail("VALIDATION", `Kode produk ${r.kode} sudah dipakai.`);
           const ks = bool(r.kertas_sendiri);
-          const data = { kode: str(r.kode), nama: str(r.nama), kategori: str(r.kategori) || (ks ? "Kertas sendiri" : ""), mesin_id: str(r.mesin_id), jenis_harga: r.jenis_harga, satuan: str(r.satuan) || "lembar", aktif: r.aktif !== false, kertas_sendiri: ks };
+          const data = { kode: str(r.kode), nama: str(r.nama), kategori: str(r.kategori) || (ks ? "Kertas sendiri" : ""), mesin_id: str(r.mesin_id), jenis_harga: r.jenis_harga, satuan: str(r.satuan) || "lembar", aktif: r.aktif !== false, kertas_sendiri: ks, sisi: r.jenis_harga === "matriks" && Number(r.sisi) === 2 ? 2 : 1 };
           if (ks) c.s.all("recipes").filter((x) => x.product_id === r.id).forEach((x) => c.s.remove("recipes", "id", str(x.id)));
           let row;
           if (isNew) row = c.s.insert("products", { id: newId(c.env, "prd"), ...data, ...stamp(c, true) });
           else row = c.s.update("products", "id", r.id, { ...data, ...stamp(c, false) }) || fail("NOT_FOUND", "Produk tidak ditemukan.");
           if (isNew && p.harga && data.jenis_harga !== "manual") {
             const t = tiersFrom(p.harga);
+            if (data.jenis_harga === "matriks") BB_KEYS.forEach((k) => {
+              t[k] = null;
+            });
             if (Object.values(t).some((v) => v != null)) addPrice(c, str(row.id), str(p.harga.berlaku_mulai) || c.env.today(), t, "Harga awal");
           }
           log(c, isNew ? "tambah" : "ubah", "products", str(row.id), `${isNew ? "Menambah" : "Mengubah"} produk ${data.kode} ${data.nama}`);
           return productWithPrice(c.s, row, c.env.today());
         });
+      }
+    },
+    /** Ubah harga BB model lama (kolom BB di produk 1 sisi) menjadi produk 2 sisi tersendiri. */
+    "products.split_bb": {
+      auth: true,
+      fn: (c) => {
+        need(c, "master.produk", "tambah");
+        const today = c.env.today();
+        const res = { dibuat: 0, diperbarui: 0 };
+        c.s.withLock(() => {
+          const prices = c.s.all("price_history");
+          c.s.all("products").filter((p) => p.jenis_harga === "matriks" && Number(p.sisi) !== 2).forEach((p) => {
+            var _a, _b, _c, _d;
+            const h = hargaBerlaku(prices.filter((x) => x.product_id === p.id), today);
+            if (!h || !BB_KEYS.some((k) => h[k] != null)) return;
+            const r = splitBB(c, p, h, today, "Dipisah dari harga BB");
+            if (r === "baru") res.dibuat++;
+            else if (r === "ubah") res.diperbarui++;
+            try {
+              addPrice(c, str(p.id), today, { rb: (_a = h.rb) != null ? _a : null, rs: (_b = h.rs) != null ? _b : null, eb: (_c = h.eb) != null ? _c : null, es: (_d = h.es) != null ? _d : null, rb_bb: null, rs_bb: null, eb_bb: null, es_bb: null }, "Harga BB dipindah ke produk 2 sisi");
+            } catch {
+            }
+          });
+        });
+        log(c, "pisah_bb", "products", "", `Pisahkan harga BB: ${res.dibuat} produk 2 sisi baru, ${res.diperbarui} diperbarui`);
+        return res;
       }
     },
     "price.history": {
@@ -1735,7 +1788,11 @@ var FortunerServer = (() => {
         const prod = c.s.all("products").find((x) => x.id === p.product_id) || fail("NOT_FOUND", "Produk tidak ditemukan.");
         return c.s.withLock(() => {
           const mulai = str(p.berlaku_mulai) || c.env.today();
-          const res = addPrice(c, str(p.product_id), mulai, tiersFrom(p), str(p.catatan));
+          const t = tiersFrom(p);
+          if (prod.jenis_harga === "matriks") BB_KEYS.forEach((k) => {
+            t[k] = null;
+          });
+          const res = addPrice(c, str(p.product_id), mulai, t, str(p.catatan));
           log(
             c,
             res.koreksi ? "koreksi_harga" : "harga_baru",
@@ -1777,7 +1834,9 @@ var FortunerServer = (() => {
               mesinId = str(m.id);
             }
             const ks = r.kertas_sendiri === void 0 || r.kertas_sendiri === "" ? /(^|\s)ks(\s|$)/i.test(nama) : bool(r.kertas_sendiri);
-            const data = { kode, nama, kategori: str(r.kategori) || (ks ? "Kertas sendiri" : ""), mesin_id: mesinId, jenis_harga: jenis, satuan: str(r.satuan) || "lembar", aktif: r.aktif === void 0 || r.aktif === "" ? true : bool(r.aktif), kertas_sendiri: ks };
+            const sisiRaw = str(r.sisi).toLowerCase();
+            const sisi = jenis === "matriks" && (sisiRaw ? /^(2|bb|2 sisi|bolak)/.test(sisiRaw) : /(^|\s)bb(\s|$)/i.test(nama)) ? 2 : 1;
+            const data = { kode, nama, kategori: str(r.kategori) || (ks ? "Kertas sendiri" : ""), mesin_id: mesinId, jenis_harga: jenis, satuan: str(r.satuan) || "lembar", aktif: r.aktif === void 0 || r.aktif === "" ? true : bool(r.aktif), kertas_sendiri: ks, sisi };
             let prod = c.s.all("products").find((x) => str(x.kode).toLowerCase() === kode.toLowerCase());
             if (prod) {
               c.s.update("products", "id", str(prod.id), { ...data, ...stamp(c, false) });
@@ -1787,6 +1846,14 @@ var FortunerServer = (() => {
               res.dibuat++;
             }
             const t = tiersFrom(r);
+            if (jenis === "matriks" && sisi === 1 && BB_KEYS.some((k) => t[k] != null)) {
+              const bb = splitBB(c, prod, t, mulai, "Import Excel");
+              if (bb === "baru") res.dibuat++;
+              else if (bb === "ubah") res.diperbarui++;
+            }
+            if (jenis === "matriks") BB_KEYS.forEach((k) => {
+              t[k] = null;
+            });
             if (jenis !== "manual" && Object.values(t).some((v) => v != null)) {
               const cur = hargaBerlaku(c.s.all("price_history").filter((x) => x.product_id === prod.id), mulai);
               const same = cur && TIERS.every((tt) => {
@@ -2902,7 +2969,7 @@ var FortunerServer = (() => {
     settings: { key: "s", value: "s" },
     counters: { key: "s", value: "n" },
     // ---------- Master ----------
-    products: { id: "s", kode: "s", nama: "s", kategori: "s", mesin_id: "s", jenis_harga: "s", satuan: "s", aktif: "b", kertas_sendiri: "b", ...audit },
+    products: { id: "s", kode: "s", nama: "s", kategori: "s", mesin_id: "s", jenis_harga: "s", satuan: "s", aktif: "b", kertas_sendiri: "b", sisi: "n", ...audit },
     price_history: {
       id: "s",
       product_id: "s",

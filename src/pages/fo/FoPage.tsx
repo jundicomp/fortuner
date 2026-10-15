@@ -14,7 +14,7 @@ import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/auth/AuthContext';
 import { loadPos, newClientId, sync, useSync } from '@/lib/offline';
 import { commitNo, counterKey, formatNota, peekNo } from '@/lib/nota';
-import { CUT_SIZES, hargaBerlaku, hitungHarga } from '@/lib/pricing';
+import { CUT_SIZES, hargaBerlaku, hitungHarga, namaSisi, sisiLabel } from '@/lib/pricing';
 import { nf, rp, tglJam, ymd } from '@/lib/format';
 import { priceSummary } from '@/pages/master/PriceGrid';
 import type { CustomerLite, JenisHarga, OrderDetail, PriceRow, Product } from '@/types';
@@ -56,7 +56,7 @@ export function FoPage() {
   // ---------- state ----------
   const [customerId, setCustomerId] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [draft, setDraft] = useState({ product_id: '', qty: '1', sisi: 1 as 1 | 2, ukuran: 0, keterangan: '', harga: '', manual: false });
+  const [draft, setDraft] = useState({ product_id: '', qty: '1', ukuran: 0, keterangan: '', harga: '', manual: false });
   const [catatan, setCatatan] = useState('');
   const [desain, setDesain] = useState('');
   const [janji, setJanji] = useState('');
@@ -76,22 +76,23 @@ export function FoPage() {
     if (!customerId || !d.customers.some((c) => c.id === customerId)) setCustomerId((d.customers.find((c) => /umum|walk/i.test(c.nama)) || d.customers[0])?.id || '');
   }, [d]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const calc = (p: Product, qty: number, sisi: 1 | 2, ukuran: number, t = tipe) =>
-    hitungHarga({ jenis: p.jenis_harga, harga: p.harga, tipe: t, qty, sisi, ukuran, minQtyBanyak: minQty });
+  const calc = (p: Product, qty: number, ukuran: number, t = tipe) =>
+    hitungHarga({ jenis: p.jenis_harga, harga: p.harga, tipe: t, qty, ukuran, minQtyBanyak: minQty });
+  const sisiOf = (p?: Product) => (p?.jenis_harga === 'matriks' && Number(p.sisi) === 2 ? 2 : 1) as 1 | 2;
 
   // harga ulang semua item (kecuali manual) saat konsumen berganti
   useEffect(() => {
     setCart((c) => c.map((it) => {
       if (it.manual) return it;
       const p = prodById[it.product_id]; if (!p) return it;
-      const r = calc(p, it.qty, it.sisi, it.ukuran);
+      const r = calc(p, it.qty, it.ukuran);
       return { ...it, harga: r.harga, tier: r.tier || '', label: r.label, warn: r.peringatan };
     }));
   }, [tipe, prodById]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const dp = prodById[draft.product_id];
   const dQty = numIn(draft.qty);
-  const dCalc = dp ? calc(dp, dQty || 1, draft.sisi, draft.ukuran) : null;
+  const dCalc = dp ? calc(dp, dQty || 1, draft.ukuran) : null;
   const dManual = !!dp && (dp.jenis_harga === 'manual' || draft.manual);
   const dHarga = dManual ? (draft.harga === '' ? null : numIn(draft.harga)) : dCalc?.harga ?? null;
 
@@ -101,11 +102,11 @@ export function FoPage() {
     if (dQty < 1) { qtyRef.current?.focus(); return; }
     if (dHarga == null) { toast(dp.jenis_harga === 'manual' ? 'Isi harga satuan untuk produk ini.' : `${dp.nama} belum punya harga. Hubungi admin.`, 'err'); return; }
     setCart((c) => [...c, {
-      key: Math.random().toString(36).slice(2), product_id: dp.id, nama: dp.nama, jenis: dp.jenis_harga, qty: dQty, sisi: dp.jenis_harga === 'matriks' ? draft.sisi : 1,
+      key: Math.random().toString(36).slice(2), product_id: dp.id, nama: dp.nama, jenis: dp.jenis_harga, qty: dQty, sisi: sisiOf(dp),
       ukuran: draft.ukuran, keterangan: draft.keterangan.trim(), harga: dHarga, manual: dManual, tier: dManual ? 'manual' : dCalc?.tier || '',
       label: dManual ? 'Harga manual' : dCalc?.label || '', warn: dManual ? undefined : dCalc?.peringatan,
     }]);
-    setDraft({ product_id: '', qty: '1', sisi: 1, ukuran: 0, keterangan: '', harga: '', manual: false });
+    setDraft({ product_id: '', qty: '1', ukuran: 0, keterangan: '', harga: '', manual: false });
     setTimeout(() => prodRef.current?.focus(), 0);
   };
 
@@ -113,7 +114,7 @@ export function FoPage() {
     if (it.key !== key) return it;
     const q = Math.max(1, qty);
     if (it.manual) return { ...it, qty: q };
-    const p = prodById[it.product_id]; const r = p ? calc(p, q, it.sisi, it.ukuran) : null;
+    const p = prodById[it.product_id]; const r = p ? calc(p, q, it.ukuran) : null;
     return { ...it, qty: q, harga: r?.harga ?? it.harga, tier: r?.tier || it.tier, label: r?.label || it.label, warn: r?.peringatan };
   }));
 
@@ -178,7 +179,7 @@ export function FoPage() {
     right: <span className={`pill ${c.tipe === 'reseller' ? 'pill-brand' : 'pill-mute'}`}>{c.tipe === 'reseller' ? 'Reseller' : 'End user'}</span>,
   })), [d]);
   const prodItems: ComboItem[] = useMemo(() => products.map((p) => ({
-    value: p.id, label: p.nama, hint: `#${p.kode} · ${machineName[p.mesin_id] || '–'}${p.kertas_sendiri ? ' · kertas sendiri' : ''}`, search: `${p.nama} ${p.kode} ${p.kategori} ${machineName[p.mesin_id] || ''}`.toLowerCase(),
+    value: p.id, label: p.nama, hint: `#${p.kode} · ${machineName[p.mesin_id] || '–'}${p.jenis_harga === 'matriks' && Number(p.sisi) === 2 ? ' · 2 sisi (BB)' : ''}${p.kertas_sendiri ? ' · kertas sendiri' : ''}`, search: `${p.nama} ${p.kode} ${p.kategori} ${machineName[p.mesin_id] || ''}`.toLowerCase(),
     right: p.jenis_harga !== 'manual' && !p.harga ? <span className="pill pill-bad">Tanpa harga</span> : <span className="num text-xs text-muted">{priceSummary(p.jenis_harga, p.harga)}</span>,
   })), [products, machineName]);
 
@@ -237,7 +238,7 @@ export function FoPage() {
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-12">
               <Field label="Produk (kode atau nama)" className="col-span-2 sm:col-span-6">
                 <Combobox ref={prodRef} id="fo-product" items={prodItems} value={draft.product_id} placeholder="Ketik kode, mis. 7, atau nama produk…"
-                  onChange={(v) => setDraft((x) => ({ ...x, product_id: v, sisi: 1, ukuran: 0, harga: '', manual: false }))} autoFocusNext={() => setTimeout(() => qtyRef.current?.select(), 0)} />
+                  onChange={(v) => setDraft((x) => ({ ...x, product_id: v, ukuran: 0, harga: '', manual: false }))} autoFocusNext={() => setTimeout(() => qtyRef.current?.select(), 0)} />
               </Field>
               <Field label="Jumlah" className="col-span-1 sm:col-span-2">
                 <input ref={qtyRef} id="fo-qty" className="input num text-right" inputMode="numeric" value={draft.qty} onChange={(e) => setDraft({ ...draft, qty: e.target.value.replace(/[^\d]/g, '') })} onKeyDown={(e) => e.key === 'Enter' && addItem()} />
@@ -249,11 +250,8 @@ export function FoPage() {
                   </Field>
                 ) : (
                   <div className="label"><span>Sisi</span>
-                    <div className="flex overflow-hidden rounded-lg border border-line" role="group" aria-label="Sisi">
-                      {[1, 2].map((n) => (
-                        <button key={n} type="button" disabled={dp?.jenis_harga !== 'matriks'} onClick={() => setDraft({ ...draft, sisi: n as 1 | 2 })}
-                          className={`flex-1 px-2 py-2 text-xs font-bold transition disabled:opacity-40 ${draft.sisi === n ? 'bg-ink text-canvas' : 'bg-surface text-muted hover:text-ink'}`}>{n === 1 ? '1 sisi' : '2 sisi (BB)'}</button>
-                      ))}
+                    <div id="fo-sisi" className={`flex h-[38px] items-center rounded-lg border border-line px-3 text-xs font-bold ${dp?.jenis_harga === 'matriks' ? (sisiOf(dp) === 2 ? 'bg-brand/10 text-brand' : 'bg-sunk') : 'bg-sunk text-muted'}`}>
+                      {dp?.jenis_harga === 'matriks' ? sisiLabel(dp.sisi) : dp ? '–' : 'ikut produk'}
                     </div>
                   </div>
                 )}
@@ -274,11 +272,11 @@ export function FoPage() {
             {dp ? (
               <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg bg-sunk px-3 py-2 text-xs">
                 <span className="pill pill-brand">{dManual ? 'Harga manual' : dCalc?.label}</span>
-                <span className="text-muted">{machineName[dp.mesin_id] || '–'}{dp.jenis_harga === 'matriks' ? ` · klik ${nf((dQty || 1) * draft.sisi)}` : ''}{dp.kertas_sendiri && <b className="text-warn"> · kertas dari konsumen</b>}</span>
+                <span className="text-muted">{machineName[dp.mesin_id] || '–'}{dp.jenis_harga === 'matriks' ? ` · ${sisiLabel(dp.sisi)} · klik ${nf((dQty || 1) * sisiOf(dp))}` : ''}{dp.kertas_sendiri && <b className="text-warn"> · kertas dari konsumen</b>}</span>
                 {!dManual && dCalc?.peringatan && <span className="text-warn">{dCalc.peringatan}</span>}
                 <span className="num ml-auto text-sm">{nf(dQty || 0)} × {dHarga == null ? '–' : nf(dHarga)} = <b>{dHarga == null ? '–' : rp(dHarga * (dQty || 0))}</b></span>
               </div>
-            ) : <p className="mt-2 text-xs text-muted">Enter untuk menambah · harga otomatis dari matriks (tipe konsumen, jumlah ≥ {minQty} = harga banyak, sisi).</p>}
+            ) : <p className="mt-2 text-xs text-muted">Enter untuk menambah · harga otomatis dari matriks (tipe konsumen, jumlah ≥ {minQty} = harga banyak). Cetak 2 sisi pilih produk BB.</p>}
           </section>
 
           {/* isi nota */}
@@ -304,7 +302,7 @@ export function FoPage() {
                     <tr key={it.key}>
                       <td className="px-2 py-2 text-center font-mono text-xs">{prodById[it.product_id]?.kode || '–'}</td>
                       <td className="px-2.5 py-2">
-                        <span className="font-semibold">{it.nama}{it.sisi === 2 ? <span className="text-muted"> · BB</span> : ''}{it.jenis === 'cutting' ? <span className="text-muted"> · {CUT_SIZES[it.ukuran]}</span> : ''}</span>
+                        <span className="font-semibold">{namaSisi(it.nama, it.sisi)}{it.jenis === 'cutting' ? <span className="text-muted"> · {CUT_SIZES[it.ukuran]}</span> : ''}</span>
                         {prodById[it.product_id]?.kertas_sendiri && <span className="pill pill-warn ml-1.5 align-middle">Kertas konsumen</span>}
                         {it.keterangan && <span className="text-muted"> · {it.keterangan}</span>}
                         {(it.manual || it.warn) && <div className="mt-0.5 flex flex-wrap gap-1.5 text-xs">{it.manual && <span className="pill pill-warn">{it.label}</span>}{it.warn && <span className="text-warn">{it.warn}</span>}</div>}
