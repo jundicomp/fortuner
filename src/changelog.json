@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.2.3",
+    "tanggal": "2026-10-15",
+    "catatan": [
+      "Form Tambah produk baru, ringkas dua kolom: data produk & modal per lembar di kiri, harga di kanan.",
+      "Modal per lembar dihitung sebelum menentukan harga: bahan dari Stok Bahan (jadi resep produk) + biaya klik mesin × sisi + jasa/ongkos lain; ada patokan harga minimal sesuai batas margin.",
+      "Setiap kotak harga menampilkan laba kotor per lembar dan persentasenya (hijau aman, kuning tipis, merah rugi), juga di tab Harga produk yang sudah ada.",
+      "Tabel harga diurutkan Sedikit (oranye) lalu Banyak (hijau).",
+      "Kategori produk jadi pilihan tetap yang bisa ditambah; \"Kertas sendiri\" tidak lagi dijadikan kategori, hanya penanda jasa cetak."
+    ]
+  },
+  {
     "version": "1.2.2",
     "tanggal": "2026-10-15",
     "catatan": [

@@ -144,7 +144,8 @@ export function makeExt(h: Helpers) {
       return { material_id: str(r.material_id), nama: str(m?.nama), satuan: str(m?.satuan), qty: r2(q), harga: num(m?.harga_rata), nilai: r2(nilai) };
     });
     const tarif = num(machines[str(p?.mesin_id)]?.biaya_klik);
-    return { bahan: r2(bahan), klik: r2(klik * tarif), total: r2(bahan + klik * tarif), klik_per_unit: klik, tarif_klik: tarif, resep: recipes.length > 0, rincian };
+    const jasa = num(p?.biaya_jasa); // jasa/ongkos lain per unit (diisi di form produk)
+    return { bahan: r2(bahan), klik: r2(klik * tarif), jasa: r2(jasa), total: r2(bahan + klik * tarif + jasa), klik_per_unit: klik, tarif_klik: tarif, resep: recipes.length > 0, rincian };
   }
 
   // ---------------- jurnal (buku besar) ----------------

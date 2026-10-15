@@ -397,7 +397,8 @@ var FortunerServer = (() => {
         return { material_id: str2(r.material_id), nama: str2(m == null ? void 0 : m.nama), satuan: str2(m == null ? void 0 : m.satuan), qty: r2(q), harga: num(m == null ? void 0 : m.harga_rata), nilai: r2(nilai) };
       });
       const tarif = num((_a = machines[str2(p == null ? void 0 : p.mesin_id)]) == null ? void 0 : _a.biaya_klik);
-      return { bahan: r2(bahan), klik: r2(klik * tarif), total: r2(bahan + klik * tarif), klik_per_unit: klik, tarif_klik: tarif, resep: recipes.length > 0, rincian };
+      const jasa = num(p == null ? void 0 : p.biaya_jasa);
+      return { bahan: r2(bahan), klik: r2(klik * tarif), jasa: r2(jasa), total: r2(bahan + klik * tarif + jasa), klik_per_unit: klik, tarif_klik: tarif, resep: recipes.length > 0, rincian };
     }
     function buildJournal(c) {
       const accounts = Object.fromEntries(BASE_ACCOUNTS.map((a) => [a.kode, a]));
@@ -1461,7 +1462,8 @@ var FortunerServer = (() => {
     customers: { perm: "master.konsumen", label: "konsumen", prefix: "cus", required: ["nama"] },
     suppliers: { perm: "master.supplier", label: "supplier", prefix: "sup", required: ["nama"] },
     machines: { perm: "master.mesin", label: "mesin", prefix: "mes", required: ["nama"] },
-    payment_methods: { perm: "master.metode", label: "metode bayar", prefix: "pay", required: ["nama"] }
+    payment_methods: { perm: "master.metode", label: "metode bayar", prefix: "pay", required: ["nama"] },
+    product_categories: { perm: "master.produk", label: "kategori produk", prefix: "kat", required: ["nama"] }
   };
   function productWithPrice(s, p, today, prices) {
     const rows = (prices || s.all("price_history")).filter((r) => r.product_id === p.id);
@@ -1695,6 +1697,7 @@ var FortunerServer = (() => {
             if (rows.some((x) => str(x.kode) === str(r.kode) && x.id !== r.id)) fail("VALIDATION", `Kode konsumen ${r.kode} sudah dipakai.`);
             r.tipe = r.tipe === "reseller" ? "reseller" : "enduser";
           }
+          if (p.table === "product_categories" && c.s.all("product_categories").some((x) => str(x.nama).toLowerCase() === str(r.nama).toLowerCase() && x.id !== r.id)) fail("VALIDATION", `Kategori ${r.nama} sudah ada.`);
           if (p.table === "machines" && r.biaya_klik !== void 0) r.biaya_klik = Math.max(0, Number(String(r.biaya_klik).replace(",", ".")) || 0);
           delete r.created_at;
           delete r.created_by;
@@ -1731,7 +1734,7 @@ var FortunerServer = (() => {
         return c.s.withLock(() => {
           if (c.s.all("products").some((x) => str(x.kode).toLowerCase() === str(r.kode).toLowerCase() && x.id !== r.id)) fail("VALIDATION", `Kode produk ${r.kode} sudah dipakai.`);
           const ks = bool(r.kertas_sendiri);
-          const data = { kode: str(r.kode), nama: str(r.nama), kategori: str(r.kategori) || (ks ? "Kertas sendiri" : ""), mesin_id: str(r.mesin_id), jenis_harga: r.jenis_harga, satuan: str(r.satuan) || "lembar", aktif: r.aktif !== false, kertas_sendiri: ks, sisi: r.jenis_harga === "matriks" && Number(r.sisi) === 2 ? 2 : 1 };
+          const data = { kode: str(r.kode), nama: str(r.nama), kategori: str(r.kategori), mesin_id: str(r.mesin_id), jenis_harga: r.jenis_harga, satuan: str(r.satuan) || "lembar", aktif: r.aktif !== false, kertas_sendiri: ks, sisi: r.jenis_harga === "matriks" && Number(r.sisi) === 2 ? 2 : 1, biaya_jasa: Math.max(0, Number(r.biaya_jasa) || 0) };
           if (ks) c.s.all("recipes").filter((x) => x.product_id === r.id).forEach((x) => c.s.remove("recipes", "id", str(x.id)));
           let row;
           if (isNew) row = c.s.insert("products", { id: newId(c.env, "prd"), ...data, ...stamp(c, true) });
@@ -1836,7 +1839,7 @@ var FortunerServer = (() => {
             const ks = r.kertas_sendiri === void 0 || r.kertas_sendiri === "" ? /(^|\s)ks(\s|$)/i.test(nama) : bool(r.kertas_sendiri);
             const sisiRaw = str(r.sisi).toLowerCase();
             const sisi = jenis === "matriks" && (sisiRaw ? /^(2|bb|2 sisi|bolak)/.test(sisiRaw) : /(^|\s)bb(\s|$)/i.test(nama)) ? 2 : 1;
-            const data = { kode, nama, kategori: str(r.kategori) || (ks ? "Kertas sendiri" : ""), mesin_id: mesinId, jenis_harga: jenis, satuan: str(r.satuan) || "lembar", aktif: r.aktif === void 0 || r.aktif === "" ? true : bool(r.aktif), kertas_sendiri: ks, sisi };
+            const data = { kode, nama, kategori: str(r.kategori), mesin_id: mesinId, jenis_harga: jenis, satuan: str(r.satuan) || "lembar", aktif: r.aktif === void 0 || r.aktif === "" ? true : bool(r.aktif), kertas_sendiri: ks, sisi };
             let prod = c.s.all("products").find((x) => str(x.kode).toLowerCase() === kode.toLowerCase());
             if (prod) {
               c.s.update("products", "id", str(prod.id), { ...data, ...stamp(c, false) });
@@ -2884,6 +2887,7 @@ var FortunerServer = (() => {
     ["Aset & peralatan", "aset"],
     ["Lain-lain", "lain"]
   ];
+  var BASE_PRODUCT_CATEGORIES = ["Kertas", "Stiker", "Hitam putih", "Finishing", "DTF", "Jasa", "Lain-lain"];
   var BASE_SETTINGS = {
     nama_usaha: "Fortuner Digital Printing",
     alamat: "",
@@ -2906,6 +2910,10 @@ var FortunerServer = (() => {
     if (!s.all("machines").length) BASE_MACHINES.forEach((n) => s.insert("machines", { id: newId(env, "mes"), nama: n, pakai_counter: ["versant", "Mahogani", "Dopo"].includes(n), aktif: true, ...st }));
     if (!s.all("expense_categories").length) BASE_CATEGORIES.forEach(([n, j]) => s.insert("expense_categories", { id: newId(env, "cat"), nama: n, jenis: j, aktif: true, ...st }));
     if (!s.all("expense_categories").some((x) => x.jenis === "klik")) s.insert("expense_categories", { id: newId(env, "cat"), nama: "Tagihan biaya klik mesin", jenis: "klik", aktif: true, ...st });
+    if (!s.all("product_categories").length) {
+      const ada = new Set(s.all("products").map((p) => str(p.kategori)).filter((k) => k && k !== "Kertas sendiri"));
+      [.../* @__PURE__ */ new Set([...BASE_PRODUCT_CATEGORIES, ...ada])].forEach((n) => s.insert("product_categories", { id: newId(env, "kat"), nama: n, aktif: true, ...st }));
+    }
     if (!s.all("payment_methods").length) BASE_METHODS.forEach(([n, j]) => s.insert("payment_methods", { id: newId(env, "pay"), nama: n, jenis: j, rekening: "", aktif: true, ...st }));
     if (!s.all("users").some((u) => u.role === "owner")) {
       const salt = env.uuid();
@@ -2969,7 +2977,8 @@ var FortunerServer = (() => {
     settings: { key: "s", value: "s" },
     counters: { key: "s", value: "n" },
     // ---------- Master ----------
-    products: { id: "s", kode: "s", nama: "s", kategori: "s", mesin_id: "s", jenis_harga: "s", satuan: "s", aktif: "b", kertas_sendiri: "b", sisi: "n", ...audit },
+    products: { id: "s", kode: "s", nama: "s", kategori: "s", mesin_id: "s", jenis_harga: "s", satuan: "s", aktif: "b", kertas_sendiri: "b", sisi: "n", biaya_jasa: "n", ...audit },
+    product_categories: { id: "s", nama: "s", aktif: "b", ...audit },
     price_history: {
       id: "s",
       product_id: "s",

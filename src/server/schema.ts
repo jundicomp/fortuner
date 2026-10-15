@@ -26,7 +26,8 @@ export const SCHEMA: Record<string, TableSchema> = {
   counters: { key: 's', value: 'n' },
 
   // ---------- Master ----------
-  products: { id: 's', kode: 's', nama: 's', kategori: 's', mesin_id: 's', jenis_harga: 's', satuan: 's', aktif: 'b', kertas_sendiri: 'b', sisi: 'n', ...audit },
+  products: { id: 's', kode: 's', nama: 's', kategori: 's', mesin_id: 's', jenis_harga: 's', satuan: 's', aktif: 'b', kertas_sendiri: 'b', sisi: 'n', biaya_jasa: 'n', ...audit },
+  product_categories: { id: 's', nama: 's', aktif: 'b', ...audit },
   price_history: {
     id: 's', product_id: 's', berlaku_mulai: 's', berlaku_sampai: 's',
     rb: 'n', rb_bb: 'n', rs: 'n', rs_bb: 'n', eb: 'n', eb_bb: 'n', es: 'n', es_bb: 'n', catatan: 's', ...audit,

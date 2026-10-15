@@ -35,8 +35,8 @@ export function seedDemo(s: Store, env: Env) {
     ['12', 'Stiker glossy', 'Stiker', 'versant', 'matriks', [6500, null, 6500, null, 8000, null, 8000, null]],
     ['16', 'Linen', 'Kertas', 'versant', 'matriks', [2600, 3700, 2800, 4100, 4300, 5500, 4500, 5900]],
     ['22', 'BW HVS A3+', 'Hitam putih', 'Mahogani', 'matriks', [400, 550, 450, 650, 1400, 1550, 1450, 1650]],
-    ['33', 'KS warna (kertas sendiri)', 'Kertas sendiri', 'versant', 'matriks', [1200, 2300, 1400, 2700, 3000, 4100, 3200, 4500]],
-    ['29', 'BW KS (kertas sendiri)', 'Kertas sendiri', 'Mahogani', 'matriks', [200, 400, 300, 500, 1200, 1400, 1300, 1500]],
+    ['33', 'KS warna (kertas sendiri)', 'Kertas', 'versant', 'matriks', [1200, 2300, 1400, 2700, 3000, 4100, 3200, 4500]],
+    ['29', 'BW KS (kertas sendiri)', 'Hitam putih', 'Mahogani', 'matriks', [200, 400, 300, 500, 1200, 1400, 1300, 1500]],
     ['36', 'Cutting stiker standar', 'Finishing', 'graphtech', 'cutting', [1000, 2000, 3000, 4000, null, null, null, null]],
     ['39', 'Cutting stiker rumit', 'Finishing', 'graphtech', 'cutting', [3000, 4000, 5000, 6000, null, null, null, null]],
     ['44', 'Laminating doff', 'Finishing', 'laminating', 'matriks', [1250, 1000, 1500, 1100, 3500, null, 3500, null]],
@@ -48,7 +48,7 @@ export function seedDemo(s: Store, env: Env) {
   // produk 1 sisi + (bila ada harga BB) produk 2 sisi tersendiri "<kode>BB"
   const bbKeys = ['rb_bb', 'rs_bb', 'eb_bb', 'es_bb'];
   products.forEach(([kode, nama, kat, m, jenis, harga]) => {
-    const baseRow = { kategori: kat, mesin_id: mesin(m), jenis_harga: jenis, satuan: 'lembar', aktif: true, kertas_sendiri: kat === 'Kertas sendiri' };
+    const baseRow = { kategori: kat, mesin_id: mesin(m), jenis_harga: jenis, satuan: 'lembar', aktif: true, kertas_sendiri: kode === '33' || kode === '29' };
     const id = _newId(env, 'prd');
     s.insert('products', { id, kode, nama, ...baseRow, sisi: 1, ...st });
     if (!harga.length) return;

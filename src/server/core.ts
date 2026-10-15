@@ -332,6 +332,7 @@ const MASTER: Record<string, { perm: string; label: string; prefix: string; requ
   suppliers: { perm: 'master.supplier', label: 'supplier', prefix: 'sup', required: ['nama'] },
   machines: { perm: 'master.mesin', label: 'mesin', prefix: 'mes', required: ['nama'] },
   payment_methods: { perm: 'master.metode', label: 'metode bayar', prefix: 'pay', required: ['nama'] },
+  product_categories: { perm: 'master.produk', label: 'kategori produk', prefix: 'kat', required: ['nama'] },
 };
 
 function productWithPrice(s: Store, p: Row, today: string, prices?: Row[]) {
@@ -543,6 +544,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
           if (rows.some((x) => str(x.kode) === str(r.kode) && x.id !== r.id)) fail('VALIDATION', `Kode konsumen ${r.kode} sudah dipakai.`);
           r.tipe = r.tipe === 'reseller' ? 'reseller' : 'enduser';
         }
+        if (p.table === 'product_categories' && c.s.all('product_categories').some((x) => str(x.nama).toLowerCase() === str(r.nama).toLowerCase() && x.id !== r.id)) fail('VALIDATION', `Kategori ${r.nama} sudah ada.`);
         if (p.table === 'machines' && r.biaya_klik !== undefined) r.biaya_klik = Math.max(0, Number(String(r.biaya_klik).replace(',', '.')) || 0);
         delete r.created_at; delete r.created_by;
         Object.keys(r).forEach((k) => { if (typeof r[k] === 'string') r[k] = r[k].trim(); });
@@ -577,7 +579,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
       return c.s.withLock(() => {
         if (c.s.all('products').some((x) => str(x.kode).toLowerCase() === str(r.kode).toLowerCase() && x.id !== r.id)) fail('VALIDATION', `Kode produk ${r.kode} sudah dipakai.`);
         const ks = bool(r.kertas_sendiri);
-        const data = { kode: str(r.kode), nama: str(r.nama), kategori: str(r.kategori) || (ks ? 'Kertas sendiri' : ''), mesin_id: str(r.mesin_id), jenis_harga: r.jenis_harga, satuan: str(r.satuan) || 'lembar', aktif: r.aktif !== false, kertas_sendiri: ks, sisi: r.jenis_harga === 'matriks' && Number(r.sisi) === 2 ? 2 : 1 };
+        const data = { kode: str(r.kode), nama: str(r.nama), kategori: str(r.kategori), mesin_id: str(r.mesin_id), jenis_harga: r.jenis_harga, satuan: str(r.satuan) || 'lembar', aktif: r.aktif !== false, kertas_sendiri: ks, sisi: r.jenis_harga === 'matriks' && Number(r.sisi) === 2 ? 2 : 1, biaya_jasa: Math.max(0, Number(r.biaya_jasa) || 0) };
         if (ks) c.s.all('recipes').filter((x) => x.product_id === r.id).forEach((x) => c.s.remove('recipes', 'id', str(x.id))); // upah print: tidak memakai bahan stok
         let row: Row;
         if (isNew) row = c.s.insert('products', { id: newId(c.env, 'prd'), ...data, ...stamp(c, true) });
@@ -664,7 +666,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
           // kolom sisi (1/2, "BB"); bila kosong, nama yang mengandung "BB" dianggap 2 sisi
           const sisiRaw = str(r.sisi).toLowerCase();
           const sisi = jenis === 'matriks' && (sisiRaw ? /^(2|bb|2 sisi|bolak)/.test(sisiRaw) : /(^|\s)bb(\s|$)/i.test(nama)) ? 2 : 1;
-          const data = { kode, nama, kategori: str(r.kategori) || (ks ? 'Kertas sendiri' : ''), mesin_id: mesinId, jenis_harga: jenis, satuan: str(r.satuan) || 'lembar', aktif: r.aktif === undefined || r.aktif === '' ? true : bool(r.aktif), kertas_sendiri: ks, sisi };
+          const data = { kode, nama, kategori: str(r.kategori), mesin_id: mesinId, jenis_harga: jenis, satuan: str(r.satuan) || 'lembar', aktif: r.aktif === undefined || r.aktif === '' ? true : bool(r.aktif), kertas_sendiri: ks, sisi };
           let prod = c.s.all('products').find((x) => str(x.kode).toLowerCase() === kode.toLowerCase());
           if (prod) { c.s.update('products', 'id', str(prod.id), { ...data, ...stamp(c, false) }); res.diperbarui++; }
           else { prod = c.s.insert('products', { id: newId(c.env, 'prd'), ...data, ...stamp(c, true) }); res.dibuat++; }
@@ -1491,6 +1493,7 @@ export const BASE_CATEGORIES: [string, string][] = [
   ['Bahan baku (kertas, stiker, film)', 'bahan'], ['Bahan finishing (laminating, plastik)', 'bahan'], ['Operasional', 'operasional'], ['Listrik, air & internet', 'operasional'],
   ['Tagihan biaya klik mesin', 'klik'], ['Perawatan & sparepart mesin', 'operasional'], ['Gaji, upah & cashbon', 'gaji'], ['Sewa tempat', 'operasional'], ['Pengembalian uang konsumen', 'lain'], ['Aset & peralatan', 'aset'], ['Lain-lain', 'lain'],
 ];
+export const BASE_PRODUCT_CATEGORIES = ['Kertas', 'Stiker', 'Hitam putih', 'Finishing', 'DTF', 'Jasa', 'Lain-lain'];
 export const BASE_SETTINGS: Record<string, string> = {
   nama_usaha: 'Fortuner Digital Printing', alamat: '', telp: '', min_qty_banyak: '26', sesi_jam: '12', prefix_nota: 'FT', maks_perangkat: '',
   stok_kurang_saat: 'selesai', margin_min: '20',
@@ -1506,6 +1509,10 @@ export function seedBase(s: Store, env: Env, owner: { username: string; password
   if (!s.all('machines').length) BASE_MACHINES.forEach((n) => s.insert('machines', { id: newId(env, 'mes'), nama: n, pakai_counter: ['versant', 'Mahogani', 'Dopo'].includes(n), aktif: true, ...st }));
   if (!s.all('expense_categories').length) BASE_CATEGORIES.forEach(([n, j]) => s.insert('expense_categories', { id: newId(env, 'cat'), nama: n, jenis: j, aktif: true, ...st }));
   if (!s.all('expense_categories').some((x) => x.jenis === 'klik')) s.insert('expense_categories', { id: newId(env, 'cat'), nama: 'Tagihan biaya klik mesin', jenis: 'klik', aktif: true, ...st });
+  if (!s.all('product_categories').length) {
+    const ada = new Set(s.all('products').map((p) => str(p.kategori)).filter((k) => k && k !== 'Kertas sendiri'));
+    [...new Set([...BASE_PRODUCT_CATEGORIES, ...ada])].forEach((n) => s.insert('product_categories', { id: newId(env, 'kat'), nama: n, aktif: true, ...st }));
+  }
   if (!s.all('payment_methods').length) BASE_METHODS.forEach(([n, j]) => s.insert('payment_methods', { id: newId(env, 'pay'), nama: n, jenis: j, rekening: '', aktif: true, ...st }));
   if (!s.all('users').some((u) => u.role === 'owner')) {
     const salt = env.uuid();

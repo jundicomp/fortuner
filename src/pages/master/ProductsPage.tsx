@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CalendarClock, FileSpreadsheet, Plus, Split, Upload } from 'lucide-react';
+import { CalendarClock, FileSpreadsheet, Plus, Split, Upload, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { DataTable } from '@/components/table/DataTable';
@@ -13,7 +13,8 @@ import { useMachines, useSettings } from '@/lib/queries';
 import { CUT_SIZES, JENIS_HARGA, TIERS, hitungHarga, sisiLabel, type TierKey } from '@/lib/pricing';
 import { nf, rp, tgl, tglJam, ymd } from '@/lib/format';
 import { PriceGrid, priceSummary } from './PriceGrid';
-import { RecipeTab } from './RecipeTab';
+import { RecipeTab, type Cost } from './RecipeTab';
+import { useStockMeta } from '@/pages/stok/stokApi';
 import type { JenisHarga, PriceRow, Product } from '@/types';
 
 type Tiers = Partial<Record<TierKey, number | null>>;
@@ -137,6 +138,11 @@ function PriceTab({ product, minQty }: { product: Product; minQty: number }) {
     },
   });
 
+  const settings = useSettings();
+  const marginMin = Number(settings.data?.margin_min || 20);
+  const cost = useQuery({ queryKey: ['recipe', product.id], queryFn: () => api<{ satu_sisi: Cost; bolak_balik: Cost; lihat_harga?: boolean }>('recipe.get', { product_id: product.id }), enabled: product.jenis_harga !== 'manual', retry: 0 });
+  const modal = cost.data?.lihat_harga ? (product.jenis_harga === 'matriks' && Number(product.sisi) === 2 ? cost.data.bolak_balik : cost.data.satu_sisi).total : null;
+
   if (product.jenis_harga === 'manual') return <p className="text-sm text-muted">Produk ini memakai harga manual yang diisi CS saat transaksi.</p>;
   const base = product.harga_berikutnya || product.harga;
 
@@ -147,12 +153,13 @@ function PriceTab({ product, minQty }: { product: Product; minQty: number }) {
           <h3 className="text-sm font-bold">Berlaku hari ini</h3>
           {product.harga && <span className="text-xs text-muted">sejak {tgl(product.harga.berlaku_mulai)}{product.harga.catatan ? ` · ${product.harga.catatan}` : ''}</span>}
         </div>
-        {product.harga ? <PriceGrid jenis={product.jenis_harga} vals={product.harga} minQty={minQty} sisi={product.jenis_harga === "matriks" ? product.sisi || 1 : undefined} /> : <p className="text-sm text-bad">Belum ada harga yang berlaku.</p>}
+        {modal != null && modal > 0 && <div className="mb-2 flex items-center justify-between rounded-xl bg-ink px-4 py-2 text-canvas"><span className="text-xs opacity-75">Modal per {product.satuan || 'lembar'} (bahan + klik + jasa)</span><b className="num">Rp {nf(modal)}</b></div>}
+        {product.harga ? <PriceGrid jenis={product.jenis_harga} vals={product.harga} minQty={minQty} sisi={product.jenis_harga === "matriks" ? product.sisi || 1 : undefined} modal={modal} marginMin={marginMin} /> : <p className="text-sm text-bad">Belum ada harga yang berlaku.</p>}
       </section>
       {product.harga_berikutnya && (
         <section className="rounded-xl border border-warn/30 bg-warn/5 p-4">
           <div className="mb-2 flex flex-wrap items-center gap-2 text-sm font-bold text-warn"><CalendarClock size={16} />Terjadwal mulai {tgl(product.harga_berikutnya.berlaku_mulai)}</div>
-          <PriceGrid jenis={product.jenis_harga} vals={product.harga_berikutnya} before={product.harga} minQty={minQty} />
+          <PriceGrid jenis={product.jenis_harga} vals={product.harga_berikutnya} before={product.harga} minQty={minQty} modal={modal} marginMin={marginMin} />
         </section>
       )}
       {can('master.produk', 'ubah') && !form && (
@@ -169,7 +176,7 @@ function PriceTab({ product, minQty }: { product: Product; minQty: number }) {
             </Field>
             <Field label="Catatan / alasan"><input id="price-catatan" className="input" value={form.catatan} placeholder="mis. kenaikan harga kertas" onChange={(e) => setForm({ ...form, catatan: e.target.value })} /></Field>
           </div>
-          <PriceGrid jenis={product.jenis_harga} vals={form.tiers} before={base} minQty={minQty} idPrefix="new" sisi={product.jenis_harga === "matriks" ? product.sisi || 1 : undefined} onChange={(k, v) => setForm({ ...form, tiers: { ...form.tiers, [k]: v } })} />
+          <PriceGrid jenis={product.jenis_harga} vals={form.tiers} before={base} minQty={minQty} idPrefix="new" sisi={product.jenis_harga === "matriks" ? product.sisi || 1 : undefined} modal={modal} marginMin={marginMin} onChange={(k, v) => setForm({ ...form, tiers: { ...form.tiers, [k]: v } })} />
           <p className="mt-3 text-xs text-muted">Persentase dibanding harga {product.harga_berikutnya ? 'terjadwal' : 'saat ini'}. Kosongkan sel bila tier itu tidak dipakai.</p>
           <div className="mt-3"><ErrorBox error={add.error} /></div>
           <div className="mt-3 flex justify-end gap-2">
@@ -237,67 +244,185 @@ function SimTab({ product, minQty }: { product: Product; minQty: number }) {
 }
 
 // ---------------- form produk ----------------
+type Line = { material_id: string; qty: string };
+
+/** Pilihan kategori produk (seragam) + tambah kategori baru. */
+function KategoriSelect({ value, onChange, extra }: { value: string; onChange: (v: string) => void; extra: string[] }) {
+  const qc = useQueryClient();
+  const { can } = useAuth();
+  const cats = useQuery({ queryKey: ['master', 'product_categories'], queryFn: () => api<{ id: string; nama: string; aktif: boolean }[]>('master.list', { table: 'product_categories' }), staleTime: 60e3 });
+  const [adding, setAdding] = useState(false);
+  const [nama, setNama] = useState('');
+  const add = useMutation({
+    mutationFn: () => api('master.save', { table: 'product_categories', record: { nama: nama.trim(), aktif: true } }),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['master', 'product_categories'] }); onChange(nama.trim()); setAdding(false); setNama(''); },
+  });
+  const list = [...new Set([...(cats.data || []).filter((c) => c.aktif !== false).map((c) => c.nama), ...extra.filter((k) => k && k !== 'Kertas sendiri'), ...(value ? [value] : [])])].sort((x, y) => x.localeCompare(y, 'id'));
+  if (adding) return (
+    <div className="flex gap-1">
+      <input id="prd-kat-baru" className="input" autoFocus value={nama} placeholder="Nama kategori baru" onChange={(e) => setNama(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); if (nama.trim()) add.mutate(); } if (e.key === 'Escape') setAdding(false); }} />
+      <button type="button" className="btn btn-primary px-2.5" disabled={!nama.trim() || add.isPending} onClick={() => add.mutate()}>OK</button>
+      <button type="button" className="btn px-2.5" onClick={() => setAdding(false)} aria-label="Batal"><X size={14} /></button>
+    </div>
+  );
+  return (
+    <select id="prd-kategori" className="input" value={value} onChange={(e) => { if (e.target.value === '__add__') setAdding(true); else onChange(e.target.value); }}>
+      <option value="">– pilih –</option>
+      {list.map((k) => <option key={k} value={k}>{k}</option>)}
+      {can('master.produk', 'tambah') && <option value="__add__">+ Tambah kategori…</option>}
+    </select>
+  );
+}
+
 function ProductForm({ product, onClose, minQty, embedded }: { product?: Product; onClose: () => void; minQty: number; embedded?: boolean }) {
   const qc = useQueryClient();
   const toast = useToast();
   const machines = useMachines();
-  const [p, setP] = useState<Partial<Product>>(product || { jenis_harga: 'matriks', satuan: 'lembar', aktif: true, kode: '', nama: '', kategori: '', mesin_id: '' });
+  const settings = useSettings();
+  const all = useQuery({ queryKey: ['products'], queryFn: () => api<Product[]>('products.list'), staleTime: 60e3 });
+  const meta = useStockMeta(!product);
+  const [p, setP] = useState<Partial<Product>>(product || { jenis_harga: 'matriks', satuan: 'lembar', aktif: true, kode: '', nama: '', kategori: '', mesin_id: '', sisi: 1, biaya_jasa: 0 });
   const [tiers, setTiers] = useState<Tiers>({});
-  const save = useMutation({
-    mutationFn: () => api<Product>('products.save', { product: p, harga: product ? undefined : { ...tiers, berlaku_mulai: ymd() } }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['products'] }); toast(product ? 'Produk diperbarui' : 'Produk ditambahkan'); onClose(); },
-  });
+  const [lines, setLines] = useState<Line[]>([{ material_id: '', qty: '1' }]);
   const set = (k: keyof Product, v: unknown) => setP((x) => ({ ...x, [k]: v }));
   const activeMachines = (machines.data || []).filter((m) => m.aktif || m.id === p.mesin_id);
+  const mesin = (machines.data || []).find((m) => m.id === p.mesin_id);
+  const ks = !!p.kertas_sendiri;
+  const sisi = p.jenis_harga === 'matriks' && Number(p.sisi) === 2 ? 2 : 1;
+  const mats = (meta.data?.materials || []).filter((m) => m.status !== 'nonaktif');
+  const lihat = !!meta.data?.lihat_harga;
+  const marginMin = Number(settings.data?.margin_min || 20);
+  const usedLines = ks ? [] : lines.filter((l) => l.material_id && Number(l.qty.replace(',', '.')) > 0);
+  const bahan = usedLines.reduce((a, l) => a + Number(l.qty.replace(',', '.')) * Number(mats.find((m) => m.id === l.material_id)?.harga_rata || 0), 0);
+  const klik = sisi * Number(mesin?.biaya_klik || 0);
+  const jasa = Number(p.biaya_jasa || 0);
+  const modal = Math.round((bahan + klik + jasa) * 100) / 100;
+  const hargaMin = modal > 0 ? Math.ceil(modal / (1 - marginMin / 100) / 100) * 100 : 0;
 
-  const body = (
-    <form className="flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+  const save = useMutation({
+    mutationFn: async () => {
+      const row = await api<Product>('products.save', { product: p, harga: product ? undefined : { ...tiers, berlaku_mulai: ymd() } });
+      if (!product && usedLines.length) await api('recipe.save', { product_id: row.id, lines: usedLines.map((l) => ({ material_id: l.material_id, qty: Number(l.qty.replace(',', '.')), per: 'unit' })) });
+      return row;
+    },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['products'] }); qc.invalidateQueries({ queryKey: ['pos'] }); toast(product ? 'Produk diperbarui' : 'Produk ditambahkan'); onClose(); },
+  });
+
+  const fields = (
+    <div className="flex flex-col gap-3">
+      <div className="grid grid-cols-[96px_minmax(0,1fr)] gap-2">
         <Field label={<>Kode <span className="text-bad">*</span></>}><input id="prd-kode" className="input font-mono" value={p.kode || ''} onChange={(e) => set('kode', e.target.value)} required /></Field>
-        <Field label={<>Nama produk <span className="text-bad">*</span></>} className="sm:col-span-2"><input id="prd-nama" className="input" value={p.nama || ''} onChange={(e) => set('nama', e.target.value)} required /></Field>
-        <Field label="Kategori"><input id="prd-kategori" className="input" value={p.kategori || ''} placeholder="mis. Kertas, Stiker" onChange={(e) => set('kategori', e.target.value)} /></Field>
-        <Field label="Mesin">
+        <Field label={<>Nama produk <span className="text-bad">*</span></>}><input id="prd-nama" className="input" value={p.nama || ''} onChange={(e) => set('nama', e.target.value)} required /></Field>
+      </div>
+      <div className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)_88px] gap-2">
+        <Field label="Kategori"><KategoriSelect value={p.kategori || ''} onChange={(v) => set('kategori', v)} extra={(all.data || []).map((x) => x.kategori)} /></Field>
+        <Field label={<>Mesin {mesin?.biaya_klik ? <span className="font-normal">· {nf(mesin.biaya_klik)}/klik</span> : null}</>}>
           <select id="prd-mesin" className="input" value={p.mesin_id || ''} onChange={(e) => set('mesin_id', e.target.value)}>
             <option value="">– pilih –</option>
             {activeMachines.map((m) => <option key={m.id} value={m.id}>{m.nama}{!m.aktif ? ' (nonaktif)' : ''}</option>)}
           </select>
         </Field>
         <Field label="Satuan"><input id="prd-satuan" className="input" value={p.satuan || ''} onChange={(e) => set('satuan', e.target.value)} /></Field>
-        <Field label="Jenis harga" className={p.jenis_harga === 'matriks' ? 'sm:col-span-2' : 'sm:col-span-3'} hint={JENIS_HARGA.find((j) => j.value === p.jenis_harga)?.hint}>
-          <select id="prd-jenis" className="input" value={p.jenis_harga} onChange={(e) => set('jenis_harga', e.target.value as JenisHarga)} disabled={!!product?.harga && !!product}>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <Field label="Jenis harga">
+          <select id="prd-jenis" className="input" value={p.jenis_harga} onChange={(e) => set('jenis_harga', e.target.value as JenisHarga)} disabled={!!product?.harga && !!product} title={JENIS_HARGA.find((j) => j.value === p.jenis_harga)?.hint}>
             {JENIS_HARGA.map((j) => <option key={j.value} value={j.value}>{j.label}</option>)}
           </select>
         </Field>
-        {p.jenis_harga === 'matriks' && (
-          <div className="label"><span>Sisi cetak</span>
-            <div className="flex overflow-hidden rounded-lg border border-line" role="group" aria-label="Sisi cetak">
-              {[1, 2].map((n) => (
-                <button key={n} type="button" id={`prd-sisi-${n}`} onClick={() => set('sisi', n)}
-                  className={`flex-1 px-2 py-2.5 text-xs font-bold transition ${(Number(p.sisi) === 2 ? 2 : 1) === n ? 'bg-ink text-canvas' : 'bg-surface text-muted hover:text-ink'}`}>{n === 1 ? '1 sisi' : '2 sisi (BB)'}</button>
-              ))}
-            </div>
-            <span className="font-normal">{Number(p.sisi) === 2 ? 'Dihitung 2 klik per lembar.' : 'Dihitung 1 klik per lembar.'}</span>
+        <div className="label"><span>Sisi cetak</span>
+          <div className={`flex overflow-hidden rounded-lg border border-line ${p.jenis_harga !== 'matriks' ? 'opacity-40' : ''}`} role="group" aria-label="Sisi cetak">
+            {[1, 2].map((n) => (
+              <button key={n} type="button" id={`prd-sisi-${n}`} disabled={p.jenis_harga !== 'matriks'} onClick={() => set('sisi', n)}
+                className={`flex-1 px-2 py-2 text-xs font-bold transition ${sisi === n && p.jenis_harga === 'matriks' ? 'bg-ink text-canvas' : 'bg-surface text-muted hover:text-ink'}`}>{n === 1 ? '1 sisi' : '2 sisi (BB)'}</button>
+            ))}
           </div>
-        )}
-      </div>
-      {!product && p.jenis_harga !== 'manual' && (
-        <div className="rounded-xl border border-line p-4">
-          <h3 className="mb-3 text-sm font-bold">Harga awal <span className="font-normal text-muted">(berlaku hari ini)</span></h3>
-          <PriceGrid jenis={p.jenis_harga as JenisHarga} vals={tiers} minQty={minQty} idPrefix="init" sisi={p.jenis_harga === 'matriks' ? (Number(p.sisi) === 2 ? 2 : 1) : undefined} onChange={(k, v) => setTiers((t) => ({ ...t, [k]: v }))} />
         </div>
+      </div>
+      <label className="flex cursor-pointer items-center gap-2 text-sm">
+        <input id="prd-ks" type="checkbox" className="h-4 w-4 accent-[rgb(var(--brand))]" checked={ks} onChange={(e) => set('kertas_sendiri', e.target.checked)} />
+        <b>Kertas sendiri</b><span className="text-xs text-muted">· jasa cetak saja, bahan kertas tidak dihitung</span>
+      </label>
+      {embedded && (
+        <Field label="Jasa / ongkos lain per unit (Rp)" hint="Ikut dihitung di modal (HPP taksiran) dan margin produk.">
+          <input id="prd-jasa" className="input num text-right" inputMode="numeric" value={p.biaya_jasa ? nf(p.biaya_jasa) : ''} placeholder="0" onChange={(e) => set('biaya_jasa', Number(e.target.value.replace(/\D/g, '')) || 0)} />
+        </Field>
       )}
-      <Switch id="prd-ks" checked={!!p.kertas_sendiri} onChange={(v) => setP((x) => ({ ...x, kertas_sendiri: v, kategori: v && !x.kategori ? 'Kertas sendiri' : x.kategori }))}
-        label={<>Kertas sendiri / upah print <span className="block text-xs text-muted">Konsumen membawa kertas. Stok bahan tidak dipotong, HPP hanya biaya klik mesin.</span></>} />
+    </div>
+  );
+
+  if (embedded) return (
+    <form className="flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); save.mutate(); }}>
+      {fields}
       <Switch id="prd-aktif" checked={p.aktif !== false} onChange={(v) => set('aktif', v)} label="Aktif (nonaktif = tidak muncul di kasir)" />
       <ErrorBox error={save.error} />
-      <div className="flex justify-end gap-2">
-        <button type="button" className="btn" onClick={onClose}>Batal</button>
-        <button className="btn btn-primary" disabled={save.isPending}>{save.isPending ? 'Menyimpan…' : 'Simpan'}</button>
-      </div>
+      <div className="flex justify-end gap-2"><button type="button" className="btn" onClick={onClose}>Batal</button><button className="btn btn-primary" disabled={save.isPending}>{save.isPending ? 'Menyimpan…' : 'Simpan'}</button></div>
     </form>
   );
-  if (embedded) return body;
-  return <Modal open onClose={onClose} size="lg" title="Tambah produk">{body}</Modal>;
+
+  const satuan = p.satuan || 'lembar';
+  return (
+    <Modal open onClose={onClose} size="xl" title="Tambah produk"
+      footer={<div className="flex w-full items-center justify-between gap-3">
+        <Switch id="prd-aktif" checked={p.aktif !== false} onChange={(v) => set('aktif', v)} label={<span className="text-sm"><b>Aktif</b> <span className="text-muted">di kasir</span></span>} />
+        <div className="flex gap-2"><button type="button" className="btn" onClick={onClose}>Batal</button><button id="prd-simpan" className="btn btn-primary" disabled={save.isPending || !p.kode || !p.nama} onClick={() => save.mutate()}>{save.isPending ? 'Menyimpan…' : 'Simpan'}</button></div>
+      </div>}>
+      <div className="-mx-5 -my-4 grid grid-cols-1 md:grid-cols-2">
+        <div className="flex flex-col gap-3 px-5 py-4">
+          {fields}
+          {p.jenis_harga !== 'manual' && lihat && (
+            <section aria-label="Modal per unit" className="flex flex-col gap-1.5">
+              <div className="flex items-baseline justify-between text-xs font-bold uppercase tracking-wider text-muted"><span>Modal per {satuan}</span><span className="font-normal normal-case tracking-normal">{ks ? 'kertas dari konsumen' : 'bahan jadi resep produk'}</span></div>
+              {!ks && lines.map((l, i) => {
+                const m = mats.find((x) => x.id === l.material_id);
+                const nilai = m ? Number(l.qty.replace(',', '.')) * m.harga_rata : 0;
+                return (
+                  <div key={i} className="grid grid-cols-[minmax(0,1fr)_56px_76px_24px] items-center gap-1.5">
+                    <select id={`prd-bahan-${i}`} className="input py-1.5 text-sm" value={l.material_id} onChange={(e) => setLines((x) => x.map((y, j) => (j === i ? { ...y, material_id: e.target.value } : y)))}>
+                      <option value="">{i === 0 ? '– pilih bahan –' : '– bahan lain –'}</option>
+                      {mats.map((x) => <option key={x.id} value={x.id}>{x.nama} · {nf(x.harga_rata)}/{x.satuan}</option>)}
+                    </select>
+                    <input aria-label="Pemakaian" className="input num px-2 py-1.5 text-right text-sm" inputMode="decimal" value={l.qty} onChange={(e) => setLines((x) => x.map((y, j) => (j === i ? { ...y, qty: e.target.value.replace(/[^\d.,]/g, '') } : y)))} />
+                    <span className="num text-right font-semibold">{m ? nf(nilai) : '–'}</span>
+                    {i > 0 ? <button type="button" className="text-muted hover:text-bad" aria-label="Hapus bahan" onClick={() => setLines((x) => x.filter((_, j) => j !== i))}><X size={15} /></button> : <span />}
+                  </div>
+                );
+              })}
+              {!ks && <button type="button" className="self-start text-xs font-bold text-brand" onClick={() => setLines((x) => [...x, { material_id: '', qty: '1' }])}>+ bahan lain</button>}
+              <div className="grid grid-cols-[minmax(0,1fr)_76px_24px] items-center gap-1.5 text-sm">
+                <span>Klik {mesin?.nama || 'mesin'} · {nf(mesin?.biaya_klik || 0)} × {sisi}</span><span className="num text-right font-semibold">{nf(klik)}</span><span />
+              </div>
+              {!mesin?.biaya_klik && p.mesin_id && <span className="text-[11px] text-warn">Biaya klik mesin ini belum diisi (Master Data → Mesin).</span>}
+              <div className="grid grid-cols-[minmax(0,1fr)_76px_24px] items-center gap-1.5">
+                <span className="text-sm">Jasa / ongkos lain <span className="text-xs text-muted">(potong, operator…)</span></span>
+                <input id="prd-jasa" className="input num px-2 py-1.5 text-right text-sm" inputMode="numeric" value={p.biaya_jasa ? nf(p.biaya_jasa) : ''} placeholder="0" onChange={(e) => set('biaya_jasa', Number(e.target.value.replace(/\D/g, '')) || 0)} />
+                <span />
+              </div>
+              <div className="mt-1 flex items-baseline justify-between border-t-2 border-ink pt-1.5 font-extrabold"><span>Total modal</span><span className="num">Rp {nf(modal)}</span></div>
+            </section>
+          )}
+        </div>
+        <div className="flex flex-col gap-3 border-line bg-sunk/50 px-5 py-4 md:border-l">
+          <div className="flex items-baseline justify-between text-xs font-bold uppercase tracking-wider text-muted">
+            <span>Harga awal{p.jenis_harga === 'matriks' ? ` · ${sisiLabel(sisi)}` : ''}</span><span className="font-normal normal-case tracking-normal">berlaku hari ini</span>
+          </div>
+          {p.jenis_harga !== 'manual' && lihat && (
+            <div className="flex items-center justify-between rounded-xl bg-ink px-4 py-2.5 text-canvas"><span className="text-xs opacity-75">Modal per {satuan}</span><b className="num text-lg">Rp {nf(modal)}</b></div>
+          )}
+          <PriceGrid jenis={p.jenis_harga as JenisHarga} vals={tiers} minQty={minQty} idPrefix="init" modal={lihat ? modal : null} marginMin={marginMin} onChange={(k, v) => setTiers((t) => ({ ...t, [k]: v }))} />
+          {p.jenis_harga !== 'manual' && lihat && modal > 0 && (
+            <>
+              <p className="text-[11px] text-muted">Angka kecil = laba kotor per {satuan} & % dari harga jual · <b className="text-ok">aman</b> · <b className="text-warn">tipis &lt; {marginMin}%</b> · <b className="text-bad">rugi</b></p>
+              <div className="mt-auto flex items-center justify-between rounded-xl border border-dashed border-line px-3 py-2 text-sm"><span className="text-muted">Patokan margin {marginMin}%</span><span>harga minimal <b className="num">Rp {nf(hargaMin)}</b></span></div>
+            </>
+          )}
+          {!lihat && meta.isSuccess && <p className="text-xs text-muted">Modal & laba hanya tampil untuk peran yang boleh melihat harga beli.</p>}
+          <ErrorBox error={save.error} />
+        </div>
+      </div>
+    </Modal>
+  );
 }
 
 // ---------------- import excel ----------------

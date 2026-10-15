@@ -10,7 +10,7 @@ import { dec, numIn, useStockMeta } from '@/pages/stok/stokApi';
 import type { Product } from '@/types';
 import { Money } from '@/components/ui/Money';
 
-interface Cost { bahan: number; klik: number; total: number; klik_per_unit: number; tarif_klik: number; resep: boolean; rincian: { material_id: string; nama: string; satuan: string; qty: number; harga: number; nilai: number }[] }
+export interface Cost { bahan: number; klik: number; jasa?: number; total: number; klik_per_unit: number; tarif_klik: number; resep: boolean; rincian: { material_id: string; nama: string; satuan: string; qty: number; harga: number; nilai: number }[] }
 interface Recipe { lines: { material_id: string; qty: number; per: 'unit' | 'klik' }[]; satu_sisi: Cost; bolak_balik: Cost; lihat_harga?: boolean }
 
 /** Resep bahan per produk + perkiraan HPP (bahan + biaya klik mesin). Dipakai untuk memotong stok dan menghitung laba. */
@@ -101,6 +101,7 @@ function CostCard({ title, c }: { title: string; c: Cost }) {
       <ul className="mt-2 flex flex-col gap-0.5 text-xs">
         {c.rincian.map((r) => <li key={r.material_id} className="flex justify-between gap-2"><span>{r.nama} {dec(r.qty)} {r.satuan}</span><span className="num">{dec(r.nilai)}</span></li>)}
         <li className="flex justify-between gap-2"><span>Klik mesin {c.klik_per_unit} × {nf(c.tarif_klik)}</span><span className="num">{dec(c.klik)}</span></li>
+        {!!c.jasa && <li className="flex justify-between gap-2"><span>Jasa / ongkos lain</span><span className="num">{dec(c.jasa)}</span></li>}
       </ul>
       {!c.tarif_klik && <p className="mt-2 text-[11px] text-muted">Biaya klik mesin belum diisi (Master Data → Mesin).</p>}
     </div>
