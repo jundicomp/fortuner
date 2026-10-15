@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.2.1",
+    "tanggal": "2026-10-15",
+    "catatan": [
+      "Pilihan produk di Front Office menampilkan 1 sisi / 2 sisi (BB) sesuai data produk, dengan tulisan hitam yang lebih jelas."
+    ]
+  },
+  {
     "version": "1.2.0",
     "tanggal": "2026-10-15",
     "catatan": [

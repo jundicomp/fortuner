@@ -179,8 +179,13 @@ export function FoPage() {
     right: <span className={`pill ${c.tipe === 'reseller' ? 'pill-brand' : 'pill-mute'}`}>{c.tipe === 'reseller' ? 'Reseller' : 'End user'}</span>,
   })), [d]);
   const prodItems: ComboItem[] = useMemo(() => products.map((p) => ({
-    value: p.id, label: p.nama, hint: `#${p.kode} · ${machineName[p.mesin_id] || '–'}${p.jenis_harga === 'matriks' && Number(p.sisi) === 2 ? ' · 2 sisi (BB)' : ''}${p.kertas_sendiri ? ' · kertas sendiri' : ''}`, search: `${p.nama} ${p.kode} ${p.kategori} ${machineName[p.mesin_id] || ''}`.toLowerCase(),
-    right: p.jenis_harga !== 'manual' && !p.harga ? <span className="pill pill-bad">Tanpa harga</span> : <span className="num text-xs text-muted">{priceSummary(p.jenis_harga, p.harga)}</span>,
+    value: p.id, label: p.nama, hint: `#${p.kode} · ${machineName[p.mesin_id] || '–'}${p.jenis_harga === 'matriks' ? ` · ${sisiLabel(p.sisi)}` : ''}${p.kertas_sendiri ? ' · kertas sendiri' : ''}`, search: `${p.nama} ${p.kode} ${p.kategori} ${machineName[p.mesin_id] || ''}`.toLowerCase(),
+    right: (
+      <span className="flex flex-col items-end gap-0.5">
+        {p.jenis_harga === 'matriks' && <span className={`pill ${Number(p.sisi) === 2 ? 'pill-brand' : 'pill-mute'} !text-ink`}>{sisiLabel(p.sisi)}</span>}
+        {p.jenis_harga !== 'manual' && !p.harga ? <span className="pill pill-bad">Tanpa harga</span> : <span className="num text-xs font-semibold text-ink">{priceSummary(p.jenis_harga, p.harga)}</span>}
+      </span>
+    ),
   })), [products, machineName]);
 
   // F9 = terbitkan (sama seperti tombol), dari mana pun di halaman

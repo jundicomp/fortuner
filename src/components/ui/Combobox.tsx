@@ -75,8 +75,8 @@ export const Combobox = forwardRef<ComboHandle, Props>(function Combobox({ id, i
                 onMouseEnter={() => setHi(idx)} onMouseDown={(e) => { e.preventDefault(); choose(i.value); }}>
                 <Check size={14} className={`shrink-0 ${i.value === value ? 'text-brand' : 'opacity-0'}`} />
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate font-semibold">{i.label}</span>
-                  {i.hint && <span className="block truncate text-xs text-muted">{i.hint}</span>}
+                  <span className="block truncate font-semibold text-ink">{i.label}</span>
+                  {i.hint && <span className="block truncate text-xs text-ink/80">{i.hint}</span>}
                 </span>
                 {i.right}
               </li>
