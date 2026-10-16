@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.2.7",
+    "tanggal": "2026-10-16",
+    "catatan": [
+      "Form Pengeluaran umum disederhanakan: cukup untuk apa, nominal, dan sumber pembayaran. Kategori ditebak otomatis dari keterangan (listrik, gaji, sewa, servis…), tanggal & kategori bisa diubah di \"Detail lain\".",
+      "Sumber pembayaran berupa daftar pilihan (nama + saldo) agar hemat tempat, dipakai di Pengeluaran umum, Pembelian bahan, dan Bayar bon supplier.",
+      "Saldo kas & rekening di halaman Pengeluaran tampil sebagai kartu berwarna dengan ikon."
+    ]
+  },
+  {
     "version": "1.2.6",
     "tanggal": "2026-10-16",
     "catatan": [

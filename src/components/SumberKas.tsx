@@ -6,41 +6,68 @@ import { nf } from '@/lib/format';
 
 export interface KasSaldo { id: string; nama: string; jenis: string; saldo: number }
 export const useKasSaldo = () => useQuery({ queryKey: ['kas-saldo'], queryFn: () => api<KasSaldo[]>('kas.saldo'), staleTime: 15e3 });
-const ICON: Record<string, typeof Banknote> = { tunai: Banknote, transfer: Landmark, edc: CreditCard };
 
 /**
- * Pilih sumber dana pembayaran (kas tunai / rekening bank) sambil melihat saldonya saat ini
- * dan sisa saldo setelah pembayaran ini.
+ * Pilih sumber pembayaran (kas tunai / rekening bank) dalam bentuk daftar pilihan, lengkap dengan saldo
+ * saat ini dan sisa saldo setelah pembayaran ini.
  */
-export function SumberKas({ value, onChange, nominal, id = 'sumber-kas', label = 'Sumber dana' }: { value: string; onChange: (id: string) => void; nominal: number; id?: string; label?: string }) {
+export function SumberKas({ value, onChange, nominal, id = 'sumber-kas', label = 'Sumber pembayaran' }: { value: string; onChange: (id: string) => void; nominal: number; id?: string; label?: string }) {
   const q = useKasSaldo();
   const list = (q.data || []).filter((m) => m.jenis !== 'edc'); // EDC = terima kartu, bukan sumber bayar
   useEffect(() => { if (!value && list.length) onChange((list.find((m) => m.jenis === 'tunai') || list[0]).id); }, [list.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const sel = list.find((m) => m.id === value);
   const sisa = sel ? sel.saldo - nominal : 0;
   return (
-    <div className="flex flex-col gap-1.5">
+    <label className="flex flex-col gap-1.5" htmlFor={id}>
       <span className="text-xs font-semibold text-muted">{label}</span>
-      {q.isLoading && <span className="text-xs text-muted">Memuat saldo…</span>}
-      <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-3" role="radiogroup" aria-label={label}>
-        {list.map((m) => {
-          const Icon = ICON[m.jenis] || Landmark;
-          const on = m.id === value;
-          return (
-            <button key={m.id} id={`${id}-${m.id}`} type="button" role="radio" aria-checked={on} onClick={() => onChange(m.id)}
-              className={`flex flex-col items-start rounded-lg border px-2.5 py-2 text-left transition ${on ? 'border-ink bg-ink text-canvas' : 'border-line bg-surface hover:border-muted'}`}>
-              <span className="flex items-center gap-1.5 text-xs font-semibold"><Icon size={13} />{m.nama}</span>
-              <span className={`num text-sm font-extrabold ${!on && m.saldo < 0 ? 'text-bad' : ''}`}>Rp {nf(m.saldo)}</span>
-            </button>
-          );
-        })}
-      </div>
+      <select id={id} className="input" value={value} onChange={(e) => onChange(e.target.value)} disabled={q.isLoading}>
+        {q.isLoading && <option>Memuat saldo…</option>}
+        {list.map((m) => <option key={m.id} value={m.id}>{m.nama} — saldo Rp {nf(m.saldo)}</option>)}
+      </select>
       {sel && nominal > 0 && (
-        <div className={`flex justify-between rounded-lg px-3 py-1.5 text-xs ${sisa < 0 ? 'bg-bad/10 text-bad' : 'bg-sunk'}`}>
+        <span className={`flex justify-between text-xs ${sisa < 0 ? 'font-semibold text-bad' : 'text-muted'}`}>
           <span>Saldo {sel.nama} setelah bayar</span>
-          <b className="num">Rp {nf(sisa)}{sisa < 0 ? ' · saldo tidak cukup' : ''}</b>
-        </div>
+          <b className="num">Rp {nf(sisa)}{sisa < 0 ? ' · tidak cukup' : ''}</b>
+        </span>
       )}
-    </div>
+    </label>
+  );
+}
+
+/** Warna & ikon kartu saldo per kas/rekening. */
+function styleOf(m: KasSaldo) {
+  const n = m.nama.toLowerCase();
+  if (m.jenis === 'tunai') return { bg: 'linear-gradient(135deg,#15803d,#166534)', Icon: Banknote };
+  if (n.includes('bca')) return { bg: 'linear-gradient(135deg,#1d4ed8,#1e3a8a)', Icon: Landmark };
+  if (n.includes('mandiri')) return { bg: 'linear-gradient(135deg,#1e3a8a,#0f1f4d)', Icon: Landmark, accent: '#facc15' };
+  if (n.includes('bni')) return { bg: 'linear-gradient(135deg,#f26b1d,#c2410c)', Icon: Landmark };
+  if (n.includes('bsi')) return { bg: 'linear-gradient(135deg,#0f766e,#115e59)', Icon: Landmark };
+  if (n.includes('bri')) return { bg: 'linear-gradient(135deg,#0369a1,#075985)', Icon: Landmark };
+  if (m.jenis === 'edc') return { bg: 'linear-gradient(135deg,#475569,#1e293b)', Icon: CreditCard };
+  return { bg: 'linear-gradient(135deg,#27272a,#09090b)', Icon: Landmark };
+}
+
+/** Deretan kartu saldo berwarna (Tunai + tiap rekening bank). */
+export function KasCards({ className = '' }: { className?: string }) {
+  const q = useKasSaldo();
+  const list = (q.data || []).filter((m) => m.jenis !== 'edc');
+  if (!list.length) return null;
+  return (
+    <section className={`grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 ${className}`} aria-label="Saldo kas & rekening">
+      {list.map((m) => {
+        const s = styleOf(m);
+        return (
+          <div key={m.id} className="relative overflow-hidden rounded-xl p-3.5 text-white shadow-sm" style={{ background: s.bg }}>
+            <s.Icon size={64} className="pointer-events-none absolute -bottom-3 -right-2 opacity-15" aria-hidden />
+            <div className="flex items-center gap-2">
+              <span className="grid h-8 w-8 place-items-center rounded-lg bg-white/20" style={s.accent ? { color: s.accent } : undefined}><s.Icon size={17} /></span>
+              <span className="text-sm font-bold tracking-wide">{m.nama}</span>
+            </div>
+            <div className="mt-2.5 text-[11px] uppercase tracking-wider text-white/70">Saldo</div>
+            <div className={`num text-lg font-extrabold leading-tight ${m.saldo < 0 ? 'text-red-200' : ''}`}>Rp {nf(m.saldo)}</div>
+          </div>
+        );
+      })}
+    </section>
   );
 }

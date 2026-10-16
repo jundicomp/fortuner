@@ -9,8 +9,8 @@ import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 import { useAuth } from '@/auth/AuthContext';
-import { addDays, nf, rp, tgl, ymd } from '@/lib/format';
-import { SumberKas, useKasSaldo } from '@/components/SumberKas';
+import { nf, rp, tgl, ymd } from '@/lib/format';
+import { KasCards, SumberKas } from '@/components/SumberKas';
 import { PurchaseForm, lastBuy, usePurchases } from '@/pages/stok/PembelianPage';
 import { useStockMeta } from '@/pages/stok/stokApi';
 import { BillModal, billRow, type Bill } from './HutangPage';
@@ -41,7 +41,6 @@ export function PengeluaranPage() {
   const q = useQuery({ queryKey: ['expenses', range.from, range.to], queryFn: () => api<Expense[]>('expense.list', { from: range.from, to: range.to }) });
   const [form, setForm] = useState<'' | 'pilih' | 'umum' | 'bahan' | 'bon'>('');
   const [billId, setBillId] = useState('');
-  const kas = useKasSaldo();
   const [cats, setCats] = useState(false);
   const [del, setDel] = useState<Expense | null>(null);
   const [alasan, setAlasan] = useState('');
@@ -77,12 +76,7 @@ export function PengeluaranPage() {
           {can('pengeluaran', 'ubah') && <button className="btn" onClick={() => setCats(true)}><Tags size={16} />Kategori</button>}
           {can('pengeluaran', 'tambah') && <button className="btn btn-primary" onClick={() => setForm('pilih')}><Plus size={16} />Catat pengeluaran</button>}
         </>} />
-      {!!kas.data?.length && (
-        <section className="mb-3 flex flex-wrap items-center gap-2 text-sm" aria-label="Saldo kas & rekening">
-          <span className="text-xs font-bold uppercase tracking-wider text-muted">Saldo saat ini</span>
-          {kas.data.filter((m) => m.jenis !== 'edc').map((m) => <span key={m.id} className="rounded-lg border border-line bg-surface px-2.5 py-1">{m.nama} <b className={`num ${m.saldo < 0 ? 'text-bad' : ''}`}>{rp(m.saldo)}</b></span>)}
-        </section>
-      )}
+      <KasCards className="mb-4" />
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <section className="card tint tint-orange p-4"><div className="text-xs font-bold uppercase tracking-wider text-muted">Total periode</div><div className="num mt-1 text-2xl font-extrabold">{rp(total)}</div><div className="text-xs text-muted">{rows.length} transaksi</div></section>
         <section className="card tint tint-blue p-4"><div className="text-xs font-bold uppercase tracking-wider text-muted">Dibayar lunas / hutang</div><div className="num mt-1 text-lg font-bold">{rp(lunas)} <span className="text-sm font-normal text-muted">/ {rp(total - lunas)}</span></div></section>
@@ -109,93 +103,64 @@ export function PengeluaranPage() {
   );
 }
 
+const GUESS: [RegExp, RegExp][] = [
+  [/listrik|pln|token|air|pdam|internet|wifi|indihome|pulsa|kuota/i, /listrik|air|internet/i],
+  [/gaji|upah|lembur|cashbon|kasbon|bonus|thr/i, /gaji|upah/i],
+  [/sewa|kontrak/i, /sewa/i],
+  [/klik/i, /klik/i],
+  [/servis|service|sparepart|perbaikan|toner|drum|maintenance/i, /perawatan|sparepart/i],
+  [/refund|kembalian|pengembalian|retur/i, /pengembalian/i],
+  [/beli (alat|mesin|komputer|laptop|printer)|aset|peralatan/i, /aset|peralatan/i],
+];
+function guessCat(text: string, cats: ExpenseMeta['categories']) {
+  for (const [kw, cat] of GUESS) if (kw.test(text)) { const c = cats.find((x) => cat.test(x.nama)); if (c) return c; }
+  return undefined;
+}
+
+/** Pengeluaran umum: cukup untuk apa, berapa, dan dibayar dari kas/rekening mana. */
 function ExpenseForm({ meta, onClose }: { meta: ExpenseMeta; onClose: () => void }) {
   const qc = useQueryClient();
   const toast = useToast();
-  // Pembelian bahan berstok punya form sendiri; di sini hanya pengeluaran umum.
+  // Pembelian bahan & bon supplier punya form sendiri; di sini hanya pengeluaran umum.
   const cats = meta.categories.filter((c) => c.aktif !== false && c.jenis !== 'bahan');
-  const [f, setF] = useState({
-    tanggal: ymd(), kategori_id: cats[0]?.id || '', item: '', nota: '', supplier_id: '', product_id: '', isi: '', qty: '1', satuan: '', harga: '', mesin_id: '',
-    cara_bayar: 'lunas' as 'lunas' | 'hutang', method_id: meta.payment_methods.find((m) => m.jenis === 'tunai')?.id || '', jatuh_tempo: addDays(ymd(), 30), keterangan: '',
-  });
+  const defCat = cats.find((c) => c.nama === 'Operasional') || cats.find((c) => c.jenis === 'operasional') || cats[0];
+  const [f, setF] = useState({ item: '', nominal: '', method_id: '', tanggal: ymd(), kategori_id: defCat?.id || '', nota: '' });
+  const [more, setMore] = useState(false);
+  const [catManual, setCatManual] = useState(false);
   const set = (k: keyof typeof f, v: string) => setF((x) => ({ ...x, [k]: v }));
-  const jenis = cats.find((c) => c.id === f.kategori_id)?.jenis;
-  // bahan & klik: jumlah × harga per satuan. Pengeluaran umum (operasional, gaji, sewa, aset, lain-lain): cukup nominal.
-  const [rinciManual, setRinci] = useState<boolean | null>(null);
-  const rinci = rinciManual ?? (jenis === 'bahan' || jenis === 'klik');
-  const qty = rinci ? numIn(f.qty) : 1, harga = numIn(f.harga), total = Math.round(qty * harga), isi = numIn(f.isi);
-  const prod = meta.products.find((p) => p.id === f.product_id);
+  // Kategori ditebak dari keterangan (bisa diubah di "Detail lain").
+  const onItem = (v: string) => setF((x) => ({ ...x, item: v, kategori_id: catManual ? x.kategori_id : (guessCat(v, cats) || defCat)?.id || '' }));
+  const total = Math.round(numIn(f.nominal));
   const save = useMutation({
-    mutationFn: () => api<{ harga_beli_baru: number | null }>('expense.save', { expense: { ...f, qty, harga, satuan: rinci ? f.satuan : '', isi_per_satuan: isi || null, product_id: jenis === 'bahan' ? f.product_id : '' } }),
-    onSuccess: (r) => {
-      ['expenses', 'bills', 'products', 'dashboard', 'kas-saldo'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
-      toast(r.harga_beli_baru != null ? `Tersimpan. Harga beli ${prod?.nama} jadi ${nf(r.harga_beli_baru)}/${prod?.satuan || 'lembar'}` : 'Pengeluaran dicatat');
+    mutationFn: () => api('expense.save', { expense: { tanggal: f.tanggal, kategori_id: f.kategori_id, item: f.item.trim(), nota: f.nota, qty: 1, harga: total, satuan: '', cara_bayar: 'lunas', method_id: f.method_id } }),
+    onSuccess: () => {
+      ['expenses', 'bills', 'dashboard', 'kas-saldo'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      toast('Pengeluaran dicatat');
       onClose();
     },
   });
+  const ok = f.item.trim() && total > 0 && f.method_id && f.kategori_id;
   return (
-    <Modal open onClose={onClose} size="lg" title="Pengeluaran umum" subtitle="Di luar pembelian bahan & bayar bon supplier"
-      footer={<><button className="btn" onClick={onClose}>Batal</button><button className="btn btn-primary" disabled={save.isPending || !f.item || !total || (f.cara_bayar === 'lunas' && !f.method_id)} onClick={() => save.mutate()}>Simpan {total ? rp(total) : ''}</button></>}>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
-        <Field label="Tanggal" className="sm:col-span-2"><input id="ex-tanggal" type="date" className="input" max={ymd()} value={f.tanggal} onChange={(e) => set('tanggal', e.target.value)} /></Field>
-        <Field label="Kategori" className="sm:col-span-4" hint={jenis && !['bahan', 'klik'].includes(jenis) ? 'Pengeluaran umum: cukup isi keperluan dan nominalnya.' : undefined}>
-          <select id="ex-kategori" className="input" value={f.kategori_id} onChange={(e) => { set('kategori_id', e.target.value); setRinci(null); }}>
-            {Object.entries(JENIS).map(([j, label]) => { const list = cats.filter((c) => c.jenis === j); return list.length ? <optgroup key={j} label={label}>{list.map((c) => <option key={c.id} value={c.id}>{c.nama}</option>)}</optgroup> : null; })}
-            {cats.filter((c) => !JENIS[c.jenis]).map((c) => <option key={c.id} value={c.id}>{c.nama}</option>)}
-          </select>
-        </Field>
-        <Field label="Barang / keperluan" className="sm:col-span-4"><input id="ex-item" className="input" autoFocus value={f.item} onChange={(e) => set('item', e.target.value)} placeholder={rinci ? 'mis. Art carton 260 A3+, film DTF' : 'mis. Listrik Oktober, gaji Riska, sewa ruko'} /></Field>
-        <Field label={rinci ? 'No. nota supplier' : 'No. bukti (opsional)'} className="sm:col-span-2"><input id="ex-nota" className="input" value={f.nota} onChange={(e) => set('nota', e.target.value)} /></Field>
-        <Field label={rinci ? 'Supplier' : 'Dibayar ke (opsional)'} className="sm:col-span-3" hint={!rinci && f.cara_bayar === 'hutang' ? 'Wajib dipilih bila dicatat sebagai hutang.' : undefined}>
-          <select id="ex-supplier" className="input" value={f.supplier_id} onChange={(e) => set('supplier_id', e.target.value)}><option value="">{rinci ? '– tanpa supplier –' : '– tidak perlu –'}</option>{meta.suppliers.map((s) => <option key={s.id} value={s.id}>{s.nama}</option>)}</select>
-        </Field>
-        {(jenis === 'operasional' || jenis === 'klik' || jenis === 'bahan' || f.mesin_id) ? (
-          <Field label="Untuk mesin (opsional)" className="sm:col-span-3">
-          <select id="ex-mesin" className="input" value={f.mesin_id} onChange={(e) => set('mesin_id', e.target.value)}><option value="">–</option>{meta.machines.map((m) => <option key={m.id} value={m.id}>{m.nama}</option>)}</select>
-        </Field>
-        ) : <div className="hidden sm:col-span-3 sm:block" />}
-        {rinci ? (
-          <>
-            <Field label="Jumlah" className="sm:col-span-2"><input id="ex-qty" className="input num text-right" inputMode="decimal" value={f.qty} onChange={(e) => set('qty', e.target.value)} /></Field>
-            <Field label="Satuan" className="sm:col-span-1"><input id="ex-satuan" className="input" value={f.satuan} onChange={(e) => set('satuan', e.target.value)} placeholder="rim" /></Field>
-            <Field label="Harga per satuan" className="sm:col-span-3"><input id="ex-harga" className="input num text-right" inputMode="numeric" value={f.harga ? nf(numIn(f.harga)) : ''} onChange={(e) => set('harga', e.target.value)} /></Field>
-          </>
-        ) : (
-          <Field label="Nominal (Rp)" className="sm:col-span-6"><input id="ex-harga" className="input num py-2.5 text-right text-lg font-bold" inputMode="numeric" value={f.harga ? nf(numIn(f.harga)) : ''} onChange={(e) => set('harga', e.target.value)} placeholder="0" /></Field>
-        )}
-        {jenis !== 'bahan' && jenis !== 'klik' && (
-          <button type="button" className="-mt-2 justify-self-start text-xs font-semibold text-brand sm:col-span-6" onClick={() => setRinci(!rinci)}>{rinci ? 'Cukup isi nominal saja' : 'Isi dengan jumlah × harga satuan'}</button>
-        )}
-
-        {jenis === 'bahan' && <p className="rounded-lg bg-sunk px-3 py-2 text-xs text-muted sm:col-span-6">Bahan yang dihitung stoknya (kertas, stiker, film) sebaiknya dicatat lewat menu <b className="text-ink">Pembelian Bahan</b> supaya stok dan HPP ikut terhitung. Yang dicatat di sini masuk HPP sebagai "bahan di luar stok".</p>}
-        {jenis === 'klik' && <p className="rounded-lg bg-sunk px-3 py-2 text-xs text-muted sm:col-span-6">Tagihan klik/sewa mesin dari vendor. Biaya klik sudah masuk HPP per nota (dari tarif di Master Mesin), jadi tagihan ini melunasi hutang biaya klik, tidak dihitung dua kali.</p>}
-        {jenis === 'bahan' && (
-          <div className="rounded-xl border border-brand/30 bg-brand/5 p-4 sm:col-span-6">
-            <div className="text-sm font-bold">Perbarui harga beli produk (opsional)</div>
-            <p className="mt-0.5 text-xs text-muted">Hubungkan ke produk jual dan isi berapa lembar per satuan beli. Harga beli per lembar dipakai menghitung laba nota mulai tanggal ini; nota lama tidak berubah.</p>
-            <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
-              <Field label="Produk jual" className="sm:col-span-2">
-                <select id="ex-produk" className="input" value={f.product_id} onChange={(e) => set('product_id', e.target.value)}><option value="">– tidak dihubungkan –</option>{meta.products.map((p) => <option key={p.id} value={p.id}>{p.nama} (#{p.kode})</option>)}</select>
-              </Field>
-              <Field label={`Isi per ${f.satuan || 'satuan'} (lembar)`}><input id="ex-isi" className="input num text-right" inputMode="numeric" value={f.isi} onChange={(e) => set('isi', e.target.value)} placeholder="500" disabled={!f.product_id} /></Field>
-            </div>
-            {prod && isi > 0 && harga > 0 && <div className="mt-2 text-sm">Harga beli baru: <b className="num">{rp(Math.round((harga / isi) * 100) / 100)}</b> per {prod.satuan || 'lembar'}</div>}
+    <Modal open onClose={onClose} title="Pengeluaran umum" subtitle="Di luar pembelian bahan & bayar bon supplier"
+      footer={<><button className="btn" onClick={onClose}>Batal</button><button className="btn btn-primary" disabled={save.isPending || !ok} onClick={() => save.mutate()}>Simpan {total ? rp(total) : ''}</button></>}>
+      <div className="flex flex-col gap-4">
+        <Field label="Untuk pembayaran apa"><input id="ex-item" className="input" autoFocus placeholder="mis. Listrik Oktober, gaji Riska, sewa ruko" value={f.item} onChange={(e) => onItem(e.target.value)} /></Field>
+        <Field label="Nominal (Rp)"><input id="ex-harga" className="input num text-right text-xl font-bold" inputMode="numeric" placeholder="0" value={f.nominal ? nf(numIn(f.nominal)) : ''} onChange={(e) => set('nominal', e.target.value)} /></Field>
+        <SumberKas id="ex-metode" value={f.method_id} onChange={(v) => set('method_id', v)} nominal={total} />
+        <button type="button" className="self-start text-xs font-semibold text-muted underline-offset-2 hover:text-ink hover:underline" onClick={() => setMore((x) => !x)} aria-expanded={more}>
+          {more ? 'Sembunyikan detail' : `Detail lain: ${tgl(f.tanggal)} · ${cats.find((c) => c.id === f.kategori_id)?.nama || '-'}`}
+        </button>
+        {more && (
+          <div className="grid grid-cols-1 gap-3 rounded-lg bg-sunk p-3 sm:grid-cols-3">
+            <Field label="Tanggal"><input id="ex-tanggal" type="date" className="input" max={ymd()} value={f.tanggal} onChange={(e) => set('tanggal', e.target.value)} /></Field>
+            <Field label="Kategori"><select id="ex-kategori" className="input" value={f.kategori_id} onChange={(e) => { setCatManual(true); set('kategori_id', e.target.value); }}>
+              {Object.entries(JENIS).map(([j, label]) => { const list = cats.filter((c) => c.jenis === j); return list.length ? <optgroup key={j} label={label}>{list.map((c) => <option key={c.id} value={c.id}>{c.nama}</option>)}</optgroup> : null; })}
+              {cats.filter((c) => !JENIS[c.jenis]).map((c) => <option key={c.id} value={c.id}>{c.nama}</option>)}
+            </select></Field>
+            <Field label="No. bukti (opsional)"><input id="ex-nota" className="input" value={f.nota} onChange={(e) => set('nota', e.target.value)} /></Field>
           </div>
         )}
-
-        <div className="flex gap-2 sm:col-span-6" role="group" aria-label="Cara bayar">
-          {(['lunas', 'hutang'] as const).map((k) => (
-            <button key={k} type="button" onClick={() => set('cara_bayar', k)} className={`flex-1 rounded-lg border px-3 py-2 text-sm font-semibold ${f.cara_bayar === k ? 'border-brand bg-brand text-brand-ink' : 'border-line hover:border-muted'}`}>{k === 'lunas' ? 'Dibayar lunas' : 'Hutang / tempo'}</button>
-          ))}
-        </div>
-        {f.cara_bayar === 'lunas' ? (
-          <div className="sm:col-span-6"><SumberKas id="ex-metode" value={f.method_id} onChange={(v) => set('method_id', v)} nominal={total} /></div>
-        ) : (
-          <Field label="Jatuh tempo" className="sm:col-span-3" hint={!f.supplier_id ? 'Pilih supplier dulu.' : undefined}><input id="ex-jt" type="date" className="input" value={f.jatuh_tempo} onChange={(e) => set('jatuh_tempo', e.target.value)} /></Field>
-        )}
-        <Field label="Catatan" className={f.cara_bayar === 'lunas' ? 'sm:col-span-6' : 'sm:col-span-3'}><input id="ex-ket" className="input" value={f.keterangan} onChange={(e) => set('keterangan', e.target.value)} /></Field>
-        <div className="flex items-baseline justify-between rounded-lg bg-sunk px-4 py-3 sm:col-span-6"><span className="text-sm font-semibold">Total</span><span className="num text-2xl font-extrabold">{rp(total)}</span></div>
-        <div className="sm:col-span-6"><ErrorBox error={save.error} /></div>
+        <ErrorBox error={save.error} />
       </div>
     </Modal>
   );

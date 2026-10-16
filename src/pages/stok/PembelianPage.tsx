@@ -181,11 +181,11 @@ export function PurchaseForm({ meta, last, initial, onClose }: { meta: StockMeta
           ))}
         </div>
         {f.cara_bayar === 'lunas' ? (
-          <div className="sm:col-span-6"><SumberKas id="pur-metode" value={f.method_id} onChange={(v) => set('method_id', v)} nominal={total} /></div>
+          <div className="sm:col-span-3"><SumberKas id="pur-metode" value={f.method_id} onChange={(v) => set('method_id', v)} nominal={total} /></div>
         ) : (
           <Field label="Jatuh tempo" className="sm:col-span-3" hint={!f.supplier_id ? <span className="text-warn">Pembelian tempo wajib memilih supplier.</span> : 'Masuk ke Hutang Supplier.'}><input id="pur-jt" type="date" className="input" value={f.jatuh_tempo} onChange={(e) => set('jatuh_tempo', e.target.value)} /></Field>
         )}
-        <Field label="Catatan" className={f.cara_bayar === 'lunas' ? 'sm:col-span-6' : 'sm:col-span-3'}><input id="pur-ket" className="input" value={f.keterangan} onChange={(e) => set('keterangan', e.target.value)} /></Field>
+        <Field label="Catatan" className="sm:col-span-3"><input id="pur-ket" className="input" value={f.keterangan} onChange={(e) => set('keterangan', e.target.value)} /></Field>
         <div className="flex items-baseline justify-between rounded-lg bg-sunk px-4 py-3 sm:col-span-6"><span className="text-sm font-semibold">Total</span><span className="num text-2xl font-extrabold">{rp(total)}</span></div>
         <div className="sm:col-span-6"><ErrorBox error={save.error} /></div>
       </div>
