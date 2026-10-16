@@ -1,5 +1,21 @@
 [
   {
+    "version": "1.2.6",
+    "tanggal": "2026-10-16",
+    "catatan": [
+      "Nama rekening cukup nama bank saja (BCA, BNI, BSI, Mandiri) tanpa tambahan \"Transfer\". Kwitansi tetap menulis \"via TRANSFER BANK BCA\"."
+    ]
+  },
+  {
+    "version": "1.2.5",
+    "tanggal": "2026-10-16",
+    "catatan": [
+      "Catat pengeluaran kini dipilah 3 jenis: Pembelian bahan (stok & HPP ikut), Bayar tagihan/bon supplier, dan Pengeluaran umum (listrik, gaji, sewa, dll).",
+      "Setiap pembayaran wajib memilih sumber dana (kas tunai / rekening bank) lengkap dengan saldo saat ini dan sisa saldo setelah bayar; muncul peringatan bila saldo tidak cukup.",
+      "Saldo semua kas & rekening tampil di atas halaman Pengeluaran; dipakai juga di form Pembelian bahan dan Bayar hutang supplier."
+    ]
+  },
+  {
     "version": "1.2.4",
     "tanggal": "2026-10-16",
     "catatan": [

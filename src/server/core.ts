@@ -1487,7 +1487,7 @@ export function handle(s: Store, env: Env, req: Request): Response {
 // ---------------- data awal ----------------
 export const BASE_MACHINES = ['versant', 'Mahogani', 'Dopo', 'graphtech', 'laminating', 'DTF', 'Seng', 'nomorator', 'Scan', 'desain', 'potong'];
 export const BASE_METHODS: [string, string][] = [
-  ['Tunai', 'tunai'], ['Mandiri Transfer', 'transfer'], ['BNI Transfer', 'transfer'], ['BCA Transfer', 'transfer'], ['EDC Mandiri', 'edc'], ['BSI Transfer', 'transfer'],
+  ['Tunai', 'tunai'], ['Mandiri', 'transfer'], ['BNI', 'transfer'], ['BCA', 'transfer'], ['EDC Mandiri', 'edc'], ['BSI', 'transfer'],
 ];
 export const BASE_CATEGORIES: [string, string][] = [
   ['Bahan baku (kertas, stiker, film)', 'bahan'], ['Bahan finishing (laminating, plastik)', 'bahan'], ['Operasional', 'operasional'], ['Listrik, air & internet', 'operasional'],

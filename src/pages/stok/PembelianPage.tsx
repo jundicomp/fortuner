@@ -12,6 +12,7 @@ import { api } from '@/lib/api';
 import { addDays, nf, rp, tgl, ymd } from '@/lib/format';
 import { dec, numIn, useStockMeta, type Purchase, type StockMeta } from './stokApi';
 import { Money } from '@/components/ui/Money';
+import { SumberKas } from '@/components/SumberKas';
 
 export const usePurchases = (from = '', to = '', enabled = true) => useQuery({ queryKey: ['purchases', from, to], queryFn: () => api<Purchase[]>('purchase.list', { from, to }), enabled });
 
@@ -37,7 +38,7 @@ export function PembelianPage() {
   const [alasan, setAlasan] = useState('');
   const remove = useMutation({
     mutationFn: () => api('purchase.delete', { id: del!.id, alasan }),
-    onSuccess: () => { ['purchases', 'stock-meta', 'expenses', 'bills', 'dashboard'].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); toast('Pembelian dihapus, stok dikoreksi'); setDel(null); setView(null); setAlasan(''); },
+    onSuccess: () => { ['purchases', 'kas-saldo', 'stock-meta', 'expenses', 'bills', 'dashboard'].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); toast('Pembelian dihapus, stok dikoreksi'); setDel(null); setView(null); setAlasan(''); },
   });
   const rows = useMemo(() => [...(q.data || [])].sort((a, b) => (b.tanggal + b.created_at).localeCompare(a.tanggal + a.created_at)), [q.data]);
   const total = rows.reduce((a, r) => a + r.total, 0);
@@ -127,7 +128,7 @@ export function PurchaseForm({ meta, last, initial, onClose }: { meta: StockMeta
   const valid = lines.length > 0 && lines.every((l, i) => l.material_id && calc[i].q > 0 && calc[i].h > 0) && (f.cara_bayar === 'lunas' ? !!f.method_id : !!f.supplier_id);
   const save = useMutation({
     mutationFn: () => api<{ total: number }>('purchase.save', { purchase: { ...f, items: lines.map((l, i) => ({ material_id: l.material_id, qty_beli: calc[i].q, satuan_beli: l.satuan_beli, isi: calc[i].isi, harga_beli: calc[i].h })) } }),
-    onSuccess: (r) => { ['purchases', 'stock-meta', 'expenses', 'bills', 'dashboard', 'stock-card'].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); toast(`Pembelian ${rp(r.total)} tercatat, stok bertambah`); onClose(); },
+    onSuccess: (r) => { ['purchases', 'kas-saldo', 'stock-meta', 'expenses', 'bills', 'dashboard', 'stock-card'].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); toast(`Pembelian ${rp(r.total)} tercatat, stok bertambah`); onClose(); },
   });
   const set = (k: keyof typeof f, v: string) => setF((x) => ({ ...x, [k]: v }));
 
@@ -180,11 +181,11 @@ export function PurchaseForm({ meta, last, initial, onClose }: { meta: StockMeta
           ))}
         </div>
         {f.cara_bayar === 'lunas' ? (
-          <Field label="Dibayar dengan" className="sm:col-span-3"><select id="pur-metode" className="input" value={f.method_id} onChange={(e) => set('method_id', e.target.value)}>{meta.payment_methods.map((m) => <option key={m.id} value={m.id}>{m.nama}</option>)}</select></Field>
+          <div className="sm:col-span-6"><SumberKas id="pur-metode" value={f.method_id} onChange={(v) => set('method_id', v)} nominal={total} /></div>
         ) : (
           <Field label="Jatuh tempo" className="sm:col-span-3" hint={!f.supplier_id ? <span className="text-warn">Pembelian tempo wajib memilih supplier.</span> : 'Masuk ke Hutang Supplier.'}><input id="pur-jt" type="date" className="input" value={f.jatuh_tempo} onChange={(e) => set('jatuh_tempo', e.target.value)} /></Field>
         )}
-        <Field label="Catatan" className="sm:col-span-3"><input id="pur-ket" className="input" value={f.keterangan} onChange={(e) => set('keterangan', e.target.value)} /></Field>
+        <Field label="Catatan" className={f.cara_bayar === 'lunas' ? 'sm:col-span-6' : 'sm:col-span-3'}><input id="pur-ket" className="input" value={f.keterangan} onChange={(e) => set('keterangan', e.target.value)} /></Field>
         <div className="flex items-baseline justify-between rounded-lg bg-sunk px-4 py-3 sm:col-span-6"><span className="text-sm font-semibold">Total</span><span className="num text-2xl font-extrabold">{rp(total)}</span></div>
         <div className="sm:col-span-6"><ErrorBox error={save.error} /></div>
       </div>

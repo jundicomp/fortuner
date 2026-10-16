@@ -623,6 +623,16 @@ export function makeExt(h: Helpers) {
         };
       },
     },
+    /** Saldo per kas/rekening (metode bayar) dari buku besar, untuk memilih sumber dana saat membayar. */
+    'kas.saldo': {
+      auth: true,
+      fn: (c: ExtCtx) => {
+        needAny(c, [['pengeluaran', 'lihat'], ['hutang', 'lihat'], ['pembelian', 'lihat'], ['kas', 'lihat']]);
+        const t = today(c);
+        const rows = Object.fromEntries(trial(c, '2000-01-01', t).rows.map((r) => [r.kode, r.saldo_akhir]));
+        return c.s.all('payment_methods').filter((m) => bool(m.aktif)).map((m) => ({ id: str(m.id), nama: str(m.nama), jenis: str(m.jenis), saldo: Math.round(num(rows['1100:' + str(m.id)])) }));
+      },
+    },
     'ledger.trial': {
       auth: true,
       fn: (c: ExtCtx, p: any) => {

@@ -2,7 +2,7 @@ import { handle, type Request } from '@/server/core';
 import { MockStore, browserEnv } from '@/server/mockStore';
 import { seedDemo } from '@/server/demoSeed';
 
-const KEY = 'fortuner-demo-db-v3'; // v3: + produk kertas sendiri (v1.1.2)
+const KEY = 'fortuner-demo-db-v4'; // v4: nama rekening tanpa "Transfer" (v1.2.6)
 try { ['fortuner-demo-db-v1', 'fortuner-demo-db-v2'].forEach((k) => localStorage.removeItem(k)); } catch { /* abaikan */ }
 let store: MockStore | null = null;
 function getStore() {

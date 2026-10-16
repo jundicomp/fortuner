@@ -35,7 +35,7 @@ export interface ReceiptData {
   // kwitansi
   kw_no?: string;      // KW-0038-1
   ke?: number;         // pembayaran ke-berapa untuk nota ini
-  metode?: string;     // nama metode bayar (Tunai, BCA Transfer, …)
+  metode?: string;     // nama metode bayar (Tunai, BCA, …)
   metode_jenis?: string;
   item_count?: number;
 }

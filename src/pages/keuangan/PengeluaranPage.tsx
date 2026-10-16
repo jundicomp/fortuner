@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, Tags, Trash2 } from 'lucide-react';
+import { ChevronRight, HandCoins, Package, Plus, Receipt, Tags, Trash2 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import type { ColumnDef } from '@tanstack/react-table';
 import { DataTable } from '@/components/table/DataTable';
@@ -10,6 +10,10 @@ import { useToast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
 import { useAuth } from '@/auth/AuthContext';
 import { addDays, nf, rp, tgl, ymd } from '@/lib/format';
+import { SumberKas, useKasSaldo } from '@/components/SumberKas';
+import { PurchaseForm, lastBuy, usePurchases } from '@/pages/stok/PembelianPage';
+import { useStockMeta } from '@/pages/stok/stokApi';
+import { BillModal, billRow, type Bill } from './HutangPage';
 
 export interface ExpenseMeta {
   categories: { id: string; nama: string; jenis: string; aktif: boolean }[];
@@ -35,13 +39,15 @@ export function PengeluaranPage() {
   const meta = useExpenseMeta();
   const [range, setRange] = useState<DateRange>(rangeFor('bulan_ini'));
   const q = useQuery({ queryKey: ['expenses', range.from, range.to], queryFn: () => api<Expense[]>('expense.list', { from: range.from, to: range.to }) });
-  const [form, setForm] = useState(false);
+  const [form, setForm] = useState<'' | 'pilih' | 'umum' | 'bahan' | 'bon'>('');
+  const [billId, setBillId] = useState('');
+  const kas = useKasSaldo();
   const [cats, setCats] = useState(false);
   const [del, setDel] = useState<Expense | null>(null);
   const [alasan, setAlasan] = useState('');
   const remove = useMutation({
     mutationFn: () => api('expense.delete', { id: del!.id, alasan }),
-    onSuccess: () => { qc.invalidateQueries({ queryKey: ['expenses'] }); qc.invalidateQueries({ queryKey: ['bills'] }); toast('Pengeluaran dihapus'); setDel(null); setAlasan(''); },
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['expenses'] }); qc.invalidateQueries({ queryKey: ['bills'] }); qc.invalidateQueries({ queryKey: ['kas-saldo'] }); toast('Pengeluaran dihapus'); setDel(null); setAlasan(''); },
   });
   const rows = useMemo(() => [...(q.data || [])].sort((a, b) => (b.tanggal + b.created_at).localeCompare(a.tanggal + a.created_at)), [q.data]);
   const total = rows.reduce((a, r) => a + r.total, 0);
@@ -66,11 +72,17 @@ export function PengeluaranPage() {
 
   return (
     <>
-      <PageHeader title="Pengeluaran" desc="Pembelian bahan dan biaya operasional. Pembelian bahan yang dihubungkan ke produk otomatis memperbarui harga beli per lembar, jadi laba per nota ikut terhitung."
+      <PageHeader title="Pengeluaran" desc="Semua uang keluar: pembelian bahan, bayar bon supplier, dan pengeluaran umum. Setiap pembayaran dipilih sumber kas/rekeningnya."
         actions={<>
           {can('pengeluaran', 'ubah') && <button className="btn" onClick={() => setCats(true)}><Tags size={16} />Kategori</button>}
-          {can('pengeluaran', 'tambah') && <button className="btn btn-primary" onClick={() => setForm(true)}><Plus size={16} />Catat pengeluaran</button>}
+          {can('pengeluaran', 'tambah') && <button className="btn btn-primary" onClick={() => setForm('pilih')}><Plus size={16} />Catat pengeluaran</button>}
         </>} />
+      {!!kas.data?.length && (
+        <section className="mb-3 flex flex-wrap items-center gap-2 text-sm" aria-label="Saldo kas & rekening">
+          <span className="text-xs font-bold uppercase tracking-wider text-muted">Saldo saat ini</span>
+          {kas.data.filter((m) => m.jenis !== 'edc').map((m) => <span key={m.id} className="rounded-lg border border-line bg-surface px-2.5 py-1">{m.nama} <b className={`num ${m.saldo < 0 ? 'text-bad' : ''}`}>{rp(m.saldo)}</b></span>)}
+        </section>
+      )}
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <section className="card tint tint-orange p-4"><div className="text-xs font-bold uppercase tracking-wider text-muted">Total periode</div><div className="num mt-1 text-2xl font-extrabold">{rp(total)}</div><div className="text-xs text-muted">{rows.length} transaksi</div></section>
         <section className="card tint tint-blue p-4"><div className="text-xs font-bold uppercase tracking-wider text-muted">Dibayar lunas / hutang</div><div className="num mt-1 text-lg font-bold">{rp(lunas)} <span className="text-sm font-normal text-muted">/ {rp(total - lunas)}</span></div></section>
@@ -82,7 +94,11 @@ export function PengeluaranPage() {
       <DataTable<Expense> data={rows} loading={q.isLoading} columns={cols} title="Pengeluaran" storageKey="pengeluaran" canExport={can('pengeluaran', 'ekspor')}
         exportSubtitle={periodeLabel(range.from, range.to)} toolbar={<DateRangeFilter value={range} onChange={setRange} id="exp-range" />} searchPlaceholder="Cari barang, nota, supplier…"
         cardTitle={(r) => <span className="flex justify-between gap-2"><span>{r.item}</span><span className="num text-sm">{tgl(r.tanggal)}</span></span>} emptyText="Belum ada pengeluaran di periode ini." />
-      {form && meta.data && <ExpenseForm meta={meta.data} onClose={() => setForm(false)} />}
+      {form === 'pilih' && <JenisPicker onPick={setForm} onClose={() => setForm('')} />}
+      {form === 'umum' && meta.data && <ExpenseForm meta={meta.data} onClose={() => setForm('')} />}
+      {form === 'bahan' && <BahanForm onClose={() => setForm('')} />}
+      {form === 'bon' && <BonPicker onPick={(id) => { setBillId(id); setForm(''); }} onClose={() => setForm('')} />}
+      {billId && <BonPay id={billId} onClose={() => setBillId('')} />}
       {cats && meta.data && <CategoryModal cats={meta.data.categories} onClose={() => setCats(false)} />}
       <Modal open={!!del} onClose={() => setDel(null)} size="sm" title="Hapus pengeluaran?" subtitle={del ? `${del.item} · ${rp(del.total)} · ${tgl(del.tanggal)}` : undefined}
         footer={<><button className="btn" onClick={() => setDel(null)}>Batal</button><button className="btn btn-danger" disabled={!alasan.trim() || remove.isPending} onClick={() => remove.mutate()}>Hapus</button></>}>
@@ -96,7 +112,8 @@ export function PengeluaranPage() {
 function ExpenseForm({ meta, onClose }: { meta: ExpenseMeta; onClose: () => void }) {
   const qc = useQueryClient();
   const toast = useToast();
-  const cats = meta.categories.filter((c) => c.aktif !== false);
+  // Pembelian bahan berstok punya form sendiri; di sini hanya pengeluaran umum.
+  const cats = meta.categories.filter((c) => c.aktif !== false && c.jenis !== 'bahan');
   const [f, setF] = useState({
     tanggal: ymd(), kategori_id: cats[0]?.id || '', item: '', nota: '', supplier_id: '', product_id: '', isi: '', qty: '1', satuan: '', harga: '', mesin_id: '',
     cara_bayar: 'lunas' as 'lunas' | 'hutang', method_id: meta.payment_methods.find((m) => m.jenis === 'tunai')?.id || '', jatuh_tempo: addDays(ymd(), 30), keterangan: '',
@@ -111,14 +128,14 @@ function ExpenseForm({ meta, onClose }: { meta: ExpenseMeta; onClose: () => void
   const save = useMutation({
     mutationFn: () => api<{ harga_beli_baru: number | null }>('expense.save', { expense: { ...f, qty, harga, satuan: rinci ? f.satuan : '', isi_per_satuan: isi || null, product_id: jenis === 'bahan' ? f.product_id : '' } }),
     onSuccess: (r) => {
-      ['expenses', 'bills', 'products', 'dashboard'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      ['expenses', 'bills', 'products', 'dashboard', 'kas-saldo'].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
       toast(r.harga_beli_baru != null ? `Tersimpan. Harga beli ${prod?.nama} jadi ${nf(r.harga_beli_baru)}/${prod?.satuan || 'lembar'}` : 'Pengeluaran dicatat');
       onClose();
     },
   });
   return (
-    <Modal open onClose={onClose} size="lg" title="Catat pengeluaran"
-      footer={<><button className="btn" onClick={onClose}>Batal</button><button className="btn btn-primary" disabled={save.isPending || !f.item || !total} onClick={() => save.mutate()}>Simpan {total ? rp(total) : ''}</button></>}>
+    <Modal open onClose={onClose} size="lg" title="Pengeluaran umum" subtitle="Di luar pembelian bahan & bayar bon supplier"
+      footer={<><button className="btn" onClick={onClose}>Batal</button><button className="btn btn-primary" disabled={save.isPending || !f.item || !total || (f.cara_bayar === 'lunas' && !f.method_id)} onClick={() => save.mutate()}>Simpan {total ? rp(total) : ''}</button></>}>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
         <Field label="Tanggal" className="sm:col-span-2"><input id="ex-tanggal" type="date" className="input" max={ymd()} value={f.tanggal} onChange={(e) => set('tanggal', e.target.value)} /></Field>
         <Field label="Kategori" className="sm:col-span-4" hint={jenis && !['bahan', 'klik'].includes(jenis) ? 'Pengeluaran umum: cukup isi keperluan dan nominalnya.' : undefined}>
@@ -172,16 +189,77 @@ function ExpenseForm({ meta, onClose }: { meta: ExpenseMeta; onClose: () => void
           ))}
         </div>
         {f.cara_bayar === 'lunas' ? (
-          <Field label="Dibayar dengan" className="sm:col-span-3"><select id="ex-metode" className="input" value={f.method_id} onChange={(e) => set('method_id', e.target.value)}>{meta.payment_methods.map((m) => <option key={m.id} value={m.id}>{m.nama}</option>)}</select></Field>
+          <div className="sm:col-span-6"><SumberKas id="ex-metode" value={f.method_id} onChange={(v) => set('method_id', v)} nominal={total} /></div>
         ) : (
           <Field label="Jatuh tempo" className="sm:col-span-3" hint={!f.supplier_id ? 'Pilih supplier dulu.' : undefined}><input id="ex-jt" type="date" className="input" value={f.jatuh_tempo} onChange={(e) => set('jatuh_tempo', e.target.value)} /></Field>
         )}
-        <Field label="Catatan" className="sm:col-span-3"><input id="ex-ket" className="input" value={f.keterangan} onChange={(e) => set('keterangan', e.target.value)} /></Field>
+        <Field label="Catatan" className={f.cara_bayar === 'lunas' ? 'sm:col-span-6' : 'sm:col-span-3'}><input id="ex-ket" className="input" value={f.keterangan} onChange={(e) => set('keterangan', e.target.value)} /></Field>
         <div className="flex items-baseline justify-between rounded-lg bg-sunk px-4 py-3 sm:col-span-6"><span className="text-sm font-semibold">Total</span><span className="num text-2xl font-extrabold">{rp(total)}</span></div>
         <div className="sm:col-span-6"><ErrorBox error={save.error} /></div>
       </div>
     </Modal>
   );
+}
+
+type Jenis = 'umum' | 'bahan' | 'bon';
+/** Langkah 1: pilih sifat pengeluaran. */
+function JenisPicker({ onPick, onClose }: { onPick: (j: Jenis) => void; onClose: () => void }) {
+  const { can } = useAuth();
+  const opts: { k: Jenis; icon: typeof Package; title: string; desc: string; ok: boolean }[] = [
+    { k: 'bahan', icon: Package, title: 'Pembelian bahan', desc: 'Kertas, stiker, film, tinta… stok bertambah & HPP ikut terhitung. Bisa lunas atau bon.', ok: can('pembelian', 'tambah') },
+    { k: 'bon', icon: HandCoins, title: 'Bayar tagihan / bon supplier', desc: 'Melunasi atau mencicil nota bahan yang dulu dicatat sebagai hutang.', ok: can('hutang', 'ubah') },
+    { k: 'umum', icon: Receipt, title: 'Pengeluaran umum', desc: 'Listrik, gaji, sewa, konsumsi, servis, ATK, tagihan klik… di luar pembelian bahan & bon.', ok: can('pengeluaran', 'tambah') },
+  ];
+  return (
+    <Modal open onClose={onClose} title="Catat pengeluaran" subtitle="Pilih jenis pengeluaran">
+      <div className="flex flex-col gap-2">
+        {opts.filter((o) => o.ok).map((o) => (
+          <button key={o.k} id={`exp-jenis-${o.k}`} type="button" onClick={() => onPick(o.k)} className="flex items-center gap-3 rounded-xl border border-line bg-surface p-3 text-left hover:border-brand hover:bg-brand/5">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-brand/10 text-brand"><o.icon size={20} /></span>
+            <span className="flex-1"><b className="block text-sm">{o.title}</b><span className="text-xs text-muted">{o.desc}</span></span>
+            <ChevronRight size={18} className="text-muted" />
+          </button>
+        ))}
+      </div>
+    </Modal>
+  );
+}
+
+function BahanForm({ onClose }: { onClose: () => void }) {
+  const meta = useStockMeta();
+  const all = usePurchases();
+  if (!meta.data) return null;
+  return <PurchaseForm meta={meta.data} last={lastBuy(all.data)} onClose={onClose} />;
+}
+
+const useOpenBills = () => useQuery({ queryKey: ['bills', false], queryFn: () => api<Bill[]>('bills.list', { semua: false }) });
+
+/** Langkah 2 (bon): pilih nota supplier yang masih ada sisa. */
+function BonPicker({ onPick, onClose }: { onPick: (id: string) => void; onClose: () => void }) {
+  const q = useOpenBills();
+  const rows = (q.data || []).map((b) => billRow(b)).filter((b) => b.sisa > 0).sort((a, b) => a.jatuh_tempo.localeCompare(b.jatuh_tempo));
+  return (
+    <Modal open onClose={onClose} title="Bayar tagihan / bon supplier" subtitle={rows.length ? `${rows.length} bon belum lunas · total ${rp(rows.reduce((a, r) => a + r.sisa, 0))}` : undefined}>
+      {q.isLoading ? <p className="text-sm text-muted">Memuat…</p> : !rows.length ? <p className="text-sm text-muted">Tidak ada bon supplier yang belum lunas.</p> : (
+        <ul className="divide-y divide-line rounded-xl border border-line">
+          {rows.map((b) => (
+            <li key={b.id}><button type="button" id={`bon-${b.id}`} onClick={() => onPick(b.id)} className="flex w-full items-center gap-3 px-3 py-2.5 text-left hover:bg-sunk">
+              <span className="flex-1 text-sm"><b>{b.supplier}</b> <span className="text-muted">· {b.keterangan}</span>{b.nota && <span className="block font-mono text-[11px] text-muted">{b.nota}</span>}
+                <span className={`block text-[11px] ${b.hari < 0 ? 'font-bold text-bad' : 'text-muted'}`}>Jatuh tempo {tgl(b.jatuh_tempo)}{b.hari < 0 ? ` · lewat ${-b.hari} hari` : ''}</span></span>
+              <span className="text-right"><span className="block text-[11px] text-muted">Sisa</span><b className="num text-sm text-bad">{rp(b.sisa)}</b></span>
+              <ChevronRight size={16} className="text-muted" />
+            </button></li>
+          ))}
+        </ul>
+      )}
+    </Modal>
+  );
+}
+
+function BonPay({ id, onClose }: { id: string; onClose: () => void }) {
+  const q = useOpenBills();
+  const b = (q.data || []).find((x) => x.id === id);
+  return b ? <BillModal bill={billRow(b)} onClose={onClose} /> : null;
 }
 
 function CategoryModal({ cats, onClose }: { cats: ExpenseMeta['categories']; onClose: () => void }) {

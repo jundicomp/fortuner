@@ -7,15 +7,22 @@ import { ErrorBox, Field, PageHeader } from '@/components/ui/Field';
 import { Modal } from '@/components/ui/Modal';
 import { useToast } from '@/components/ui/Toast';
 import { api } from '@/lib/api';
+import { SumberKas } from '@/components/SumberKas';
 import { useAuth } from '@/auth/AuthContext';
 import { addDays, nf, rp, tgl, tglJam, ymd } from '@/lib/format';
 import { useExpenseMeta } from './PengeluaranPage';
 
-interface Bill {
+export interface Bill {
   id: string; tanggal: string; nota: string; supplier_id: string; supplier: string; total: number; terbayar: number; sisa: number; jatuh_tempo: string; keterangan: string;
   pembayaran: { id: string; tanggal: string; nominal: number; metode: string; oleh: string; keterangan: string; created_at: string }[];
 }
-type Row = Bill & { status: string; hari: number };
+export type Row = Bill & { status: string; hari: number };
+/** Tambah status & sisa hari jatuh tempo. */
+export function billRow(b: Bill, today = ymd()): Row {
+  const hari = Math.round((Date.parse(b.jatuh_tempo) - Date.parse(today)) / 864e5);
+  const status = b.sisa <= 0 ? 'Lunas' : hari < 0 ? 'Terlambat' : hari <= 7 ? 'Jatuh tempo ≤ 7 hari' : 'Belum jatuh tempo';
+  return { ...b, hari, status };
+}
 const numIn = (s: string) => Number(String(s).replace(/[^\d]/g, '')) || 0;
 const STATUS: Record<string, string> = { Lunas: 'pill-ok', Terlambat: 'pill-bad', 'Jatuh tempo ≤ 7 hari': 'pill-warn', 'Belum jatuh tempo': 'pill-mute' };
 
@@ -27,11 +34,7 @@ export function HutangPage() {
   const [open, setOpen] = useState('');
   const [baru, setBaru] = useState(false);
   const today = ymd();
-  const rows: Row[] = useMemo(() => (q.data || []).map((b) => {
-    const hari = Math.round((Date.parse(b.jatuh_tempo) - Date.parse(today)) / 864e5);
-    const status = b.sisa <= 0 ? 'Lunas' : hari < 0 ? 'Terlambat' : hari <= 7 ? 'Jatuh tempo ≤ 7 hari' : 'Belum jatuh tempo';
-    return { ...b, hari, status };
-  }).sort((a, b) => (a.sisa > 0 ? 0 : 1) - (b.sisa > 0 ? 0 : 1) || a.jatuh_tempo.localeCompare(b.jatuh_tempo)), [q.data, today]);
+  const rows: Row[] = useMemo(() => (q.data || []).map((b) => billRow(b, today)).sort((a, b) => (a.sisa > 0 ? 0 : 1) - (b.sisa > 0 ? 0 : 1) || a.jatuh_tempo.localeCompare(b.jatuh_tempo)), [q.data, today]);
   const openRows = rows.filter((r) => r.sisa > 0);
   const sum = (rs: Row[]) => rs.reduce((a, r) => a + r.sisa, 0);
   const sel = rows.find((r) => r.id === open);
@@ -70,7 +73,7 @@ function Tile({ label, value, sub, tone = '', tint = 'blue' }: { label: string; 
   return <section className={`card tint tint-${tint} p-4`}><div className="text-xs font-bold uppercase tracking-wider text-muted">{label}</div><div className={`num mt-1 text-2xl font-extrabold ${tone}`}>{value}</div>{sub && <div className="text-xs text-muted">{sub}</div>}</section>;
 }
 
-function BillModal({ bill, onClose }: { bill: Row; onClose: () => void }) {
+export function BillModal({ bill, onClose }: { bill: Row; onClose: () => void }) {
   const { can } = useAuth();
   const qc = useQueryClient();
   const toast = useToast();
@@ -82,7 +85,7 @@ function BillModal({ bill, onClose }: { bill: Row; onClose: () => void }) {
   const [ket, setKet] = useState('');
   const pay = useMutation({
     mutationFn: () => api('bills.pay', { bill_id: bill.id, nominal: numIn(nominal), method_id: methodId || methods.find((m) => m.jenis === 'transfer')?.id || methods[0]?.id, tanggal, keterangan: ket }),
-    onSuccess: () => { ['bills', 'expenses', 'dashboard'].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); toast(numIn(nominal) >= bill.sisa ? 'Hutang lunas' : 'Pembayaran hutang dicatat'); onClose(); },
+    onSuccess: () => { ['bills', 'expenses', 'dashboard', 'kas-saldo'].forEach((k) => qc.invalidateQueries({ queryKey: [k] })); toast(numIn(nominal) >= bill.sisa ? 'Hutang lunas' : 'Pembayaran hutang dicatat'); onClose(); },
   });
   return (
     <Modal open onClose={onClose} title={bill.supplier} subtitle={`${bill.keterangan}${bill.nota ? ` · ${bill.nota}` : ''} · ${tgl(bill.tanggal)}`}>
@@ -102,8 +105,8 @@ function BillModal({ bill, onClose }: { bill: Row; onClose: () => void }) {
           <h3 className="mb-3 text-sm font-bold">Bayar hutang</h3>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Field label="Nominal"><input id="bp-nominal" className="input num text-right" inputMode="numeric" value={nominal ? nf(numIn(nominal)) : ''} onChange={(e) => setNominal(e.target.value)} /></Field>
-            <Field label="Metode"><select id="bp-metode" className="input" value={methodId} onChange={(e) => setMethodId(e.target.value)}><option value="">– pilih –</option>{methods.map((m) => <option key={m.id} value={m.id}>{m.nama}</option>)}</select></Field>
             <Field label="Tanggal bayar"><input id="bp-tanggal" type="date" className="input" max={ymd()} value={tanggal} onChange={(e) => setTanggal(e.target.value)} /></Field>
+            <div className="sm:col-span-3"><SumberKas id="bp-metode" value={methodId} onChange={setMethodId} nominal={numIn(nominal)} /></div>
             <Field label="Catatan / no. transfer" className="sm:col-span-3"><input id="bp-ket" className="input" value={ket} onChange={(e) => setKet(e.target.value)} /></Field>
           </div>
           <div className="mt-3"><ErrorBox error={pay.error} /></div>
