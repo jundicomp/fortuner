@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Banknote, CreditCard, Landmark } from 'lucide-react';
+import { Banknote, CreditCard, Landmark, Wallet } from 'lucide-react';
 import { useEffect } from 'react';
 import { api } from '@/lib/api';
 import { nf } from '@/lib/format';
@@ -13,7 +13,7 @@ export const useKasSaldo = () => useQuery({ queryKey: ['kas-saldo'], queryFn: ()
  */
 export function SumberKas({ value, onChange, nominal, id = 'sumber-kas', label = 'Sumber pembayaran' }: { value: string; onChange: (id: string) => void; nominal: number; id?: string; label?: string }) {
   const q = useKasSaldo();
-  const list = (q.data || []).filter((m) => m.jenis !== 'edc'); // EDC = terima kartu, bukan sumber bayar
+  const list = (q.data || []).filter((m) => m.jenis !== 'edc' && m.jenis !== 'kas_kecil'); // EDC = terima kartu; kas kecil dicatat di menu Kas
   useEffect(() => { if (!value && list.length) onChange((list.find((m) => m.jenis === 'tunai') || list[0]).id); }, [list.length]); // eslint-disable-line react-hooks/exhaustive-deps
   const sel = list.find((m) => m.id === value);
   const sisa = sel ? sel.saldo - nominal : 0;
@@ -38,6 +38,7 @@ export function SumberKas({ value, onChange, nominal, id = 'sumber-kas', label =
 function styleOf(m: KasSaldo) {
   const n = m.nama.toLowerCase();
   if (m.jenis === 'tunai') return { bg: 'linear-gradient(135deg,#15803d,#166534)', Icon: Banknote };
+  if (m.jenis === 'kas_kecil') return { bg: 'linear-gradient(135deg,#d97706,#b45309)', Icon: Wallet };
   if (n.includes('bca')) return { bg: 'linear-gradient(135deg,#1d4ed8,#1e3a8a)', Icon: Landmark };
   if (n.includes('mandiri')) return { bg: 'linear-gradient(135deg,#1e3a8a,#0f1f4d)', Icon: Landmark, accent: '#facc15' };
   if (n.includes('bni')) return { bg: 'linear-gradient(135deg,#f26b1d,#c2410c)', Icon: Landmark };
@@ -53,7 +54,7 @@ export function KasCards({ className = '' }: { className?: string }) {
   const list = (q.data || []).filter((m) => m.jenis !== 'edc');
   if (!list.length) return null;
   return (
-    <section className={`grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5 ${className}`} aria-label="Saldo kas & rekening">
+    <section className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${list.length > 5 ? 'lg:grid-cols-6' : 'lg:grid-cols-5'} ${className}`} aria-label="Saldo kas & rekening">
       {list.map((m) => {
         const s = styleOf(m);
         return (

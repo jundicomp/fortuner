@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.2.8",
+    "tanggal": "2026-10-16",
+    "catatan": [
+      "Menu baru Keuangan → Pindah Dana: setor tunai ke bank, tarik tunai, antar rekening, isi kas kecil, dan pencairan EDC. Saldo kedua sisi langsung ter-update; biaya admin dipotong dari rekening asal dan dicatat sebagai beban administrasi bank.",
+      "Setiap pindah dana wajib catatan/no. referensi dan verifikasi password user. Pembatalan juga butuh alasan + password; data tidak dihapus, tetap tampil di riwayat dengan status Batal.",
+      "Tab Rekonsiliasi rekening: isi saldo asli (m-banking / hitung fisik), lihat selisih, dan sesuaikan dengan alasan (biaya admin, bunga, selisih kas) + catatan + password. Riwayat rekonsiliasi tersimpan lengkap.",
+      "Kas kecil kini ikut sebagai kartu saldo; tombol \"Isi kas kecil\" di menu Kas membuka Pindah Dana. Isi ulang & penyesuaian tampil di daftar kas kecil.",
+      "Hak akses baru: \"Pindah dana & rekonsiliasi\" (otomatis untuk Owner, Admin, dan Keuangan)."
+    ]
+  },
+  {
     "version": "1.2.7",
     "tanggal": "2026-10-16",
     "catatan": [

@@ -188,6 +188,16 @@ function seedOrders(s: Store, env: Env) {
     if (rnd() < 0.45) { const [i, n] = pick(out as unknown as [string, number][]); pc(shift(off), i, 0, n); }
     if (off === -8) pc(shift(off), 'Isi ulang dari owner', 300000, 0);
   }
+  // ---- pindah dana (v1.2.8) ----
+  const owner = s.all('users').find((u) => u.role === 'owner')!;
+  const mid = (n: string) => String(s.all('payment_methods').find((m) => m.nama === n)?.id || '');
+  const pd = (off: number, jenis: string, dari: string, ke: string, nominal: number, admin: number, ket: string) => s.insert('fund_transfers', {
+    id: 'pd_' + env.uuid().replace(/-/g, '').slice(0, 12), tanggal: shift(off), jenis, dari, ke, nominal, biaya_admin: admin, keterangan: ket, batal: false, alasan_batal: '', batal_oleh: '', batal_at: '',
+    created_at: `${shift(off)}T09:30:00.000Z`, created_by: owner.id, updated_at: now, updated_by: owner.id });
+  pd(-14, 'Setor tunai', mid('Tunai'), mid('BCA'), 5000000, 0, 'Setoran mingguan');
+  pd(-9, 'Antar rekening', mid('BCA'), mid('BSI'), 1500000, 6500, 'Untuk bayar supplier via BSI');
+  pd(-6, 'Tarik tunai', mid('Mandiri'), mid('Tunai'), 500000, 0, 'Modal kembalian');
+  pd(-2, 'Setor tunai', mid('Tunai'), mid('BCA'), 3000000, 0, 'Setoran mingguan');
   seedFinance(s, env, rnd, pick, shift);
 }
 

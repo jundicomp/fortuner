@@ -77,6 +77,10 @@ export const SCHEMA: Record<string, TableSchema> = {
   opnames: { id: 's', tanggal: 's', keterangan: 's', jumlah_item: 'n', nilai_selisih: 'n', ...audit },
   opname_items: { id: 's', opname_id: 's', material_id: 's', stok_sistem: 'n', stok_fisik: 'n', selisih: 'n', harga: 'n', nilai: 'n', keterangan: 's' },
   journals: { id: 's', tanggal: 's', keterangan: 's', lines: 'j', deleted: 'b', ...audit },
+
+  // ---------- Pindah dana & rekonsiliasi (v1.2.8) ----------
+  fund_transfers: { id: 's', tanggal: 's', jenis: 's', dari: 's', ke: 's', nominal: 'n', biaya_admin: 'n', keterangan: 's', batal: 'b', alasan_batal: 's', batal_oleh: 's', batal_at: 's', ...audit },
+  reconciliations: { id: 's', tanggal: 's', akun: 's', saldo_sistem: 'n', saldo_asli: 'n', selisih: 'n', disesuaikan: 'b', alasan: 's', akun_lawan: 's', keterangan: 's', ...audit },
 };
 
 export type Row = Record<string, unknown>;

@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ArrowDownLeft, ArrowUpRight, Plus, Save, Trash2 } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import type { ColumnDef } from '@tanstack/react-table';
 import { DataTable } from '@/components/table/DataTable';
 import { ErrorBox, Field, PageHeader } from '@/components/ui/Field';
@@ -13,7 +14,7 @@ import { Money } from '@/components/ui/Money';
 
 interface RekapRow { kasir_id: string; kasir_nama: string; method_id: string; method_nama: string; jenis: string; sistem: number; transaksi: number; aktual: number | null; selisih: number | null; keterangan: string; dicatat_oleh: string; dicatat_at: string }
 interface Rekap { tanggal: string; kas_kecil_keluar: number; rows: RekapRow[] }
-interface PcRow { id: string; tanggal: string; item: string; masuk: number; keluar: number; saldo: number; keterangan: string; oleh: string; created_at: string }
+interface PcRow { id: string; tanggal: string; item: string; masuk: number; keluar: number; saldo: number; keterangan: string; oleh: string; created_at: string; sumber?: string }
 const numIn = (s: string) => Number(String(s).replace(/[^\d]/g, '')) || 0;
 
 /** Pengganti sheet "Rekap" (bagian kasir & setor) dan "Kas Kecil". */
@@ -120,6 +121,7 @@ function Tile({ label, value, sub, tone = '', tint = 'blue' }: { label: string; 
 
 function KasKecil() {
   const { can } = useAuth();
+  const nav = useNavigate();
   const qc = useQueryClient();
   const toast = useToast();
   const q = useQuery({ queryKey: ['kas-kecil'], queryFn: () => api<{ saldo: number; rows: PcRow[] }>('pettycash.list', {}) });
@@ -144,7 +146,7 @@ function KasKecil() {
     { accessorKey: 'keluar', header: 'Keluar', meta: { align: 'right', total: true, money: true }, cell: (c) => (c.getValue() ? <span className="text-bad">{nf(c.getValue())}</span> : '') },
     { accessorKey: 'saldo', header: 'Saldo', meta: { money: true, align: 'right' }, cell: (c) => <b>{nf(c.getValue())}</b> },
     { accessorKey: 'oleh', header: 'Dicatat', meta: { filter: 'select', hideOnCard: true } },
-    ...(can('kas', 'hapus') ? [{ id: 'aksi', header: '', enableSorting: false, meta: { noExport: true, hideOnCard: true }, cell: (c: { row: { original: PcRow } }) => <button className="btn btn-ghost btn-sm px-1.5 text-bad" aria-label="Hapus" onClick={(e) => { e.stopPropagation(); setDel(c.row.original); }}><Trash2 size={14} /></button> } as ColumnDef<PcRow, any>] : []),
+    ...(can('kas', 'hapus') ? [{ id: 'aksi', header: '', enableSorting: false, meta: { noExport: true, hideOnCard: true }, cell: (c: { row: { original: PcRow } }) => c.row.original.sumber ? null : <button className="btn btn-ghost btn-sm px-1.5 text-bad" aria-label="Hapus" onClick={(e) => { e.stopPropagation(); setDel(c.row.original); }}><Trash2 size={14} /></button> } as ColumnDef<PcRow, any>] : []),
   ];
   return (
     <div className="flex flex-col gap-4">
@@ -154,7 +156,9 @@ function KasKecil() {
         {can('kas', 'tambah') && (
           <section className="card flex items-center gap-2 p-4">
             <button className="btn btn-primary flex-1" onClick={() => { add.reset(); setForm({ tanggal: ymd(), item: '', jenis: 'keluar', nominal: '', keterangan: '' }); }}><ArrowUpRight size={16} />Uang keluar</button>
-            <button className="btn flex-1" onClick={() => { add.reset(); setForm({ tanggal: ymd(), item: '', jenis: 'masuk', nominal: '', keterangan: '' }); }}><ArrowDownLeft size={16} />Uang masuk</button>
+            {can('pindah_dana', 'tambah')
+              ? <button className="btn flex-1" onClick={() => nav('/pindah-dana?ke=kas_kecil')}><ArrowDownLeft size={16} />Isi kas kecil</button>
+              : <button className="btn flex-1" onClick={() => { add.reset(); setForm({ tanggal: ymd(), item: '', jenis: 'masuk', nominal: '', keterangan: '' }); }}><ArrowDownLeft size={16} />Uang masuk</button>}
           </section>
         )}
       </div>

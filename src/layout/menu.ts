@@ -27,6 +27,7 @@ export const MENU: MenuGroup[] = [
       { path: '/piutang', label: 'Piutang', icon: HandCoins, perm: 'piutang', desc: 'Piutang aktif, umur piutang, dan piutang per konsumen.' },
       { path: '/pengeluaran', label: 'Pengeluaran', icon: Receipt, perm: 'pengeluaran', desc: 'Pembelian bahan dan operasional; mengisi riwayat harga beli.' },
       { path: '/hutang', label: 'Hutang Supplier', icon: Truck, perm: 'hutang', desc: 'Tagihan supplier, cicilan, dan jatuh tempo.' },
+      { path: '/pindah-dana', label: 'Pindah Dana', icon: ArrowLeftRight, perm: 'pindah_dana', desc: 'Setor/tarik tunai, antar rekening, isi kas kecil, dan rekonsiliasi saldo.' },
       { path: '/kas', label: 'Kas', icon: Wallet, perm: 'kas', desc: 'Kas kecil, setoran kasir, dan pencocokan transfer dengan mutasi bank.' },
     ],
   },

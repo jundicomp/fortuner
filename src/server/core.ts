@@ -1046,7 +1046,17 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
     auth: true,
     fn: (c, p) => {
       need(c, 'kas');
-      const all = c.s.all('petty_cash').filter((x) => !bool(x.deleted)).sort((a, b) => (str(a.tanggal) + str(a.created_at)).localeCompare(str(b.tanggal) + str(b.created_at)));
+      const names: Record<string, string> = Object.fromEntries(c.s.all('payment_methods').map((m) => [str(m.id), str(m.nama)]));
+      // Isi ulang / pengembalian lewat Pindah dana & penyesuaian rekonsiliasi ikut tampil (tidak bisa dihapus dari sini).
+      const fromTransfers: Row[] = c.s.all('fund_transfers').filter((f) => !bool(f.batal) && (f.ke === 'kas_kecil' || f.dari === 'kas_kecil')).map((f) => {
+        const masukKK = f.ke === 'kas_kecil';
+        return { id: f.id, tanggal: f.tanggal, item: masukKK ? `Pindah dana dari ${names[str(f.dari)] || f.dari}` : `Pindah dana ke ${names[str(f.ke)] || f.ke}`, masuk: masukKK ? Number(f.nominal) : 0,
+          keluar: masukKK ? 0 : Number(f.nominal) + Number(f.biaya_admin || 0), keterangan: f.keterangan, sumber: 'pindah_dana', created_by: f.created_by, created_at: f.created_at };
+      });
+      const fromRecon: Row[] = c.s.all('reconciliations').filter((r) => r.akun === 'kas_kecil' && bool(r.disesuaikan) && Number(r.selisih)).map((r) => ({
+        id: r.id, tanggal: r.tanggal, item: `Penyesuaian rekonsiliasi: ${str(r.alasan)}`, masuk: Number(r.selisih) > 0 ? Number(r.selisih) : 0, keluar: Number(r.selisih) < 0 ? -Number(r.selisih) : 0,
+        keterangan: r.keterangan, sumber: 'rekonsiliasi', created_by: r.created_by, created_at: r.created_at }));
+      const all = [...c.s.all('petty_cash').filter((x) => !bool(x.deleted)), ...fromTransfers, ...fromRecon].sort((a, b) => (str(a.tanggal) + str(a.created_at)).localeCompare(str(b.tanggal) + str(b.created_at)));
       let saldo = 0;
       const users = Object.fromEntries(c.s.all('users').map((x) => [x.id, x.nama]));
       const rows: Row[] = all.map((x) => { saldo += Number(x.masuk || 0) - Number(x.keluar || 0); return { ...x, saldo, oleh: str(users[str(x.created_by)]) }; });
@@ -1468,7 +1478,12 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
 
 /** Titik masuk semua request. */
 // ----- v1.1: stok, pembelian, opname, HPP, buku besar, laba rugi, margin (src/server/ext.ts) -----
-const ext = makeExt({ fail, str, bool, newId, iso, addDays, isYmd, settingsMap, need, stamp, log });
+/** Verifikasi password user yang sedang login (untuk tindakan keuangan sensitif). */
+function checkPassword(c: Ctx, password: unknown) {
+  if (!str(password)) fail('VALIDATION', 'Masukkan password Anda untuk verifikasi.');
+  if (hashPassword(str(password), str(c.user!.salt)) !== c.user!.password_hash) fail('VALIDATION', 'Password verifikasi salah.');
+}
+const ext = makeExt({ fail, str, bool, newId, iso, addDays, isYmd, settingsMap, need, stamp, log, checkPassword });
 Object.keys(ext.handlers).forEach((k) => { if (handlers[k]) throw new Error('Handler ganda: ' + k); handlers[k] = ext.handlers[k]; });
 
 export function handle(s: Store, env: Env, req: Request): Response {
