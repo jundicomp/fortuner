@@ -1,5 +1,13 @@
 [
   {
+    "version": "1.2.4",
+    "tanggal": "2026-10-16",
+    "catatan": [
+      "Front Office lebih ringkas: Produk | Jumlah | Harga | Tambah dalam satu baris, keterangan di bawahnya; kolom Sisi dihapus karena sudah tampil di pilihan produk.",
+      "Warna standar tipe konsumen: Reseller blok oranye, End user blok hijau tua (tulisan putih), dipakai di harga R/E daftar produk, pilihan konsumen, dan label harga."
+    ]
+  },
+  {
     "version": "1.2.3",
     "tanggal": "2026-10-15",
     "catatan": [

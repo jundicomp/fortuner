@@ -176,14 +176,14 @@ export function FoPage() {
   const custItems: ComboItem[] = useMemo(() => (d?.customers || []).map((c) => ({
     value: c.id, label: c.nama, hint: [c.kode && `#${c.kode}`, c.telp !== '-' && c.telp].filter(Boolean).join(' · '),
     search: `${c.nama} ${c.kode} ${c.telp}`.toLowerCase(),
-    right: <span className={`pill ${c.tipe === 'reseller' ? 'pill-brand' : 'pill-mute'}`}>{c.tipe === 'reseller' ? 'Reseller' : 'End user'}</span>,
+    right: <TipeTag tipe={c.tipe} />,
   })), [d]);
   const prodItems: ComboItem[] = useMemo(() => products.map((p) => ({
     value: p.id, label: p.nama, hint: `#${p.kode} · ${machineName[p.mesin_id] || '–'}${p.jenis_harga === 'matriks' ? ` · ${sisiLabel(p.sisi)}` : ''}${p.kertas_sendiri ? ' · kertas sendiri' : ''}`, search: `${p.nama} ${p.kode} ${p.kategori} ${machineName[p.mesin_id] || ''}`.toLowerCase(),
     right: (
       <span className="flex flex-col items-end gap-0.5">
         {p.jenis_harga === 'matriks' && <span className={`pill ${Number(p.sisi) === 2 ? 'pill-brand' : 'pill-mute'} !text-ink`}>{sisiLabel(p.sisi)}</span>}
-        {p.jenis_harga !== 'manual' && !p.harga ? <span className="pill pill-bad">Tanpa harga</span> : <span className="num text-xs font-semibold text-ink">{priceSummary(p.jenis_harga, p.harga)}</span>}
+        {p.jenis_harga !== 'manual' && !p.harga ? <span className="pill pill-bad">Tanpa harga</span> : <PriceChips p={p} />}
       </span>
     ),
   })), [products, machineName]);
@@ -231,7 +231,6 @@ export function FoPage() {
                   footer={<button className="btn btn-ghost btn-sm w-full justify-start" disabled={!syncState.online} onClick={() => setNewCust(true)}><UserPlus size={14} />Konsumen baru{!syncState.online ? ' (butuh internet)' : ''}</button>} />
               </Field>
               <div className="flex flex-wrap items-center gap-2 pb-1.5 text-sm">
-                <span className={`pill ${tipe === 'reseller' ? 'pill-brand' : 'pill-mute'}`}>{tipe === 'reseller' ? 'Reseller' : 'End user'}</span>
                 {telpOk ? <span className="inline-flex items-center gap-1 text-xs text-muted"><MessageCircle size={13} className="text-[#1F8F4E]" />{customer?.telp}</span>
                   : <span className="inline-flex items-center gap-1 text-xs text-warn"><MessageCircle size={13} />belum ada nomor WA</span>}
               </div>
@@ -248,35 +247,25 @@ export function FoPage() {
               <Field label="Jumlah" className="col-span-1 sm:col-span-2">
                 <input ref={qtyRef} id="fo-qty" className="input num text-right" inputMode="numeric" value={draft.qty} onChange={(e) => setDraft({ ...draft, qty: e.target.value.replace(/[^\d]/g, '') })} onKeyDown={(e) => e.key === 'Enter' && addItem()} />
               </Field>
-              <div className="col-span-1 sm:col-span-4">
-                {dp?.jenis_harga === 'cutting' ? (
-                  <Field label="Ukuran stiker">
-                    <select id="fo-ukuran" className="input" value={draft.ukuran} onChange={(e) => setDraft({ ...draft, ukuran: Number(e.target.value) })}>{CUT_SIZES.map((s, i) => <option key={s} value={i}>{s}</option>)}</select>
-                  </Field>
-                ) : (
-                  <div className="label"><span>Sisi</span>
-                    <div id="fo-sisi" className={`flex h-[38px] items-center rounded-lg border border-line px-3 text-xs font-bold ${dp?.jenis_harga === 'matriks' ? (sisiOf(dp) === 2 ? 'bg-brand/10 text-brand' : 'bg-sunk') : 'bg-sunk text-muted'}`}>
-                      {dp?.jenis_harga === 'matriks' ? sisiLabel(dp.sisi) : dp ? '–' : 'ikut produk'}
-                    </div>
-                  </div>
-                )}
-              </div>
-              <Field label="Keterangan" className="col-span-2 sm:col-span-6">
-                <input id="fo-ket" className="input" placeholder="mis. brosur A4, cover buku" value={draft.keterangan} onChange={(e) => setDraft({ ...draft, keterangan: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && addItem()} />
-              </Field>
-              <Field label={<span className="flex items-center justify-between">Harga satuan
-                {dp && dp.jenis_harga !== 'manual' && d.can_manual && <button type="button" className="font-semibold text-brand" onClick={() => setDraft({ ...draft, manual: !draft.manual, harga: draft.manual ? '' : String(dCalc?.harga ?? '') })}>{draft.manual ? 'Pakai matriks' : <span className="inline-flex items-center gap-1"><Pencil size={11} />Ubah</span>}</button>}
-              </span>} className="col-span-1 sm:col-span-3">
+              <Field label={<span className="flex items-center justify-between gap-1 whitespace-nowrap">Harga
+                {dp && dp.jenis_harga !== 'manual' && d.can_manual && <button type="button" className="font-semibold text-brand" onClick={() => setDraft({ ...draft, manual: !draft.manual, harga: draft.manual ? '' : String(dCalc?.harga ?? '') })}>{draft.manual ? 'Matriks' : <span className="inline-flex items-center gap-1"><Pencil size={11} />Ubah</span>}</button>}
+              </span>} className="col-span-1 sm:col-span-2">
                 <input id="fo-harga" className={`input num text-right ${dManual ? '' : 'bg-sunk'}`} inputMode="numeric" readOnly={!dManual} placeholder={dManual ? 'isi harga' : ''}
                   value={dManual ? draft.harga : dHarga == null ? '' : nf(dHarga)} onChange={(e) => setDraft({ ...draft, harga: e.target.value.replace(/[^\d]/g, '') })} onKeyDown={(e) => e.key === 'Enter' && addItem()} />
               </Field>
-              <div className="col-span-1 flex items-end sm:col-span-3">
-                <button className="btn btn-dark w-full" onClick={addItem} disabled={!dp}><Plus size={16} />Tambah <span className="kbd">Enter</span></button>
+              <div className="col-span-2 flex items-end sm:col-span-2">
+                <button className="btn btn-dark w-full" onClick={addItem} disabled={!dp}><Plus size={16} />Tambah</button>
+              </div>
+              <div className="col-span-2 flex items-center gap-2 sm:col-span-12">
+                {dp?.jenis_harga === 'cutting' && (
+                  <select id="fo-ukuran" aria-label="Ukuran stiker" className="input w-auto py-1.5 text-sm" value={draft.ukuran} onChange={(e) => setDraft({ ...draft, ukuran: Number(e.target.value) })}>{CUT_SIZES.map((x, i) => <option key={x} value={i}>Ukuran {x}</option>)}</select>
+                )}
+                <input id="fo-ket" aria-label="Keterangan" className="input py-1.5 text-sm" placeholder="Keterangan item (opsional), mis. brosur A4, cover buku · Enter untuk menambah" value={draft.keterangan} onChange={(e) => setDraft({ ...draft, keterangan: e.target.value })} onKeyDown={(e) => e.key === 'Enter' && addItem()} />
               </div>
             </div>
             {dp ? (
               <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-lg bg-sunk px-3 py-2 text-xs">
-                <span className="pill pill-brand">{dManual ? 'Harga manual' : dCalc?.label}</span>
+                {dManual ? <span className="pill pill-warn">Harga manual</span> : <span className={tipe === 'reseller' ? 'tag-r' : 'tag-e'}>{dCalc?.label}</span>}
                 <span className="text-muted">{machineName[dp.mesin_id] || '–'}{dp.jenis_harga === 'matriks' ? ` · ${sisiLabel(dp.sisi)} · klik ${nf((dQty || 1) * sisiOf(dp))}` : ''}{dp.kertas_sendiri && <b className="text-warn"> · kertas dari konsumen</b>}</span>
                 {!dManual && dCalc?.peringatan && <span className="text-warn">{dCalc.peringatan}</span>}
                 <span className="num ml-auto text-sm">{nf(dQty || 0)} × {dHarga == null ? '–' : nf(dHarga)} = <b>{dHarga == null ? '–' : rp(dHarga * (dQty || 0))}</b></span>
@@ -412,4 +401,22 @@ function NewCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
       </div>
     </Modal>
   );
+}
+
+/** Tipe konsumen dengan warna standar: Reseller oranye, End user hijau tua. */
+function TipeTag({ tipe }: { tipe?: string }) {
+  return tipe === 'reseller' ? <span className="tag-r">Reseller</span> : <span className="tag-e">End user</span>;
+}
+
+/** Harga ringkas di daftar produk: R (reseller) oranye, E (end user) hijau tua, harga banyak per unit. */
+function PriceChips({ p }: { p: Product }) {
+  const h = p.harga;
+  if (p.jenis_harga === 'manual') return <span className="text-xs font-semibold text-ink">Harga manual</span>;
+  if (!h) return null;
+  if (p.jenis_harga === 'matriks') return (
+    <span className="flex gap-1" title={`Harga banyak (≥ 26) per ${p.satuan || 'lembar'}`}>
+      <span className="tag-r">R {nf(h.rb)}</span><span className="tag-e">E {nf(h.eb ?? h.rb)}</span>
+    </span>
+  );
+  return <span className="num text-xs font-semibold text-ink">{priceSummary(p.jenis_harga, h)}</span>;
 }
