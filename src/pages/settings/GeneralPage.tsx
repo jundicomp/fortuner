@@ -53,6 +53,8 @@ export function GeneralPage() {
               </select>
             </Field>
             <Field label="Batas margin tipis (%)" hint="Produk dengan margin di bawah ini ditandai di laporan Margin Produk."><input {...f('margin_min')} inputMode="decimal" /></Field>
+            <Field label="Plafon kas kecil (Rp)" hint="Isi penuh kas kecil. Tombol &quot;Isi ulang sampai plafon&quot; mengisi selisihnya."><input {...f('kas_kecil_plafon')} inputMode="numeric" /></Field>
+            <Field label="Batas wajib cek owner (Rp)" hint="Uang keluar kas kecil di atas nilai ini masuk daftar Perlu dicek."><input {...f('kas_kecil_batas_cek')} inputMode="numeric" /></Field>
             <Field label={`Target omzet ${bulanIni.label}`} hint="Tampil di dashboard beserta proyeksi akhir bulan. Kosongkan bila tidak dipakai.">
               <input id="set-target" className="input num" inputMode="numeric" disabled={ro} value={d[bulanIni.key] ? Number(d[bulanIni.key]).toLocaleString('id-ID') : ''} onChange={(e) => setD({ ...d, [bulanIni.key]: e.target.value.replace(/\D/g, '') })} placeholder="mis. 75.000.000" />
             </Field>

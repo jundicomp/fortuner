@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, ShoppingCart, FilePlus2, ClipboardList, Factory, HandCoins, Receipt, Truck, Wallet, Gauge, Package, Users, Store, Cog,
+  ScrollText, LayoutDashboard, ShoppingCart, FilePlus2, ClipboardList, Factory, HandCoins, Receipt, Truck, Wallet, Gauge, Package, Users, Store, Cog,
   CreditCard, BarChart3, Boxes, ShoppingBag, TrendingUp, BookOpen, Percent, UserCog, ShieldCheck, MonitorSmartphone, SlidersHorizontal, History, ArrowLeftRight, Landmark, Database, Settings, Printer, Info, ReceiptText, LineChart, type LucideIcon,
 } from 'lucide-react';
 
@@ -29,6 +29,8 @@ export const MENU: MenuGroup[] = [
       { path: '/hutang', label: 'Hutang Supplier', icon: Truck, perm: 'hutang', desc: 'Tagihan supplier, cicilan, dan jatuh tempo.' },
       { path: '/pindah-dana', label: 'Pindah Dana', icon: ArrowLeftRight, perm: 'pindah_dana', desc: 'Setor/tarik tunai, antar rekening, isi kas kecil, dan rekonsiliasi saldo.' },
       { path: '/kas', label: 'Kas', icon: Wallet, perm: 'kas', desc: 'Kas kecil, setoran kasir, dan pencocokan transfer dengan mutasi bank.' },
+      { path: '/titip', label: 'Titip Pengeluaran', icon: ReceiptText, perm: 'pengeluaran.titip', desc: 'Kasir mencatat pengeluaran yang dibayar owner dari rekening, owner mengonfirmasi.' },
+      { path: '/riwayat', label: 'Riwayat', icon: ScrollText, perm: 'kas', desc: 'Riwayat semua gerakan uang, setoran, kas kecil, dan yang perlu dicek owner.' },
     ],
   },
   {

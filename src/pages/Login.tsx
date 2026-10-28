@@ -7,7 +7,7 @@ import { getDeviceId } from '@/platform/device';
 import { DesktopLoginPanel } from '@/pages/desktop/DesktopLoginPanel';
 import { isDesktop } from '@/platform/desktop';
 
-const DEMO = [['owner', 'Owner'], ['admin', 'Admin'], ['cs', 'Front Office (kantor)'], ['kasir', 'Kasir (kantor)'], ['operator', 'Operator'], ['keuangan', 'Keuangan']];
+const DEMO = [['owner', 'Owner'], ['admin', 'Admin'], ['cs', 'Front Office · Riska'], ['kasir', 'Kasir 1 · Tina'], ['kasir2', 'Kasir 2 · Rudi'], ['operator', 'Operator'], ['keuangan', 'Keuangan']];
 
 export function LoginPage() {
   const { login, notice } = useAuth();
@@ -62,7 +62,7 @@ export function LoginPage() {
                   <button key={u} type="button" className="chip hover:border-brand hover:text-brand" onClick={() => { setUsername(u); setPassword(u + '123'); submit(undefined, u, u + '123'); }}>{l}</button>
                 ))}
               </div>
-              <p className="mt-3 text-xs text-muted">CS dan kasir ditolak sampai admin mendaftarkan perangkat ini di Pengaturan → Perangkat.</p>
+              <p className="mt-3 text-xs text-muted">Di mode demo, browser ini otomatis disetujui sebagai perangkat kantor, jadi akun FO dan kasir bisa langsung dicoba. Di versi asli, akun kantor hanya bisa login di perangkat yang disetujui admin.</p>
             </div>
           )}
           {isDesktop() && <DesktopLoginPanel />}

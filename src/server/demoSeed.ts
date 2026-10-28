@@ -14,7 +14,7 @@ export function seedDemo(s: Store, env: Env) {
   const owner = s.all('users').find((u) => u.role === 'owner')!;
   s.update('users', 'id', String(owner.id), { harus_ganti_password: false });
   const users: [string, string, string, boolean][] = [
-    ['admin', 'Admin Demo', 'admin', false], ['cs', 'Riska (CS)', 'cs', true], ['kasir', 'Tina (Kasir)', 'kasir', true],
+    ['admin', 'Admin Demo', 'admin', false], ['cs', 'Riska (CS)', 'cs', true], ['kasir', 'Tina (Kasir)', 'kasir', true], ['kasir2', 'Rudi (Kasir)', 'kasir', true],
     ['operator', 'Ismed (Operator)', 'operator', false], ['keuangan', 'Dedy (Keuangan)', 'keuangan', false],
   ];
   users.forEach(([u, n, r, k]) => {
@@ -100,7 +100,7 @@ function seedOrders(s: Store, env: Env) {
   const methods = s.all('payment_methods');
   const tunai = methods.find((m) => m.nama === 'Tunai')!;
   const cs = s.all('users').filter((u) => u.role === 'cs' || u.role === 'admin');
-  const kasir = s.all('users').find((u) => u.role === 'kasir')!;
+  const kasirs = s.all('users').filter((u) => u.role === 'kasir');
   const counters: Record<string, number> = {};
   const kets = ['brosur', 'kartu nama', 'stiker label', 'cover buku', 'sertifikat', 'undangan', 'menu', 'id card', 'nota', 'poster'];
   const qtys = [1, 2, 5, 10, 20, 30, 50, 100, 150, 300];
@@ -150,7 +150,7 @@ function seedOrders(s: Store, env: Env) {
         status_bayar: sisa <= 0 ? 'lunas' : terbayar > 0 ? 'dp' : 'belum', status_ambil: diambil ? 'diambil' : 'belum', tgl_ambil: diambil ? created : '', batal: false, alasan_batal: '',
         dibuat_offline: false, catatan: '', created_at: created, created_by: 'seed', updated_at: created, updated_by: 'seed' });
       items.forEach((it) => s.insert('order_items', it));
-      pays.forEach((x, i) => s.insert('payments', { id: `${id}-p${i + 1}`, order_id: id, tanggal: x.tanggal, nominal: x.nominal, method_id: (x.method as any).id, kasir_id: kasir.id,
+      pays.forEach((x, i) => s.insert('payments', { id: `${id}-p${i + 1}`, order_id: id, tanggal: x.tanggal, nominal: x.nominal, method_id: (x.method as any).id, kasir_id: kasirs[no % kasirs.length].id,
         catatan: i === 0 ? 'Bayar saat order' : 'Pelunasan', created_at: created, created_by: 'seed', updated_at: created, updated_by: 'seed' }));
     }
   }
@@ -194,10 +194,47 @@ function seedOrders(s: Store, env: Env) {
   const pd = (off: number, jenis: string, dari: string, ke: string, nominal: number, admin: number, ket: string) => s.insert('fund_transfers', {
     id: 'pd_' + env.uuid().replace(/-/g, '').slice(0, 12), tanggal: shift(off), jenis, dari, ke, nominal, biaya_admin: admin, keterangan: ket, batal: false, alasan_batal: '', batal_oleh: '', batal_at: '',
     created_at: `${shift(off)}T09:30:00.000Z`, created_by: owner.id, updated_at: now, updated_by: owner.id });
-  pd(-14, 'Setor tunai', mid('Tunai'), mid('BCA'), 5000000, 0, 'Setoran mingguan');
+  const [k1, k2] = s.all('users').filter((u) => u.role === 'kasir').map((u) => 'laci:' + String(u.id));
+  pd(-14, 'Setor tunai', k1, mid('BCA'), 5000000, 0, 'Setoran mingguan laci Tina');
   pd(-9, 'Antar rekening', mid('BCA'), mid('BSI'), 1500000, 6500, 'Untuk bayar supplier via BSI');
-  pd(-6, 'Tarik tunai', mid('Mandiri'), mid('Tunai'), 500000, 0, 'Modal kembalian');
-  pd(-2, 'Setor tunai', mid('Tunai'), mid('BCA'), 3000000, 0, 'Setoran mingguan');
+  pd(-6, 'Modal laci kasir', mid('Tunai'), k2, 300000, 0, 'Modal kembalian Rudi');
+  pd(-2, 'Setor tunai', k1, mid('BCA'), 3000000, 0, 'Setoran mingguan laci Tina');
+  // setoran laci ke owner (dengan persetujuan)
+  const [u1, u2] = s.all('users').filter((u) => u.role === 'kasir');
+  const st = (off: number, u: Record<string, any>, nominal: number, status: string, cat: string, catOwner: string) => s.insert('cash_handovers', {
+    id: 'st_' + env.uuid().replace(/-/g, '').slice(0, 12), tanggal: shift(off), kasir_id: u.id, nominal, saldo_laci: nominal + 300000, catatan: cat, status,
+    diputus_oleh: status === 'menunggu' ? '' : owner.id, diputus_at: status === 'menunggu' ? '' : `${shift(off)}T10:30:00.000Z`, catatan_owner: catOwner,
+    created_at: off === 0 ? new Date(env.now().getTime() - 15 * 60000).toISOString() : `${shift(off)}T10:00:00.000Z`, created_by: u.id, updated_at: now, updated_by: u.id });
+  st(-13, u2, 4000000, 'diterima', 'Sisa 300rb untuk modal', 'Uang pas');
+  st(-7, u1, 2500000, 'ditolak', '', 'Kurang 50rb, hitung ulang');
+  st(-7, u1, 2450000, 'diterima', 'Setelah hitung ulang', '');
+  st(-1, u2, 3000000, 'diterima', '', '');
+  st(0, u1, 1500000, 'menunggu', 'Setoran sore', '');
+  // kas kecil: isi dari laci + uang keluar besar yang perlu dicek owner (v1.3.2)
+  const t0 = shift(0), base = env.now().getTime();
+  const minsAgo: Record<string, number> = { '01:05': 140, '02:10': 110, '03:20': 95, '03:25': 90, '10:00': 15 };
+  const at = (h: string) => new Date(base - (minsAgo[h] ?? 60) * 60000).toISOString();
+  const isiId = 'pd_demoisi01';
+  s.insert('fund_transfers', { id: isiId, tanggal: t0, jenis: 'Isi kas kecil dari laci', dari: 'laci:' + String(u2.id), ke: 'kas_kecil', nominal: 1200000, biaya_admin: 0, keterangan: 'Servis mesin Mahogani, owner tidak di tempat',
+    batal: false, alasan_batal: '', batal_oleh: '', batal_at: '', perlu_cek: true, cek_status: '', cek_oleh: '', cek_at: '', cek_catatan: '', created_at: at('03:20'), created_by: u2.id, updated_at: at('03:20'), updated_by: u2.id });
+  const kkId = 'kk_demoservis1';
+  s.insert('petty_cash', { id: kkId, tanggal: t0, item: 'Servis mesin Mahogani', masuk: 0, keluar: 1350000, keterangan: 'nota #SV-221', deleted: false, perlu_cek: true, cek_status: '', cek_oleh: '', cek_at: '', cek_catatan: '',
+    created_at: at('03:25'), created_by: u2.id, updated_at: at('03:25'), updated_by: u2.id });
+  const ev = (h: string, tipe: string, judul: string, detail: string, nominal: number, scope: string, target: string, tindakan: string, ref_tabel: string, ref_id: string, aktor: string) =>
+    s.insert('events', { id: 'ev_demo' + h.replace(':', '') + tipe.slice(0, 4), tipe, judul, detail, nominal, scope, target_user: target, tindakan, ref_tabel, ref_id, aktor_id: aktor, created_at: at(h) });
+  const pend = s.all('cash_handovers').find((h) => h.status === 'menunggu')!;
+  // titip catat pengeluaran (v1.3.3): satu titipan Tina menunggu konfirmasi owner
+  const svgChat = `<svg xmlns='http://www.w3.org/2000/svg' width='360' height='520'><rect width='360' height='520' fill='#e7ddd3'/><rect x='0' y='0' width='360' height='56' fill='#1f2c34'/><circle cx='34' cy='28' r='16' fill='#9aa'/><text x='60' y='34' font-family='Arial' font-size='16' fill='#fff'>Owner</text><rect x='16' y='80' width='260' height='54' rx='10' fill='#fff'/><text x='28' y='104' font-family='Arial' font-size='14'>Tin, tolong catat ya</text><text x='28' y='124' font-family='Arial' font-size='11' fill='#888'>09.02</text><rect x='16' y='146' width='300' height='96' rx='10' fill='#fff'/><text x='28' y='170' font-family='Arial' font-size='14'>Servis AC produksi 850rb,</text><text x='28' y='190' font-family='Arial' font-size='14'>sudah sy transfer dari BCA</text><text x='28' y='210' font-family='Arial' font-size='14'>ke CV Sejuk Teknik</text><text x='28' y='230' font-family='Arial' font-size='11' fill='#888'>09.03</text><rect x='196' y='256' width='148' height='44' rx='10' fill='#d9fdd3'/><text x='210' y='283' font-family='Arial' font-size='14'>Siap pak</text></svg>`;
+  const bca = String(s.all('payment_methods').find((m) => m.nama === 'BCA')?.id || '');
+  const katOp = String(s.all('expense_categories').find((x) => x.nama === 'Perawatan & sparepart mesin')?.id || s.all('expense_categories')[0].id);
+  s.insert('expense_requests', { id: 'tp_demo0001', tanggal: t0, method_id: bca, jenis: 'umum', kategori_id: katOp, bill_id: '', item: 'Servis AC ruang produksi', nominal: 850000, penerima: 'CV Sejuk Teknik',
+    bukti: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgChat), catatan: 'Instruksi owner via WA', status: 'menunggu', expense_id: '', diputus_oleh: '', diputus_at: '', catatan_owner: '',
+    created_at: at('02:10'), created_by: u1.id, updated_at: at('02:10'), updated_by: u1.id });
+  ev('02:10', 'titip_baru', 'Tina (Kasir) mencatat titipan pengeluaran Rp 850.000', 'Menunggu konfirmasi · BCA · Servis AC ruang produksi', 850000, 'setoran', String(u1.id), 'titip', 'expense_requests', 'tp_demo0001', String(u1.id));
+  ev('01:05', 'kk_keluar', 'Tina (Kasir): uang keluar kas kecil Rp 45.000', 'Galon & gas', 45000, 'kas_kecil', '', '', 'petty_cash', '', String(u1.id));
+  ev('03:20', 'kk_isi_laci', 'Rudi (Kasir) mengisi kas kecil dari laci Rp 1.200.000', 'Perlu dicek · "Servis mesin Mahogani, owner tidak di tempat"', 1200000, 'kas_kecil', '', 'cek', 'fund_transfers', isiId, String(u2.id));
+  ev('03:25', 'kk_keluar', 'Rudi (Kasir): uang keluar kas kecil Rp 1.350.000', 'Servis mesin Mahogani · di atas batas Rp 300.000, perlu dicek', 1350000, 'kas_kecil', '', 'cek', 'petty_cash', kkId, String(u2.id));
+  ev('10:00', 'setoran_baru', 'Tina (Kasir) mengirim setoran Rp 1.500.000', 'Menunggu persetujuan · "Setoran sore"', 1500000, 'setoran', String(u1.id), 'setoran', 'cash_handovers', String(pend.id), String(u1.id));
   seedFinance(s, env, rnd, pick, shift);
 }
 

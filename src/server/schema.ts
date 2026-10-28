@@ -55,7 +55,7 @@ export const SCHEMA: Record<string, TableSchema> = {
   machine_counters: {
     id: 's', tanggal: 's', mesin_id: 's', counter_awal: 'n', counter_akhir: 'n', reject_trouble: 'n', reject_operator: 'n', reject_fo: 'n', batal: 'n', keterangan: 's', ...audit,
   },
-  petty_cash: { id: 's', tanggal: 's', item: 's', masuk: 'n', keluar: 'n', keterangan: 's', deleted: 'b', ...audit },
+  petty_cash: { id: 's', tanggal: 's', item: 's', masuk: 'n', keluar: 'n', keterangan: 's', deleted: 'b', perlu_cek: 'b', cek_status: 's', cek_oleh: 's', cek_at: 's', cek_catatan: 's', ...audit },
   cash_deposits: { id: 's', tanggal: 's', kasir_id: 's', method_id: 's', sistem: 'n', aktual: 'n', selisih: 'n', keterangan: 's', ...audit },
 
   // ---------- Keuangan (Tahap 5) ----------
@@ -79,7 +79,12 @@ export const SCHEMA: Record<string, TableSchema> = {
   journals: { id: 's', tanggal: 's', keterangan: 's', lines: 'j', deleted: 'b', ...audit },
 
   // ---------- Pindah dana & rekonsiliasi (v1.2.8) ----------
-  fund_transfers: { id: 's', tanggal: 's', jenis: 's', dari: 's', ke: 's', nominal: 'n', biaya_admin: 'n', keterangan: 's', batal: 'b', alasan_batal: 's', batal_oleh: 's', batal_at: 's', ...audit },
+  fund_transfers: { id: 's', tanggal: 's', jenis: 's', dari: 's', ke: 's', nominal: 'n', biaya_admin: 'n', keterangan: 's', batal: 'b', alasan_batal: 's', batal_oleh: 's', batal_at: 's', perlu_cek: 'b', cek_status: 's', cek_oleh: 's', cek_at: 's', cek_catatan: 's', ...audit },
+  // ---------- notifikasi (v1.3.2) ----------
+  events: { id: 's', tipe: 's', judul: 's', detail: 's', nominal: 'n', scope: 's', target_user: 's', tindakan: 's', ref_tabel: 's', ref_id: 's', aktor_id: 's', created_at: 's' },
+  notif_reads: { user_id: 's', read_at: 's' },
+  expense_requests: { id: 's', tanggal: 's', method_id: 's', jenis: 's', kategori_id: 's', bill_id: 's', item: 's', nominal: 'n', penerima: 's', bukti: 's', catatan: 's', status: 's', expense_id: 's', diputus_oleh: 's', diputus_at: 's', catatan_owner: 's', ...audit },
+  cash_handovers: { id: 's', tanggal: 's', kasir_id: 's', nominal: 'n', saldo_laci: 'n', catatan: 's', status: 's', diputus_oleh: 's', diputus_at: 's', catatan_owner: 's', ...audit },
   reconciliations: { id: 's', tanggal: 's', akun: 's', saldo_sistem: 'n', saldo_asli: 'n', selisih: 'n', disesuaikan: 'b', alasan: 's', akun_lawan: 's', keterangan: 's', ...audit },
 };
 

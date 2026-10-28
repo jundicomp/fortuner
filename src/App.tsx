@@ -23,6 +23,8 @@ import { KasPage } from '@/pages/kas/KasPage';
 import { PengeluaranPage } from '@/pages/keuangan/PengeluaranPage';
 import { HutangPage } from '@/pages/keuangan/HutangPage';
 import { PindahDanaPage } from '@/pages/keuangan/PindahDanaPage';
+import { RiwayatPage } from '@/pages/keuangan/RiwayatPage';
+import { TitipPage } from '@/pages/keuangan/TitipPage';
 import { LaporanPage } from '@/pages/laporan/LaporanPage';
 import { PrinterPage } from '@/pages/desktop/PrinterPage';
 import { AboutPage } from '@/pages/AboutPage';
@@ -47,6 +49,8 @@ const PAGES: Record<string, () => ReactElement | null> = {
   '/pengeluaran': PengeluaranPage,
   '/hutang': HutangPage,
   '/pindah-dana': PindahDanaPage,
+  '/riwayat': RiwayatPage,
+  '/titip': TitipPage,
   '/laporan': LaporanPage,
   '/laporan/laba-rugi': LabaRugiPage,
   '/laporan/analitik': AnalitikPage,

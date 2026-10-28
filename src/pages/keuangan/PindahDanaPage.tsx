@@ -23,9 +23,20 @@ interface FundData { transfers: Transfer[]; recons: Recon[]; akun: KasSaldo[]; p
 const numIn = (s: string) => Number(String(s).replace(/[^\d]/g, '')) || 0;
 const JENIS_PILL: Record<string, string> = {
   'Setor tunai': 'bg-green-100 text-green-800', 'Tarik tunai': 'bg-purple-100 text-purple-800', 'Antar rekening': 'bg-blue-100 text-blue-800',
-  'Isi kas kecil': 'bg-amber-100 text-amber-800', 'Kembali dari kas kecil': 'bg-amber-100 text-amber-800', 'Pencairan EDC': 'bg-slate-100 text-slate-700',
+  'Isi kas kecil': 'bg-amber-100 text-amber-800', 'Setoran ke owner': 'bg-emerald-100 text-emerald-800', 'Modal laci kasir': 'bg-teal-100 text-teal-800', 'Antar laci': 'bg-emerald-100 text-emerald-800', 'Kembali dari kas kecil': 'bg-amber-100 text-amber-800', 'Pencairan EDC': 'bg-slate-100 text-slate-700',
 };
-const jenisOf = (d?: KasSaldo, k?: KasSaldo) => !d || !k ? '' : k.jenis === 'kas_kecil' ? 'Isi kas kecil' : d.jenis === 'kas_kecil' ? 'Kembali dari kas kecil' : d.jenis === 'tunai' ? 'Setor tunai' : k.jenis === 'tunai' ? 'Tarik tunai' : d.jenis === 'edc' ? 'Pencairan EDC' : 'Antar rekening';
+const cash = (a: KasSaldo) => a.jenis === 'tunai' || a.jenis === 'laci';
+const jenisOf = (d?: KasSaldo, k?: KasSaldo) => {
+  if (!d || !k) return '';
+  if (k.jenis === 'kas_kecil') return 'Isi kas kecil';
+  if (d.jenis === 'kas_kecil') return 'Kembali dari kas kecil';
+  if (d.jenis === 'laci' && k.jenis === 'tunai') return 'Setoran ke owner';
+  if (d.jenis === 'tunai' && k.jenis === 'laci') return 'Modal laci kasir';
+  if (d.jenis === 'laci' && k.jenis === 'laci') return 'Antar laci';
+  if (cash(d)) return 'Setor tunai';
+  if (cash(k)) return 'Tarik tunai';
+  return d.jenis === 'edc' ? 'Pencairan EDC' : 'Antar rekening';
+};
 const INVALIDATE = ['fund', 'kas-saldo', 'kas-kecil', 'dashboard', 'laporan'];
 
 /** Kolom password untuk verifikasi tindakan keuangan. */

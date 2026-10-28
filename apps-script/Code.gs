@@ -172,6 +172,7 @@ var FortunerServer = (() => {
     { key: "hutang", label: "Hutang Supplier", group: "Keuangan" },
     { key: "kas", label: "Kas", group: "Keuangan" },
     { key: "pindah_dana", label: "Pindah dana & rekonsiliasi", group: "Keuangan" },
+    { key: "pengeluaran.titip", label: "Titip catat pengeluaran owner", group: "Keuangan" },
     { key: "mesin", label: "Mesin & Operator", group: "Operasional" },
     { key: "stok", label: "Stok bahan & opname", group: "Operasional" },
     { key: "pembelian", label: "Pembelian bahan", group: "Operasional" },
@@ -210,6 +211,7 @@ var FortunerServer = (() => {
       case "kasir":
         set(["dashboard", "produksi", "master.produk", "master.konsumen"], view);
         set(["kasir", "order", "piutang", "kas"], { lihat: true, tambah: true, ubah: true, ekspor: true });
+        set(["pengeluaran.titip"], { lihat: true, tambah: true });
         break;
       case "operator":
         set(["dashboard", "order"], view);
@@ -218,7 +220,7 @@ var FortunerServer = (() => {
         break;
       case "keuangan":
         set(["dashboard", "order", "piutang", "master.produk", "master.harga_beli", "master.supplier"], { lihat: true, ekspor: true });
-        set(["pengeluaran", "hutang", "kas", "pindah_dana", "laporan", "pembelian"], all);
+        set(["pengeluaran", "hutang", "kas", "pindah_dana", "pengeluaran.titip", "laporan", "pembelian"], all);
         set(["stok"], { lihat: true, tambah: true, ubah: true, ekspor: true });
         break;
     }
@@ -289,6 +291,9 @@ var FortunerServer = (() => {
     { kode: "6920", nama: "Beban administrasi bank", tipe: "beban" }
   ];
   var KAS_KECIL = "kas_kecil";
+  var LACI = "laci:";
+  var KAS_OWNER = "Kas owner";
+  var laciName = (nama) => nama.replace(/\s*\(.*?\)\s*/g, " ").trim() || nama;
   var RECON_REASONS = { "Biaya admin bank": "6920", "Bunga / bagi hasil": "4900", "Selisih kas": "6910" };
   function makeExt(h) {
     const { fail: fail2, str: str2, bool: bool2, newId: newId2, iso: iso2, addDays: addDays2, isYmd: isYmd2, settingsMap: settingsMap2, need: need2, stamp: stamp2, log: log2, checkPassword: checkPassword2 } = h;
@@ -319,21 +324,287 @@ var FortunerServer = (() => {
     };
     const byId = (rows) => Object.fromEntries(rows.map((r) => [str2(r.id), r]));
     const userNames = (c) => Object.fromEntries(c.s.all("users").map((u) => [str2(u.id), str2(u.nama)]));
+    const fmt = (n) => Math.round(n).toLocaleString("id-ID");
+    function kasKecilSaldo(c) {
+      var _a;
+      return Math.round(num((_a = trial(c, "2000-01-01", today(c)).rows.find((r) => r.kode === "1110")) == null ? void 0 : _a.saldo_akhir));
+    }
+    function emit(c, e) {
+      var _a;
+      if (!c.req) return;
+      try {
+        c.s.insert("events", {
+          id: newId2(c.env, "ev"),
+          tipe: e.tipe,
+          judul: e.judul.slice(0, 200),
+          detail: str2(e.detail).slice(0, 300),
+          nominal: Math.round(num(e.nominal)),
+          scope: e.scope,
+          target_user: str2(e.target),
+          tindakan: str2(e.tindakan),
+          ref_tabel: str2(e.ref_tabel),
+          ref_id: str2(e.ref_id),
+          aktor_id: str2((_a = c.user) == null ? void 0 : _a.id),
+          created_at: iso2(c.env)
+        });
+      } catch {
+      }
+    }
+    const pemutus = (c) => can(c, "pindah_dana");
+    function evVisible(c, ev) {
+      var _a;
+      if (pemutus(c)) return true;
+      if (ev.scope === "kas_kecil") return can(c, "kas");
+      if (ev.scope === "setoran") return str2(ev.target_user) === str2((_a = c.user) == null ? void 0 : _a.id);
+      return false;
+    }
+    const tunaiMethod = (c) => c.s.all("payment_methods").find((m) => m.jenis === "tunai");
+    function laciUsers(c, rows) {
+      const tn = tunaiMethod(c);
+      if (!tn) return [];
+      const pre = `1100:${str2(tn.id)}:`;
+      const withSaldo = new Set(Object.keys(rows).filter((k) => k.startsWith(pre) && Math.round(num(rows[k]))).map((k) => k.slice(pre.length)));
+      c.s.all("payments").forEach((p) => {
+        if (p.method_id === tn.id && str2(p.kasir_id)) withSaldo.add(str2(p.kasir_id));
+      });
+      return c.s.all("users").filter((u) => u.role === "kasir" && bool2(u.aktif) || withSaldo.has(str2(u.id)));
+    }
     function kasList(c, t) {
       const rows = Object.fromEntries(trial(c, "2000-01-01", t).rows.map((r) => [r.kode, r.saldo_akhir]));
-      const ms = c.s.all("payment_methods").filter((m) => bool2(m.aktif)).map((m) => ({ id: str2(m.id), nama: str2(m.nama), jenis: str2(m.jenis), saldo: Math.round(num(rows["1100:" + str2(m.id)])) }));
+      const tn = tunaiMethod(c);
+      const ms = c.s.all("payment_methods").filter((m) => bool2(m.aktif)).map((m) => ({ id: str2(m.id), nama: m.jenis === "tunai" ? KAS_OWNER : str2(m.nama), jenis: str2(m.jenis), saldo: Math.round(num(rows["1100:" + str2(m.id)])) }));
+      const laci = tn ? laciUsers(c, rows).map((u) => ({ id: LACI + str2(u.id), nama: `Laci ${laciName(str2(u.nama))}`, jenis: "laci", user_id: str2(u.id), saldo: Math.round(num(rows[`1100:${str2(tn.id)}:${str2(u.id)}`])) })) : [];
       const ord = (j) => {
         var _a;
-        return (_a = { tunai: 0, kas_kecil: 1, transfer: 2, edc: 3 }[j]) != null ? _a : 2;
+        return (_a = { tunai: 0, laci: 1, kas_kecil: 2, transfer: 3, edc: 4 }[j]) != null ? _a : 3;
       };
-      return [...ms, { id: KAS_KECIL, nama: "Kas kecil", jenis: "kas_kecil", saldo: Math.round(num(rows["1110"])) }].sort((a, b) => ord(a.jenis) - ord(b.jenis));
+      return [...ms, ...laci, { id: KAS_KECIL, nama: "Kas kecil", jenis: "kas_kecil", saldo: Math.round(num(rows["1110"])), plafon: Number(settingsMap2(c.s).kas_kecil_plafon || 1e6) }].sort((a, b) => ord(a.jenis) - ord(b.jenis) || a.nama.localeCompare(b.nama));
     }
-    const accNames = (c) => ({ ...Object.fromEntries(c.s.all("payment_methods").map((m) => [str2(m.id), str2(m.nama)])), [KAS_KECIL]: "Kas kecil" });
+    function kasVisible(c, list) {
+      var _a;
+      if (can(c, "pindah_dana")) return list;
+      const me = str2((_a = c.user) == null ? void 0 : _a.id);
+      const kasirIds = new Set(c.s.all("users").filter((u) => u.role === "kasir").map((u) => str2(u.id)));
+      return list.filter((a) => a.jenis === "laci" && (a.user_id === me || can(c, "kas") && kasirIds.has(str2(a.user_id))) || a.jenis === "kas_kecil" && can(c, "kas") || a.jenis !== "laci" && a.jenis !== "kas_kecil" && (can(c, "pengeluaran") || can(c, "hutang") || can(c, "pembelian")));
+    }
+    function openActions(c) {
+      const set = /* @__PURE__ */ new Set();
+      c.s.all("cash_handovers").forEach((h2) => {
+        if (h2.status === "menunggu") set.add("cash_handovers:" + str2(h2.id));
+      });
+      c.s.all("petty_cash").forEach((r) => {
+        if (bool2(r.perlu_cek) && !str2(r.cek_status) && !bool2(r.deleted)) set.add("petty_cash:" + str2(r.id));
+      });
+      c.s.all("fund_transfers").forEach((r) => {
+        if (bool2(r.perlu_cek) && !str2(r.cek_status) && !bool2(r.batal)) set.add("fund_transfers:" + str2(r.id));
+      });
+      c.s.all("expense_requests").forEach((r) => {
+        if (r.status === "menunggu") set.add("expense_requests:" + str2(r.id));
+      });
+      return set;
+    }
+    function riwayat(c, tab, from, to) {
+      var _a;
+      needAny(c, [["kas", "lihat"], ["pengeluaran.titip", "lihat"]]);
+      const boss = pemutus(c), decide = can(c, "pindah_dana", "ubah");
+      const me = str2((_a = c.user) == null ? void 0 : _a.id), users = userNames(c), names = accNames(c);
+      const tabs = boss ? [["semua", "Semua"], ["cek", "Perlu dicek"], ["setoran", "Setoran"], ["titip", "Titipan"], ["kaskecil", "Kas kecil"], ["pindah", "Pindah dana"], ...can(c, "pengeluaran") || can(c, "hutang") ? [["pengeluaran", "Pengeluaran"]] : [], ["rekon", "Rekonsiliasi"]] : [["laci", "Laci saya"], ["setoran", "Setoran saya"], ...can(c, "pengeluaran.titip") ? [["titip", "Titipan saya"]] : [], ["kaskecil", "Kas kecil"]];
+      if (!tabs.some(([k]) => k === tab)) tab = tabs[0][0];
+      const open = openActions(c);
+      const inR = (t) => (!from || str2(t) >= from) && (!to || str2(t) <= to);
+      const cekInfo = (r) => !bool2(r.perlu_cek) ? ["\u2013", ""] : str2(r.cek_status) === "sesuai" ? [`Sesuai \xB7 ${users[str2(r.cek_oleh)] || ""}`, "ok"] : str2(r.cek_status) === "bermasalah" ? [`Bermasalah \xB7 ${str2(r.cek_catatan)}`, "bad"] : ["Perlu dicek", "warn"];
+      const mk = (r) => ({ waktu: "", tanggal: "", jenis: "", keterangan: "", nominal: 0, masuk: 0, keluar: 0, oleh: "", status: "\u2013", tone: "", aksi: "", ref_tabel: "", ref_id: "", ...r });
+      const ST = { menunggu: ["Menunggu", "warn"], diterima: ["Diterima", "ok"], ditolak: ["Ditolak", "bad"], dibatalkan: ["Dibatalkan", "mute"] };
+      const setoran = (onlyMine) => c.s.all("cash_handovers").filter((h2) => !onlyMine || h2.kasir_id === me).map((h2) => {
+        var _a2, _b;
+        return mk({
+          key: "cash_handovers:" + h2.id,
+          waktu: str2(h2.created_at),
+          tanggal: str2(h2.tanggal),
+          jenis: "Setoran",
+          keterangan: `${names[LACI + str2(h2.kasir_id)] || "Laci"} \u2192 ${KAS_OWNER}${h2.catatan ? ` \xB7 "${str2(h2.catatan)}"` : ""}${h2.catatan_owner ? ` \xB7 owner: "${str2(h2.catatan_owner)}"` : ""}`,
+          nominal: num(h2.nominal),
+          keluar: num(h2.nominal),
+          oleh: users[str2(h2.kasir_id)] || "",
+          status: ((_a2 = ST[str2(h2.status)]) == null ? void 0 : _a2[0]) || str2(h2.status),
+          tone: ((_b = ST[str2(h2.status)]) == null ? void 0 : _b[1]) || "",
+          aksi: decide && h2.status === "menunggu" ? "setoran" : "",
+          ref_tabel: "cash_handovers",
+          ref_id: str2(h2.id)
+        });
+      });
+      const fundRow = (f, view2) => {
+        const [cs, ct] = cekInfo(f);
+        const masuk = view2 && f.ke === view2 ? num(f.nominal) : 0, keluar = view2 && f.dari === view2 ? num(f.nominal) + num(f.biaya_admin) : 0;
+        return mk({
+          key: "fund_transfers:" + f.id,
+          waktu: str2(f.created_at),
+          tanggal: str2(f.tanggal),
+          jenis: f.dari === KAS_KECIL || f.ke === KAS_KECIL ? "Kas kecil" : "Pindah dana",
+          keterangan: `${str2(f.jenis)}: ${names[str2(f.dari)] || f.dari} \u2192 ${names[str2(f.ke)] || f.ke} \xB7 ${str2(f.keterangan)}`,
+          nominal: num(f.nominal),
+          masuk,
+          keluar,
+          oleh: users[str2(f.created_by)] || "",
+          status: bool2(f.batal) ? "Batal" : bool2(f.perlu_cek) ? cs : "Sah",
+          tone: bool2(f.batal) ? "bad" : bool2(f.perlu_cek) ? ct : "ok",
+          aksi: decide && open.has("fund_transfers:" + f.id) ? "cek" : "",
+          ref_tabel: "fund_transfers",
+          ref_id: str2(f.id)
+        });
+      };
+      const kasKecil = () => [
+        ...c.s.all("petty_cash").filter((r) => !bool2(r.deleted)).map((r) => {
+          const [cs, ct] = cekInfo(r);
+          return mk({
+            key: "petty_cash:" + r.id,
+            waktu: str2(r.created_at),
+            tanggal: str2(r.tanggal),
+            jenis: "Kas kecil",
+            keterangan: `${num(r.masuk) ? "Masuk" : "Keluar"}: ${str2(r.item)}${r.keterangan ? ` \xB7 ${str2(r.keterangan)}` : ""}`,
+            nominal: num(r.masuk) || num(r.keluar),
+            masuk: num(r.masuk),
+            keluar: num(r.keluar),
+            oleh: users[str2(r.created_by)] || "",
+            status: cs,
+            tone: ct,
+            aksi: decide && open.has("petty_cash:" + r.id) ? "cek" : "",
+            ref_tabel: "petty_cash",
+            ref_id: str2(r.id)
+          });
+        }),
+        ...c.s.all("fund_transfers").filter((f) => f.dari === KAS_KECIL || f.ke === KAS_KECIL).map((f) => fundRow(f, KAS_KECIL))
+      ];
+      const pengeluaran = () => {
+        const cats = byId(c.s.all("expense_categories")), meths = byId(c.s.all("payment_methods"));
+        return [
+          ...c.s.all("expenses").filter((x) => !bool2(x.deleted)).map((x) => {
+            var _a2, _b, _c;
+            return mk({
+              key: "expenses:" + x.id,
+              waktu: str2(x.created_at),
+              tanggal: str2(x.tanggal),
+              jenis: "Pengeluaran",
+              keterangan: `${str2((_a2 = cats[str2(x.kategori_id)]) == null ? void 0 : _a2.nama)} \xB7 ${str2(x.item)}`,
+              nominal: num(x.total),
+              keluar: num(x.total),
+              oleh: users[str2(x.created_by)] || "",
+              status: x.cara_bayar === "hutang" ? "Hutang" : ((_b = meths[str2(x.method_id)]) == null ? void 0 : _b.jenis) === "tunai" ? KAS_OWNER : str2((_c = meths[str2(x.method_id)]) == null ? void 0 : _c.nama),
+              tone: x.cara_bayar === "hutang" ? "warn" : "mute",
+              ref_tabel: "expenses",
+              ref_id: str2(x.id)
+            });
+          }),
+          ...c.s.all("bill_payments").map((b) => {
+            var _a2, _b;
+            return mk({
+              key: "bill_payments:" + b.id,
+              waktu: str2(b.created_at),
+              tanggal: str2(b.tanggal),
+              jenis: "Bayar bon",
+              keterangan: str2(b.keterangan) || "Pembayaran hutang supplier",
+              nominal: num(b.nominal),
+              keluar: num(b.nominal),
+              oleh: users[str2(b.created_by)] || "",
+              status: ((_a2 = meths[str2(b.method_id)]) == null ? void 0 : _a2.jenis) === "tunai" ? KAS_OWNER : str2((_b = meths[str2(b.method_id)]) == null ? void 0 : _b.nama),
+              tone: "mute",
+              ref_tabel: "bill_payments",
+              ref_id: str2(b.id)
+            });
+          })
+        ];
+      };
+      const TT = { menunggu: ["Menunggu", "warn"], dikonfirmasi: ["Dikonfirmasi", "ok"], ditolak: ["Ditolak", "bad"], dibatalkan: ["Dibatalkan", "mute"] };
+      const titip = (onlyMine) => {
+        const meths = byId(c.s.all("payment_methods")), cats = byId(c.s.all("expense_categories"));
+        return c.s.all("expense_requests").filter((r) => !onlyMine || r.created_by === me).map((r) => {
+          var _a2, _b, _c, _d;
+          return mk({
+            key: "expense_requests:" + r.id,
+            waktu: str2(r.created_at),
+            tanggal: str2(r.tanggal),
+            jenis: "Titipan",
+            keterangan: `${r.jenis === "bon" ? "Bayar bon" : str2((_a2 = cats[str2(r.kategori_id)]) == null ? void 0 : _a2.nama)} \xB7 ${str2(r.item) || ""} \xB7 dari ${str2((_b = meths[str2(r.method_id)]) == null ? void 0 : _b.nama)}${r.penerima ? ` ke ${str2(r.penerima)}` : ""}${r.catatan_owner ? ` \xB7 owner: "${str2(r.catatan_owner)}"` : ""}`,
+            nominal: num(r.nominal),
+            oleh: users[str2(r.created_by)] || "",
+            status: ((_c = TT[str2(r.status)]) == null ? void 0 : _c[0]) || str2(r.status),
+            tone: ((_d = TT[str2(r.status)]) == null ? void 0 : _d[1]) || "",
+            aksi: decide && r.status === "menunggu" ? "titip" : "",
+            ref_tabel: "expense_requests",
+            ref_id: str2(r.id),
+            bukti: str2(r.bukti),
+            extra: { jenis: r.jenis, method_id: r.method_id, kategori_id: r.kategori_id, item: r.item, penerima: r.penerima, catatan: r.catatan, tanggal: r.tanggal }
+          });
+        });
+      };
+      const rekon = () => c.s.all("reconciliations").map((r) => mk({
+        key: "reconciliations:" + r.id,
+        waktu: str2(r.created_at),
+        tanggal: str2(r.tanggal),
+        jenis: "Rekonsiliasi",
+        keterangan: `${names[str2(r.akun)] || r.akun}: sistem ${fmt(num(r.saldo_sistem))}, asli ${fmt(num(r.saldo_asli))}${r.alasan ? ` \xB7 ${str2(r.alasan)}` : ""}`,
+        nominal: num(r.selisih),
+        oleh: users[str2(r.created_by)] || "",
+        status: !num(r.selisih) ? "Cocok" : bool2(r.disesuaikan) ? "Disesuaikan" : "Dicatat",
+        tone: !num(r.selisih) ? "ok" : bool2(r.disesuaikan) ? "brand" : "warn",
+        ref_tabel: "reconciliations",
+        ref_id: str2(r.id)
+      }));
+      const laciSaya = () => {
+        const tn = tunaiMethod(c), myLaci = LACI + me;
+        const orders = byId(c.s.all("orders"));
+        return [
+          ...c.s.all("payments").filter((x) => tn && x.method_id === tn.id && x.kasir_id === me).map((x) => {
+            var _a2;
+            return mk({
+              key: "payments:" + x.id,
+              waktu: str2(x.created_at),
+              tanggal: str2(x.tanggal),
+              jenis: "Penjualan",
+              keterangan: `${str2((_a2 = orders[str2(x.order_id)]) == null ? void 0 : _a2.nomor)} \xB7 tunai`,
+              nominal: num(x.nominal),
+              masuk: num(x.nominal),
+              oleh: users[me] || "",
+              status: "\u2013",
+              ref_tabel: "payments",
+              ref_id: str2(x.id)
+            });
+          }),
+          ...setoran(true).map((r) => ({ ...r, keluar: r.status === "Diterima" ? r.nominal : 0 })),
+          ...c.s.all("fund_transfers").filter((f) => f.dari === myLaci || f.ke === myLaci).map((f) => fundRow(f, myLaci))
+        ];
+      };
+      let rows = [];
+      if (tab === "laci") rows = laciSaya();
+      else if (tab === "setoran") rows = setoran(!boss);
+      else if (tab === "titip") rows = titip(!boss);
+      else if (tab === "kaskecil") rows = kasKecil();
+      else if (tab === "pindah") rows = c.s.all("fund_transfers").map((f) => fundRow(f));
+      else if (tab === "pengeluaran") rows = pengeluaran();
+      else if (tab === "rekon") rows = rekon();
+      else {
+        const seen = /* @__PURE__ */ new Set();
+        rows = [...setoran(false), ...titip(false), ...kasKecil(), ...c.s.all("fund_transfers").map((f) => fundRow(f)), ...can(c, "pengeluaran") || can(c, "hutang") ? pengeluaran() : [], ...rekon()].filter((r) => seen.has(r.key) ? false : (seen.add(r.key), true));
+        if (tab === "cek") rows = rows.filter((r) => open.has(r.key));
+      }
+      if (tab !== "cek") rows = rows.filter((r) => inR(r.tanggal) || open.has(r.key));
+      rows.sort((a, b) => (b.waktu || b.tanggal).localeCompare(a.waktu || a.tanggal));
+      return { tab, tabs: tabs.map(([key, label]) => ({ key, label, jumlah: key === "cek" ? open.size : 0 })), rows: rows.slice(0, 1e3), bisa_putuskan: decide };
+    }
+    const accNames = (c) => ({
+      ...Object.fromEntries(c.s.all("payment_methods").map((m) => [str2(m.id), m.jenis === "tunai" ? KAS_OWNER : str2(m.nama)])),
+      ...Object.fromEntries(c.s.all("users").map((u) => [LACI + str2(u.id), `Laci ${laciName(str2(u.nama))}`])),
+      [KAS_KECIL]: "Kas kecil"
+    });
     function jenisPindah(dari, ke) {
+      const cash = (a) => a.jenis === "tunai" || a.jenis === "laci";
       if (ke.jenis === "kas_kecil") return "Isi kas kecil";
       if (dari.jenis === "kas_kecil") return "Kembali dari kas kecil";
-      if (dari.jenis === "tunai") return "Setor tunai";
-      if (ke.jenis === "tunai") return "Tarik tunai";
+      if (dari.jenis === "laci" && ke.jenis === "tunai") return "Setoran ke owner";
+      if (dari.jenis === "tunai" && ke.jenis === "laci") return "Modal laci kasir";
+      if (dari.jenis === "laci" && ke.jenis === "laci") return "Antar laci";
+      if (cash(dari)) return "Setor tunai";
+      if (cash(ke)) return "Tarik tunai";
       if (dari.jenis === "edc") return "Pencairan EDC";
       return "Antar rekening";
     }
@@ -435,6 +706,14 @@ var FortunerServer = (() => {
         return k;
       };
       const tunai = methods.find((m) => m.jenis === "tunai");
+      const uNames = userNames(c);
+      const laci = (userId) => {
+        const k = `1100:${str2(tunai == null ? void 0 : tunai.id)}:${str2(userId)}`;
+        if (!accounts[k]) accounts[k] = { kode: k, nama: `Kas & bank: Laci ${laciName(uNames[str2(userId)] || str2(userId))}`, tipe: "aset" };
+        return k;
+      };
+      const kasOf = (methodId, kasirId) => tunai && str2(methodId) === str2(tunai.id) && str2(kasirId) ? laci(kasirId) : kas(methodId);
+      const kasirIds = new Set(c.s.all("users").filter((u) => u.role === "kasir").map((u) => str2(u.id)));
       const cats = byId(c.s.all("expense_categories"));
       c.s.all("expense_categories").forEach((x) => {
         if (!["bahan", "aset", "klik"].includes(str2(x.jenis))) accounts["6100:" + x.id] = { kode: "6100:" + str2(x.id), nama: `Beban ${str2(x.nama)}`, tipe: "beban" };
@@ -451,7 +730,7 @@ var FortunerServer = (() => {
       });
       c.s.all("payments").forEach((p) => {
         var _a, _b;
-        return add(str2(p.tanggal), str2((_a = oById[str2(p.order_id)]) == null ? void 0 : _a.nomor), "pembayaran", `Pembayaran ${str2((_b = oById[str2(p.order_id)]) == null ? void 0 : _b.nomor)}`, [{ akun: kas(p.method_id), d: num(p.nominal), k: 0 }, { akun: "1200", d: 0, k: num(p.nominal) }]);
+        return add(str2(p.tanggal), str2((_a = oById[str2(p.order_id)]) == null ? void 0 : _a.nomor), "pembayaran", `Pembayaran ${str2((_b = oById[str2(p.order_id)]) == null ? void 0 : _b.nomor)}`, [{ akun: kasOf(p.method_id, p.kasir_id), d: num(p.nominal), k: 0 }, { akun: "1200", d: 0, k: num(p.nominal) }]);
       });
       const mats = byId(c.s.all("materials"));
       c.s.all("stock_moves").forEach((m) => {
@@ -481,20 +760,24 @@ var FortunerServer = (() => {
       c.s.all("bill_payments").forEach((b) => add(str2(b.tanggal), "BAYAR HUTANG", "hutang", str2(b.keterangan) || "Pembayaran hutang supplier", [{ akun: "2100", d: num(b.nominal), k: 0 }, { akun: kas(b.method_id), d: 0, k: num(b.nominal) }]));
       c.s.all("petty_cash").forEach((p) => {
         if (bool2(p.deleted)) return;
-        if (num(p.masuk)) add(str2(p.tanggal), "KAS KECIL", "kas kecil", str2(p.item) || "Isi kas kecil", [{ akun: "1110", d: num(p.masuk), k: 0 }, { akun: tunai ? kas(tunai.id) : "3100", d: 0, k: num(p.masuk) }]);
+        if (num(p.masuk)) add(str2(p.tanggal), "KAS KECIL", "kas kecil", str2(p.item) || "Isi kas kecil", [{ akun: "1110", d: num(p.masuk), k: 0 }, { akun: !tunai ? "3100" : kasirIds.has(str2(p.created_by)) ? laci(p.created_by) : kas(tunai.id), d: 0, k: num(p.masuk) }]);
         if (num(p.keluar)) add(str2(p.tanggal), "KAS KECIL", "kas kecil", str2(p.item), [{ akun: "6900", d: num(p.keluar), k: 0 }, { akun: "1110", d: 0, k: num(p.keluar) }]);
       });
       c.s.all("cash_deposits").forEach((d) => {
         const sel = num(d.selisih);
         if (!sel) return;
-        add(str2(d.tanggal), "TUTUP KAS", "kas", str2(d.keterangan) || "Selisih tutup kas", sel < 0 ? [{ akun: "6910", d: -sel, k: 0 }, { akun: kas(d.method_id), d: 0, k: -sel }] : [{ akun: kas(d.method_id), d: sel, k: 0 }, { akun: "6910", d: 0, k: sel }]);
+        add(str2(d.tanggal), "TUTUP KAS", "kas", str2(d.keterangan) || "Selisih tutup kas", sel < 0 ? [{ akun: "6910", d: -sel, k: 0 }, { akun: kasOf(d.method_id, d.kasir_id), d: 0, k: -sel }] : [{ akun: kasOf(d.method_id, d.kasir_id), d: sel, k: 0 }, { akun: "6910", d: 0, k: sel }]);
       });
-      const acc = (id) => str2(id) === KAS_KECIL ? "1110" : kas(id);
+      const acc = (id) => str2(id) === KAS_KECIL ? "1110" : str2(id).startsWith(LACI) ? laci(str2(id).slice(LACI.length)) : kas(id);
       c.s.all("fund_transfers").forEach((f) => {
         if (bool2(f.batal)) return;
         const ket = `${str2(f.keterangan)}`;
         add(str2(f.tanggal), "PINDAH DANA", "pindah dana", ket, [{ akun: acc(f.ke), d: num(f.nominal), k: 0 }, { akun: acc(f.dari), d: 0, k: num(f.nominal) }]);
         if (num(f.biaya_admin)) add(str2(f.tanggal), "PINDAH DANA", "pindah dana", `Biaya admin: ${ket}`, [{ akun: "6920", d: num(f.biaya_admin), k: 0 }, { akun: acc(f.dari), d: 0, k: num(f.biaya_admin) }]);
+      });
+      c.s.all("cash_handovers").forEach((h2) => {
+        if (str2(h2.status) !== "diterima" || !tunai) return;
+        add(str2(h2.tanggal), "SETORAN", "setoran", `Setoran laci ${laciName(uNames[str2(h2.kasir_id)] || "")} ke owner`, [{ akun: kas(tunai.id), d: num(h2.nominal), k: 0 }, { akun: laci(h2.kasir_id), d: 0, k: num(h2.nominal) }]);
       });
       c.s.all("reconciliations").forEach((r) => {
         const sel = num(r.selisih);
@@ -1072,7 +1355,7 @@ var FortunerServer = (() => {
         auth: true,
         fn: (c) => {
           needAny(c, [["pengeluaran", "lihat"], ["hutang", "lihat"], ["pembelian", "lihat"], ["kas", "lihat"], ["pindah_dana", "lihat"]]);
-          return kasList(c, today(c));
+          return kasVisible(c, kasList(c, today(c)));
         }
       },
       // ---------- pindah dana & rekonsiliasi ----------
@@ -1107,9 +1390,11 @@ var FortunerServer = (() => {
           if (!ket) fail2("VALIDATION", "Isi catatan / keterangan pindah dana.");
           checkPassword2(c, p.password);
           return c.s.withLock(() => {
+            var _a;
             const jenis = jenisPindah(dari, ke);
             const row = c.s.insert("fund_transfers", { id: newId2(c.env, "pd"), tanggal: t, jenis, dari: dari.id, ke: ke.id, nominal, biaya_admin: admin, keterangan: ket.slice(0, 300), batal: false, alasan_batal: "", batal_oleh: "", batal_at: "", ...stamp2(c, true) });
             log2(c, "pindah_dana", "fund_transfers", str2(row.id), `${jenis}: ${dari.nama} \u2192 ${ke.nama} Rp ${nominal.toLocaleString("id-ID")}${admin ? ` (admin ${admin.toLocaleString("id-ID")})` : ""} \xB7 ${ket}`);
+            emit(c, { tipe: "pindah_dana", judul: `${str2((_a = c.user) == null ? void 0 : _a.nama)}: ${jenis} Rp ${fmt(nominal)}`, detail: `${dari.nama} \u2192 ${ke.nama} \xB7 ${ket}`, nominal, scope: dari.id === KAS_KECIL || ke.id === KAS_KECIL ? "kas_kecil" : "keuangan", ref_tabel: "fund_transfers", ref_id: str2(row.id) });
             return { ...row, dari_nama: dari.nama, ke_nama: ke.nama };
           });
         }
@@ -1122,15 +1407,225 @@ var FortunerServer = (() => {
           if (!alasan) fail2("VALIDATION", "Isi alasan pembatalan.");
           checkPassword2(c, p.password);
           return c.s.withLock(() => {
-            var _a;
+            var _a, _b;
             const f = c.s.all("fund_transfers").find((x) => x.id === p.id) || fail2("NOT_FOUND", "Data pindah dana tidak ditemukan.");
             if (bool2(f.batal)) fail2("VALIDATION", "Pindah dana ini sudah dibatalkan.");
             c.s.update("fund_transfers", "id", str2(f.id), { batal: true, alasan_batal: alasan.slice(0, 300), batal_oleh: str2((_a = c.user) == null ? void 0 : _a.id), batal_at: iso2(c.env), ...stamp2(c, false) });
             const names = accNames(c);
+            emit(c, { tipe: "pindah_batal", judul: `${str2((_b = c.user) == null ? void 0 : _b.nama)} membatalkan pindah dana Rp ${fmt(num(f.nominal))}`, detail: `${names[str2(f.dari)] || f.dari} \u2192 ${names[str2(f.ke)] || f.ke} \xB7 ${alasan}`, nominal: num(f.nominal), scope: f.dari === KAS_KECIL || f.ke === KAS_KECIL ? "kas_kecil" : "keuangan", ref_tabel: "fund_transfers", ref_id: str2(f.id) });
             log2(c, "batal_pindah_dana", "fund_transfers", str2(f.id), `Batal ${str2(f.jenis)}: ${names[str2(f.dari)] || f.dari} \u2192 ${names[str2(f.ke)] || f.ke} Rp ${num(f.nominal).toLocaleString("id-ID")}`, alasan);
             return { ok: true };
           });
         }
+      },
+      // ---------- setoran laci kasir → owner (dengan persetujuan) ----------
+      "setoran.list": {
+        auth: true,
+        fn: (c, p) => {
+          var _a;
+          need2(c, "kas");
+          const semua = can(c, "pindah_dana");
+          const me = str2((_a = c.user) == null ? void 0 : _a.id), users = userNames(c);
+          const from = str2(p.from), to = str2(p.to);
+          const rows = c.s.all("cash_handovers").filter((h2) => (semua || h2.kasir_id === me) && (h2.status === "menunggu" || (!from || str2(h2.tanggal) >= from) && (!to || str2(h2.tanggal) <= to))).map((h2) => ({ ...h2, kasir_nama: users[str2(h2.kasir_id)] || "", diputus_nama: users[str2(h2.diputus_oleh)] || "" })).sort((a, b) => (a.status === "menunggu" ? 0 : 1) - (b.status === "menunggu" ? 0 : 1) || str2(b.created_at).localeCompare(str2(a.created_at)));
+          const lacis = kasList(c, today(c)).filter((a) => a.jenis === "laci");
+          return { rows, bisa_putuskan: can(c, "pindah_dana", "ubah"), laci_saya: lacis.find((a) => a.user_id === me) || null, laci: semua ? lacis : lacis.filter((a) => a.user_id === me) };
+        }
+      },
+      "setoran.create": {
+        auth: true,
+        fn: (c, p) => {
+          var _a;
+          need2(c, "kas", "tambah");
+          const nominal = Math.round(num(p.nominal));
+          if (nominal <= 0) fail2("VALIDATION", "Isi jumlah uang yang disetor.");
+          checkPassword2(c, p.password);
+          const me = str2((_a = c.user) == null ? void 0 : _a.id);
+          return c.s.withLock(() => {
+            var _a2;
+            if (c.s.all("cash_handovers").some((h2) => h2.kasir_id === me && h2.status === "menunggu")) fail2("VALIDATION", "Masih ada setoran yang menunggu persetujuan. Tunggu diputuskan atau batalkan dulu.");
+            const laciSaya = kasList(c, today(c)).find((a) => a.jenis === "laci" && a.user_id === me);
+            const row = c.s.insert("cash_handovers", { id: newId2(c.env, "st"), tanggal: today(c), kasir_id: me, nominal, saldo_laci: (laciSaya == null ? void 0 : laciSaya.saldo) || 0, catatan: str2(p.catatan).slice(0, 300), status: "menunggu", diputus_oleh: "", diputus_at: "", catatan_owner: "", ...stamp2(c, true) });
+            log2(c, "setoran", "cash_handovers", str2(row.id), `Setoran laci Rp ${nominal.toLocaleString("id-ID")} (saldo laci ${num(laciSaya == null ? void 0 : laciSaya.saldo).toLocaleString("id-ID")}) menunggu persetujuan`);
+            emit(c, { tipe: "setoran_baru", judul: `${str2((_a2 = c.user) == null ? void 0 : _a2.nama)} mengirim setoran Rp ${fmt(nominal)}`, detail: "Menunggu persetujuan" + (str2(p.catatan) ? ` \xB7 "${str2(p.catatan)}"` : ""), nominal, scope: "setoran", target: me, tindakan: "setoran", ref_tabel: "cash_handovers", ref_id: str2(row.id) });
+            return row;
+          });
+        }
+      },
+      "setoran.cancel": {
+        auth: true,
+        fn: (c, p) => {
+          need2(c, "kas");
+          return c.s.withLock(() => {
+            var _a, _b, _c;
+            const h2 = c.s.all("cash_handovers").find((x) => x.id === p.id) || fail2("NOT_FOUND", "Setoran tidak ditemukan.");
+            if (h2.kasir_id !== str2((_a = c.user) == null ? void 0 : _a.id)) fail2("FORBIDDEN", "Hanya kasir pembuat yang bisa membatalkan.");
+            if (h2.status !== "menunggu") fail2("VALIDATION", "Setoran sudah diputuskan, tidak bisa dibatalkan.");
+            c.s.update("cash_handovers", "id", str2(h2.id), { status: "dibatalkan", diputus_oleh: str2((_b = c.user) == null ? void 0 : _b.id), diputus_at: iso2(c.env), ...stamp2(c, false) });
+            log2(c, "setoran_batal", "cash_handovers", str2(h2.id), `Kasir membatalkan setoran Rp ${num(h2.nominal).toLocaleString("id-ID")}`);
+            emit(c, { tipe: "setoran_batal", judul: `${str2((_c = c.user) == null ? void 0 : _c.nama)} membatalkan setoran Rp ${fmt(num(h2.nominal))}`, nominal: num(h2.nominal), scope: "setoran", target: str2(h2.kasir_id), ref_tabel: "cash_handovers", ref_id: str2(h2.id) });
+            return { ok: true };
+          });
+        }
+      },
+      "setoran.decide": {
+        auth: true,
+        fn: (c, p) => {
+          need2(c, "pindah_dana", "ubah");
+          const terima = bool2(p.terima);
+          const cat = str2(p.catatan).trim();
+          if (!terima && !cat) fail2("VALIDATION", "Isi alasan penolakan.");
+          checkPassword2(c, p.password);
+          return c.s.withLock(() => {
+            var _a, _b;
+            const h2 = c.s.all("cash_handovers").find((x) => x.id === p.id) || fail2("NOT_FOUND", "Setoran tidak ditemukan.");
+            if (h2.status !== "menunggu") fail2("VALIDATION", "Setoran ini sudah diputuskan.");
+            c.s.update("cash_handovers", "id", str2(h2.id), { status: terima ? "diterima" : "ditolak", diputus_oleh: str2((_a = c.user) == null ? void 0 : _a.id), diputus_at: iso2(c.env), catatan_owner: cat.slice(0, 300), ...stamp2(c, false) });
+            const nm = userNames(c)[str2(h2.kasir_id)] || "";
+            log2(c, terima ? "setoran_terima" : "setoran_tolak", "cash_handovers", str2(h2.id), `${terima ? "Terima" : "Tolak"} setoran ${nm} Rp ${num(h2.nominal).toLocaleString("id-ID")}`, cat);
+            emit(c, { tipe: terima ? "setoran_terima" : "setoran_tolak", judul: `Setoran ${nm} Rp ${fmt(num(h2.nominal))} ${terima ? "diterima" : "ditolak"}`, detail: `oleh ${str2((_b = c.user) == null ? void 0 : _b.nama)}${cat ? ` \xB7 "${cat}"` : ""}`, nominal: num(h2.nominal), scope: "setoran", target: str2(h2.kasir_id), ref_tabel: "cash_handovers", ref_id: str2(h2.id) });
+            return { ok: true };
+          });
+        }
+      },
+      // ---------- kas kecil: isi dari laci, isi ulang sampai plafon, cek owner ----------
+      "kaskecil.isi_laci": {
+        auth: true,
+        fn: (c, p) => {
+          var _a;
+          need2(c, "kas", "tambah");
+          const nominal = Math.round(num(p.nominal));
+          const ket = str2(p.keterangan).trim();
+          if (nominal <= 0) fail2("VALIDATION", "Isi jumlah yang dipindah ke kas kecil.");
+          if (!ket) fail2("VALIDATION", "Isi untuk keperluan apa.");
+          checkPassword2(c, p.password);
+          const me = str2((_a = c.user) == null ? void 0 : _a.id);
+          return c.s.withLock(() => {
+            var _a2;
+            const laci = kasList(c, today(c)).find((a) => a.jenis === "laci" && a.user_id === me) || fail2("VALIDATION", "Anda tidak punya laci kasir.");
+            if (nominal > laci.saldo) fail2("VALIDATION", `Saldo ${laci.nama} tidak cukup (Rp ${fmt(laci.saldo)}).`);
+            const row = c.s.insert("fund_transfers", {
+              id: newId2(c.env, "pd"),
+              tanggal: today(c),
+              jenis: "Isi kas kecil dari laci",
+              dari: laci.id,
+              ke: KAS_KECIL,
+              nominal,
+              biaya_admin: 0,
+              keterangan: ket.slice(0, 300),
+              batal: false,
+              alasan_batal: "",
+              batal_oleh: "",
+              batal_at: "",
+              perlu_cek: true,
+              cek_status: "",
+              cek_oleh: "",
+              cek_at: "",
+              cek_catatan: "",
+              ...stamp2(c, true)
+            });
+            log2(c, "kas_kecil", "fund_transfers", str2(row.id), `Isi kas kecil dari ${laci.nama} Rp ${fmt(nominal)} \xB7 ${ket}`);
+            emit(c, { tipe: "kk_isi_laci", judul: `${str2((_a2 = c.user) == null ? void 0 : _a2.nama)} mengisi kas kecil dari laci Rp ${fmt(nominal)}`, detail: `Perlu dicek \xB7 "${ket}"`, nominal, scope: "kas_kecil", tindakan: "cek", ref_tabel: "fund_transfers", ref_id: str2(row.id) });
+            return row;
+          });
+        }
+      },
+      "kaskecil.isi_plafon": {
+        auth: true,
+        fn: (c, p) => {
+          need2(c, "pindah_dana", "tambah");
+          checkPassword2(c, p.password);
+          return c.s.withLock(() => {
+            var _a;
+            const akun = kasList(c, today(c));
+            const kk = akun.find((a) => a.id === KAS_KECIL);
+            const owner = akun.find((a) => a.jenis === "tunai") || fail2("VALIDATION", "Metode Tunai (Kas owner) belum ada.");
+            const nominal = Math.max(0, num(kk.plafon) - kk.saldo);
+            if (nominal <= 0) fail2("VALIDATION", "Kas kecil sudah penuh sesuai plafon.");
+            const ket = str2(p.keterangan).trim() || "Isi ulang sampai plafon";
+            const row = c.s.insert("fund_transfers", {
+              id: newId2(c.env, "pd"),
+              tanggal: today(c),
+              jenis: "Isi kas kecil",
+              dari: owner.id,
+              ke: KAS_KECIL,
+              nominal,
+              biaya_admin: 0,
+              keterangan: ket,
+              batal: false,
+              alasan_batal: "",
+              batal_oleh: "",
+              batal_at: "",
+              perlu_cek: false,
+              cek_status: "",
+              cek_oleh: "",
+              cek_at: "",
+              cek_catatan: "",
+              ...stamp2(c, true)
+            });
+            log2(c, "kas_kecil", "fund_transfers", str2(row.id), `Isi ulang kas kecil sampai plafon Rp ${fmt(nominal)}`);
+            emit(c, { tipe: "kk_isi_plafon", judul: `${str2((_a = c.user) == null ? void 0 : _a.nama)} mengisi ulang kas kecil Rp ${fmt(nominal)}`, detail: `Kas kecil kembali Rp ${fmt(num(kk.plafon))}`, nominal, scope: "kas_kecil", ref_tabel: "fund_transfers", ref_id: str2(row.id) });
+            return { ...row, saldo_baru: num(kk.plafon) };
+          });
+        }
+      },
+      "cek.set": {
+        auth: true,
+        fn: (c, p) => {
+          need2(c, "pindah_dana", "ubah");
+          const tabel = str2(p.tabel);
+          if (!["petty_cash", "fund_transfers"].includes(tabel)) fail2("VALIDATION", "Data tidak dikenal.");
+          const status = str2(p.status);
+          if (!["sesuai", "bermasalah"].includes(status)) fail2("VALIDATION", "Pilih Sesuai atau Bermasalah.");
+          const cat = str2(p.catatan).trim();
+          if (status === "bermasalah" && !cat) fail2("VALIDATION", "Isi catatan masalahnya.");
+          return c.s.withLock(() => {
+            var _a, _b;
+            const r = c.s.all(tabel).find((x) => x.id === p.id) || fail2("NOT_FOUND", "Data tidak ditemukan.");
+            if (!bool2(r.perlu_cek)) fail2("VALIDATION", "Transaksi ini tidak perlu dicek.");
+            c.s.update(tabel, "id", str2(r.id), { cek_status: status, cek_oleh: str2((_a = c.user) == null ? void 0 : _a.id), cek_at: iso2(c.env), cek_catatan: cat.slice(0, 300), ...stamp2(c, false) });
+            const nominal = num(r.keluar || r.nominal);
+            log2(c, "cek_kas_kecil", tabel, str2(r.id), `Tandai ${status}: ${str2(r.item || r.keterangan)} Rp ${fmt(nominal)}`, cat);
+            emit(c, { tipe: "cek_" + status, judul: `${str2((_b = c.user) == null ? void 0 : _b.nama)} menandai ${status}: Rp ${fmt(nominal)}`, detail: `${str2(r.item || r.keterangan)}${cat ? ` \xB7 "${cat}"` : ""}`, nominal, scope: "kas_kecil", ref_tabel: tabel, ref_id: str2(r.id) });
+            return { ok: true };
+          });
+        }
+      },
+      // ---------- notifikasi ----------
+      "notif.list": {
+        auth: true,
+        fn: (c) => {
+          var _a, _b;
+          const me = str2((_a = c.user) == null ? void 0 : _a.id), users = userNames(c);
+          const readAt = str2((_b = c.s.all("notif_reads").find((r) => r.user_id === me)) == null ? void 0 : _b.read_at);
+          const all2 = c.s.all("events").filter((e) => evVisible(c, e)).sort((a, b) => str2(b.created_at).localeCompare(str2(a.created_at)));
+          const open = openActions(c);
+          const items = all2.slice(0, 40).map((e) => ({
+            ...e,
+            aktor: users[str2(e.aktor_id)] || "",
+            baru: str2(e.created_at) > readAt && str2(e.aktor_id) !== me,
+            masih_tindakan: !!e.tindakan && open.has(`${str2(e.ref_tabel)}:${str2(e.ref_id)}`)
+          }));
+          return { items, belum_dibaca: all2.filter((e) => str2(e.created_at) > readAt && str2(e.aktor_id) !== me).length, perlu_tindakan: pemutus(c) ? open.size : 0, read_at: readAt, bisa_putuskan: can(c, "pindah_dana", "ubah") };
+        }
+      },
+      "notif.read": {
+        auth: true,
+        fn: (c) => {
+          var _a;
+          const me = str2((_a = c.user) == null ? void 0 : _a.id);
+          return c.s.withLock(() => {
+            const now = iso2(c.env);
+            if (c.s.all("notif_reads").some((r) => r.user_id === me)) c.s.update("notif_reads", "user_id", me, { read_at: now });
+            else c.s.insert("notif_reads", { user_id: me, read_at: now });
+            return { read_at: now };
+          });
+        }
+      },
+      // ---------- riwayat transaksi kas ----------
+      "riwayat.list": {
+        auth: true,
+        fn: (c, p) => riwayat(c, str2(p.tab) || "semua", str2(p.from), str2(p.to))
       },
       "recon.save": {
         auth: true,
@@ -1151,6 +1646,7 @@ var FortunerServer = (() => {
           });
           checkPassword2(c, p.password);
           return c.s.withLock(() => {
+            var _a;
             const out = rows.map((r) => {
               const a = akun.find((x) => x.id === str2(r.akun));
               const asli = Math.round(num(r.saldo_asli)), selisih = asli - a.saldo;
@@ -1171,6 +1667,7 @@ var FortunerServer = (() => {
               log2(c, "rekonsiliasi", "reconciliations", str2(row.id), `Rekonsiliasi ${a.nama} ${t}: sistem ${a.saldo.toLocaleString("id-ID")}, asli ${asli.toLocaleString("id-ID")}, selisih ${selisih.toLocaleString("id-ID")}${adj ? ` \u2192 disesuaikan (${r.alasan})` : ""}`, str2(r.keterangan));
               return row;
             });
+            emit(c, { tipe: "rekonsiliasi", judul: `${str2((_a = c.user) == null ? void 0 : _a.nama)} melakukan rekonsiliasi ${out.length} kas/rekening`, detail: out.filter((r) => num(r.selisih)).map((r) => `${accNames(c)[str2(r.akun)] || r.akun} ${num(r.selisih) > 0 ? "+" : ""}${fmt(num(r.selisih))}`).join(", ") || "semua cocok", scope: "keuangan", ref_tabel: "reconciliations" });
             return { ok: true, rows: out };
           });
         }
@@ -1270,7 +1767,7 @@ var FortunerServer = (() => {
     function lowStock(c) {
       return c.s.all("materials").filter((m) => bool2(m.aktif) && num(m.stok) <= num(m.stok_min)).map((m) => ({ id: m.id, nama: m.nama, satuan: m.satuan, stok: num(m.stok), stok_min: num(m.stok_min) })).sort((a, b) => a.stok / Math.max(1, a.stok_min) - b.stok / Math.max(1, b.stok_min));
     }
-    return { handlers: handlers2, hooks, deductItem, move, productCost, buildJournal, pnl, trial, lowStock };
+    return { handlers: handlers2, hooks, deductItem, move, productCost, buildJournal, pnl, trial, lowStock, emit, kasKecilSaldo, accNames };
   }
 
   // src/server/core.ts
@@ -2386,11 +2883,14 @@ var FortunerServer = (() => {
     "kas.rekap": {
       auth: true,
       fn: (c, p) => {
+        var _a, _b, _c;
         need(c, "kas");
         const t = isYmd(str(p.tanggal)) ? str(p.tanggal) : c.env.today();
         const users = Object.fromEntries(c.s.all("users").map((x) => [x.id, x.nama]));
         const methods = c.s.all("payment_methods");
-        const pays = c.s.all("payments").filter((x) => x.tanggal === t);
+        const semua = !!((_b = (_a = c.perms) == null ? void 0 : _a.pindah_dana) == null ? void 0 : _b.lihat);
+        const me = str((_c = c.user) == null ? void 0 : _c.id);
+        const pays = c.s.all("payments").filter((x) => x.tanggal === t && (semua || x.kasir_id === me));
         const sys = {};
         const cnt = {};
         pays.forEach((x) => {
@@ -2398,7 +2898,7 @@ var FortunerServer = (() => {
           sys[k] = (sys[k] || 0) + Number(x.nominal || 0);
           cnt[k] = (cnt[k] || 0) + 1;
         });
-        const deps = c.s.all("cash_deposits").filter((d) => d.tanggal === t);
+        const deps = c.s.all("cash_deposits").filter((d) => d.tanggal === t && (semua || d.kasir_id === me));
         const keys = /* @__PURE__ */ new Set([...Object.keys(sys), ...deps.map((d) => `${d.kasir_id}|${d.method_id}`)]);
         const pcOut = c.s.all("petty_cash").filter((x) => x.tanggal === t && !bool(x.deleted)).reduce((a, x) => a + Number(x.keluar || 0), 0);
         return {
@@ -2429,10 +2929,15 @@ var FortunerServer = (() => {
     "kas.setor": {
       auth: true,
       fn: (c, p) => {
+        var _a, _b;
         need(c, "kas", "ubah");
         const t = str(p.tanggal);
         if (!isYmd(t)) fail("VALIDATION", "Tanggal tidak valid.");
         const rows = Array.isArray(p.rows) ? p.rows : [];
+        if (!((_b = (_a = c.perms) == null ? void 0 : _a.pindah_dana) == null ? void 0 : _b.lihat) && rows.some((r) => {
+          var _a2;
+          return str(r.kasir_id) !== str((_a2 = c.user) == null ? void 0 : _a2.id);
+        })) fail("FORBIDDEN", "Kasir hanya bisa menutup laci sendiri.");
         return c.s.withLock(() => {
           rows.forEach((r) => {
             if (r.aktual === "" || r.aktual == null) return;
@@ -2454,7 +2959,7 @@ var FortunerServer = (() => {
       auth: true,
       fn: (c, p) => {
         need(c, "kas");
-        const names = Object.fromEntries(c.s.all("payment_methods").map((m) => [str(m.id), str(m.nama)]));
+        const names = ext.accNames(c);
         const fromTransfers = c.s.all("fund_transfers").filter((f) => !bool(f.batal) && (f.ke === "kas_kecil" || f.dari === "kas_kecil")).map((f) => {
           const masukKK = f.ke === "kas_kecil";
           return {
@@ -2465,6 +2970,11 @@ var FortunerServer = (() => {
             keluar: masukKK ? 0 : Number(f.nominal) + Number(f.biaya_admin || 0),
             keterangan: f.keterangan,
             sumber: "pindah_dana",
+            ref_tabel: "fund_transfers",
+            perlu_cek: f.perlu_cek,
+            cek_status: f.cek_status,
+            cek_oleh: f.cek_oleh,
+            cek_catatan: f.cek_catatan,
             created_by: f.created_by,
             created_at: f.created_at
           };
@@ -2480,12 +2990,12 @@ var FortunerServer = (() => {
           created_by: r.created_by,
           created_at: r.created_at
         }));
-        const all2 = [...c.s.all("petty_cash").filter((x) => !bool(x.deleted)), ...fromTransfers, ...fromRecon].sort((a, b) => (str(a.tanggal) + str(a.created_at)).localeCompare(str(b.tanggal) + str(b.created_at)));
+        const all2 = [...c.s.all("petty_cash").filter((x) => !bool(x.deleted)).map((x) => ({ ...x, ref_tabel: "petty_cash" })), ...fromTransfers, ...fromRecon].sort((a, b) => (str(a.tanggal) + str(a.created_at)).localeCompare(str(b.tanggal) + str(b.created_at)));
         let saldo = 0;
         const users = Object.fromEntries(c.s.all("users").map((x) => [x.id, x.nama]));
         const rows = all2.map((x) => {
           saldo += Number(x.masuk || 0) - Number(x.keluar || 0);
-          return { ...x, saldo, oleh: str(users[str(x.created_by)]) };
+          return { ...x, saldo, oleh: str(users[str(x.created_by)]), cek_oleh_nama: str(users[str(x.cek_oleh)]) };
         });
         const from = str(p.from), to = str(p.to);
         return { saldo, rows: rows.filter((x) => (!from || str(x.tanggal) >= from) && (!to || str(x.tanggal) <= to)) };
@@ -2494,6 +3004,7 @@ var FortunerServer = (() => {
     "pettycash.save": {
       auth: true,
       fn: (c, p) => {
+        var _a, _b;
         need(c, "kas", "tambah");
         const r = p.row || {};
         if (!isYmd(str(r.tanggal)) || str(r.tanggal) > c.env.today()) fail("VALIDATION", "Tanggal tidak valid.");
@@ -2501,9 +3012,40 @@ var FortunerServer = (() => {
         const masuk = Math.round(Number(r.masuk) || 0), keluar = Math.round(Number(r.keluar) || 0);
         if (masuk > 0 === keluar > 0) fail("VALIDATION", "Isi salah satu: uang masuk atau uang keluar.");
         if (masuk < 0 || keluar < 0) fail("VALIDATION", "Nominal tidak boleh negatif.");
+        if (masuk && !((_b = (_a = c.perms) == null ? void 0 : _a.pindah_dana) == null ? void 0 : _b.tambah)) fail("FORBIDDEN", 'Kas kecil diisi lewat "Isi dari laci saya" atau oleh owner.');
         return c.s.withLock(() => {
-          const row = c.s.insert("petty_cash", { id: newId(c.env, "kk"), tanggal: str(r.tanggal), item: str(r.item).slice(0, 200), masuk, keluar, keterangan: str(r.keterangan).slice(0, 300), deleted: false, ...stamp(c, true) });
+          var _a2;
+          const set = settingsMap(c.s);
+          const saldo = ext.kasKecilSaldo(c);
+          if (keluar > saldo) fail("VALIDATION", `Saldo kas kecil tidak cukup (sisa Rp ${saldo.toLocaleString("id-ID")}). Isi dulu dari laci atau minta isi ulang ke owner.`);
+          const batas = Number(set.kas_kecil_batas_cek || 3e5);
+          const perluCek = keluar > 0 && keluar > batas;
+          const row = c.s.insert("petty_cash", {
+            id: newId(c.env, "kk"),
+            tanggal: str(r.tanggal),
+            item: str(r.item).slice(0, 200),
+            masuk,
+            keluar,
+            keterangan: str(r.keterangan).slice(0, 300),
+            deleted: false,
+            perlu_cek: perluCek,
+            cek_status: "",
+            cek_oleh: "",
+            cek_at: "",
+            cek_catatan: "",
+            ...stamp(c, true)
+          });
           log(c, "kas_kecil", "petty_cash", str(row.id), `${masuk ? "Masuk" : "Keluar"} ${(masuk || keluar).toLocaleString("id-ID")}: ${r.item}`);
+          ext.emit(c, {
+            tipe: masuk ? "kk_masuk" : "kk_keluar",
+            judul: `${str((_a2 = c.user) == null ? void 0 : _a2.nama)}: ${masuk ? "uang masuk" : "uang keluar"} kas kecil Rp ${(masuk || keluar).toLocaleString("id-ID")}`,
+            detail: str(r.item) + (perluCek ? ` \xB7 di atas batas Rp ${batas.toLocaleString("id-ID")}, perlu dicek` : ""),
+            nominal: masuk || keluar,
+            scope: "kas_kecil",
+            tindakan: perluCek ? "cek" : "",
+            ref_tabel: "petty_cash",
+            ref_id: str(row.id)
+          });
           return row;
         });
       }
@@ -2593,6 +3135,7 @@ var FortunerServer = (() => {
         if (cara === "lunas" && !c.s.all("payment_methods").some((m) => m.id === r.method_id)) fail("VALIDATION", "Pilih metode pembayaran.");
         const isi = Number(r.isi_per_satuan) || 0;
         return c.s.withLock(() => {
+          var _a;
           const id = newId(c.env, "exp");
           let billId = "";
           if (cara === "hutang") {
@@ -2627,6 +3170,7 @@ var FortunerServer = (() => {
             c.s.insert("cost_history", { id: newId(c.env, "cst"), product_id: str(r.product_id), berlaku_mulai: t, harga_beli: hargaBeli, supplier_id: str(r.supplier_id), sumber: `pembelian ${id}`, ...stamp(c, true) });
           }
           log(c, "pengeluaran", "expenses", id, `${cat.nama}: ${r.item} ${total.toLocaleString("id-ID")} (${cara})${hargaBeli != null ? `, harga beli ${hargaBeli}/satuan` : ""}`);
+          ext.emit(c, { tipe: "pengeluaran", judul: `${str((_a = c.user) == null ? void 0 : _a.nama)}: pengeluaran Rp ${total.toLocaleString("id-ID")}`, detail: `${cat.nama} \xB7 ${str(r.item)}${cara === "hutang" ? " \xB7 hutang" : ""}`, nominal: total, scope: "keuangan", ref_tabel: "expenses", ref_id: id });
           return { ...row, harga_beli_baru: hargaBeli };
         });
       }
@@ -2694,11 +3238,136 @@ var FortunerServer = (() => {
         });
       }
     },
+    // ----- titip catat pengeluaran owner (v1.3.3): kasir mencatat, owner mengonfirmasi -----
+    "titip.meta": {
+      auth: true,
+      fn: (c) => {
+        need(c, "pengeluaran.titip");
+        const sup = Object.fromEntries(c.s.all("suppliers").map((x) => [x.id, x.nama]));
+        return {
+          methods: c.s.all("payment_methods").filter((m) => bool(m.aktif) && m.jenis === "transfer").map((m) => ({ id: m.id, nama: m.nama })),
+          categories: c.s.all("expense_categories").filter((x) => bool(x.aktif) || x.aktif === "" || x.aktif == null).map((x) => ({ id: x.id, nama: x.nama, jenis: x.jenis })),
+          bills: c.s.all("supplier_bills").filter((b) => Number(b.sisa) > 0).map((b) => ({ id: b.id, supplier: str(sup[str(b.supplier_id)]), nota: b.nota, keterangan: b.keterangan, sisa: Number(b.sisa) }))
+        };
+      }
+    },
+    "titip.create": {
+      auth: true,
+      fn: (c, p) => {
+        need(c, "pengeluaran.titip", "tambah");
+        const r = p.titip || {};
+        const t = str(r.tanggal) || c.env.today();
+        if (!isYmd(t) || t > c.env.today()) fail("VALIDATION", "Tanggal tidak valid.");
+        const jenis = ["umum", "bahan", "bon"].includes(str(r.jenis)) ? str(r.jenis) : "umum";
+        const m = c.s.all("payment_methods").find((x) => x.id === r.method_id && x.jenis === "transfer") || fail("VALIDATION", "Pilih rekening yang dipakai owner.");
+        const nominal = Math.round(Number(r.nominal) || 0);
+        if (nominal <= 0) fail("VALIDATION", "Isi nominal.");
+        if (jenis === "bon") {
+          const b = c.s.all("supplier_bills").find((x) => x.id === r.bill_id) || fail("VALIDATION", "Pilih bon supplier yang dibayar.");
+          if (nominal > Number(b.sisa)) fail("VALIDATION", "Nominal melebihi sisa bon.");
+        } else {
+          c.s.all("expense_categories").find((x) => x.id === r.kategori_id) || fail("VALIDATION", "Pilih kategori.");
+          if (!str(r.item).trim()) fail("VALIDATION", "Isi untuk pembayaran apa.");
+        }
+        const bukti = str(r.bukti);
+        if (!bukti) fail("VALIDATION", "Lampirkan foto bukti (screenshot chat / bukti transfer).");
+        if (!/^data:image\//.test(bukti)) fail("VALIDATION", "Bukti harus berupa gambar.");
+        if (bukti.length > 15e5) fail("VALIDATION", "Foto bukti terlalu besar.");
+        checkPassword(c, p.password);
+        return c.s.withLock(() => {
+          var _a, _b;
+          const id = newId(c.env, "tp");
+          const url = c.env.saveFile ? c.env.saveFile(`bukti-${t}-${id}.jpg`, bukti) : bukti;
+          const row = c.s.insert("expense_requests", {
+            id,
+            tanggal: t,
+            method_id: m.id,
+            jenis,
+            kategori_id: jenis === "bon" ? "" : str(r.kategori_id),
+            bill_id: jenis === "bon" ? str(r.bill_id) : "",
+            item: str(r.item).slice(0, 200),
+            nominal,
+            penerima: str(r.penerima).slice(0, 120),
+            bukti: url,
+            catatan: str(r.catatan).slice(0, 300),
+            status: "menunggu",
+            expense_id: "",
+            diputus_oleh: "",
+            diputus_at: "",
+            catatan_owner: "",
+            ...stamp(c, true)
+          });
+          log(c, "titip_pengeluaran", "expense_requests", id, `Titip catat ${jenis} Rp ${nominal.toLocaleString("id-ID")} dari ${m.nama}: ${str(r.item)}`);
+          ext.emit(c, { tipe: "titip_baru", judul: `${str((_a = c.user) == null ? void 0 : _a.nama)} mencatat titipan pengeluaran Rp ${nominal.toLocaleString("id-ID")}`, detail: `Menunggu konfirmasi \xB7 ${m.nama} \xB7 ${str(r.item) || "bayar bon"}`, nominal, scope: "setoran", target: str((_b = c.user) == null ? void 0 : _b.id), tindakan: "titip", ref_tabel: "expense_requests", ref_id: id });
+          return row;
+        });
+      }
+    },
+    "titip.cancel": {
+      auth: true,
+      fn: (c, p) => {
+        need(c, "pengeluaran.titip");
+        return c.s.withLock(() => {
+          const r = c.s.all("expense_requests").find((x) => x.id === p.id) || fail("NOT_FOUND", "Titipan tidak ditemukan.");
+          if (r.created_by !== c.user.id) fail("FORBIDDEN", "Hanya pencatat yang bisa membatalkan.");
+          if (r.status !== "menunggu") fail("VALIDATION", "Titipan sudah diputuskan.");
+          c.s.update("expense_requests", "id", str(r.id), { status: "dibatalkan", diputus_oleh: str(c.user.id), diputus_at: iso(c.env), ...stamp(c, false) });
+          log(c, "titip_batal", "expense_requests", str(r.id), `Batalkan titipan Rp ${Number(r.nominal).toLocaleString("id-ID")}`);
+          return { ok: true };
+        });
+      }
+    },
+    "titip.decide": {
+      auth: true,
+      fn: (c, p) => {
+        need(c, "pindah_dana", "ubah");
+        const ok = !!p.konfirmasi;
+        const cat = str(p.catatan).trim();
+        if (!ok && !cat) fail("VALIDATION", "Isi alasan penolakan.");
+        checkPassword(c, p.password);
+        return c.s.withLock(() => {
+          const r = c.s.all("expense_requests").find((x) => x.id === p.id) || fail("NOT_FOUND", "Titipan tidak ditemukan.");
+          if (r.status !== "menunggu") fail("VALIDATION", "Titipan ini sudah diputuskan.");
+          const users = Object.fromEntries(c.s.all("users").map((x) => [x.id, x.nama]));
+          const pencatat = str(users[str(r.created_by)]);
+          let expenseId = "";
+          const k = p.koreksi || {};
+          const nominal = Math.round(Number(k.nominal) || Number(r.nominal));
+          const methodId = str(k.method_id) || str(r.method_id);
+          const kategori = str(k.kategori_id) || str(r.kategori_id);
+          if (ok) {
+            const ket = `Titipan dicatat ${pencatat}${r.penerima ? ` \xB7 dibayar ke ${str(r.penerima)}` : ""}${r.catatan ? ` \xB7 ${str(r.catatan)}` : ""}`;
+            if (r.jenis === "bon") {
+              handlers["bills.pay"].fn(c, { bill_id: r.bill_id, nominal, method_id: methodId, tanggal: r.tanggal, keterangan: ket });
+              expenseId = "bill:" + str(r.bill_id);
+            } else {
+              const e = handlers["expense.save"].fn(c, { expense: { tanggal: r.tanggal, kategori_id: kategori, item: r.item, nota: "", supplier_id: "", qty: 1, harga: nominal, satuan: "", cara_bayar: "lunas", method_id: methodId, keterangan: ket } });
+              expenseId = str(e.id);
+            }
+          }
+          c.s.update("expense_requests", "id", str(r.id), {
+            status: ok ? "dikonfirmasi" : "ditolak",
+            expense_id: expenseId,
+            nominal,
+            method_id: methodId,
+            kategori_id: kategori,
+            diputus_oleh: str(c.user.id),
+            diputus_at: iso(c.env),
+            catatan_owner: cat.slice(0, 300),
+            ...stamp(c, false)
+          });
+          log(c, ok ? "titip_konfirmasi" : "titip_tolak", "expense_requests", str(r.id), `${ok ? "Konfirmasi" : "Tolak"} titipan ${pencatat} Rp ${nominal.toLocaleString("id-ID")}`, cat);
+          ext.emit(c, { tipe: ok ? "titip_konfirmasi" : "titip_tolak", judul: `Titipan pengeluaran Rp ${nominal.toLocaleString("id-ID")} ${ok ? "dikonfirmasi" : "ditolak"}`, detail: `${str(r.item) || "bayar bon"} \xB7 oleh ${str(c.user.nama)}${cat ? ` \xB7 "${cat}"` : ""}`, nominal, scope: "setoran", target: str(r.created_by), ref_tabel: "expense_requests", ref_id: str(r.id) });
+          return { ok: true, expense_id: expenseId };
+        });
+      }
+    },
     "bills.pay": {
       auth: true,
       fn: (c, p) => {
         need(c, "hutang", "ubah");
         return c.s.withLock(() => {
+          var _a;
           const b = c.s.all("supplier_bills").find((x) => x.id === p.bill_id) || fail("NOT_FOUND", "Tagihan tidak ditemukan.");
           const nominal = Math.round(Number(p.nominal) || 0);
           if (nominal <= 0) fail("VALIDATION", "Isi nominal.");
@@ -2709,6 +3378,7 @@ var FortunerServer = (() => {
           const terbayar = c.s.all("bill_payments").filter((x) => x.bill_id === b.id).reduce((a, x) => a + Number(x.nominal || 0), 0);
           const row = c.s.update("supplier_bills", "id", str(b.id), { terbayar, sisa: Number(b.total) - terbayar, ...stamp(c, false) });
           log(c, "bayar_hutang", "supplier_bills", str(b.id), `Bayar hutang ${nominal.toLocaleString("id-ID")} (${b.nota || b.keterangan})`);
+          ext.emit(c, { tipe: "bayar_hutang", judul: `${str((_a = c.user) == null ? void 0 : _a.nama)}: bayar bon supplier Rp ${nominal.toLocaleString("id-ID")}`, detail: str(b.nota || b.keterangan), nominal, scope: "keuangan", ref_tabel: "supplier_bills", ref_id: str(b.id) });
           return row;
         });
       }
@@ -2995,6 +3665,9 @@ var FortunerServer = (() => {
         const s = p.settings || {};
         if (s.min_qty_banyak !== void 0 && !(Number(s.min_qty_banyak) >= 2)) fail("VALIDATION", "Minimal qty harga banyak harus angka \u2265 2.");
         if (s.stok_kurang_saat !== void 0 && !["selesai", "bayar"].includes(str(s.stok_kurang_saat))) fail("VALIDATION", "Pilihan potong stok tidak dikenal.");
+        ["kas_kecil_plafon", "kas_kecil_batas_cek"].forEach((k) => {
+          if (s[k] !== void 0 && !(Number(s[k]) >= 0)) fail("VALIDATION", "Plafon / batas kas kecil harus angka.");
+        });
         if (s.margin_min !== void 0 && !(Number(s.margin_min) >= 0 && Number(s.margin_min) <= 90)) fail("VALIDATION", "Margin minimum 0\u201390%.");
         Object.keys(s).filter((k) => /^target_\d{6}$/.test(k)).forEach((k) => {
           if (str(s[k]) !== "" && !(Number(s[k]) >= 0)) fail("VALIDATION", "Target omzet harus angka.");
@@ -3078,6 +3751,8 @@ var FortunerServer = (() => {
     maks_perangkat: "",
     stok_kurang_saat: "selesai",
     margin_min: "20",
+    kas_kecil_plafon: "1000000",
+    kas_kecil_batas_cek: "300000",
     catatan_struk: "Terima kasih. Barang yang tidak diambil lebih dari 30 hari di luar tanggung jawab kami."
   };
   function seedBase(s, env, owner) {
@@ -3243,7 +3918,7 @@ var FortunerServer = (() => {
       keterangan: "s",
       ...audit
     },
-    petty_cash: { id: "s", tanggal: "s", item: "s", masuk: "n", keluar: "n", keterangan: "s", deleted: "b", ...audit },
+    petty_cash: { id: "s", tanggal: "s", item: "s", masuk: "n", keluar: "n", keterangan: "s", deleted: "b", perlu_cek: "b", cek_status: "s", cek_oleh: "s", cek_at: "s", cek_catatan: "s", ...audit },
     cash_deposits: { id: "s", tanggal: "s", kasir_id: "s", method_id: "s", sistem: "n", aktual: "n", selisih: "n", keterangan: "s", ...audit },
     // ---------- Keuangan (Tahap 5) ----------
     expense_categories: { id: "s", nama: "s", jenis: "s", aktif: "b", ...audit },
@@ -3281,7 +3956,12 @@ var FortunerServer = (() => {
     opname_items: { id: "s", opname_id: "s", material_id: "s", stok_sistem: "n", stok_fisik: "n", selisih: "n", harga: "n", nilai: "n", keterangan: "s" },
     journals: { id: "s", tanggal: "s", keterangan: "s", lines: "j", deleted: "b", ...audit },
     // ---------- Pindah dana & rekonsiliasi (v1.2.8) ----------
-    fund_transfers: { id: "s", tanggal: "s", jenis: "s", dari: "s", ke: "s", nominal: "n", biaya_admin: "n", keterangan: "s", batal: "b", alasan_batal: "s", batal_oleh: "s", batal_at: "s", ...audit },
+    fund_transfers: { id: "s", tanggal: "s", jenis: "s", dari: "s", ke: "s", nominal: "n", biaya_admin: "n", keterangan: "s", batal: "b", alasan_batal: "s", batal_oleh: "s", batal_at: "s", perlu_cek: "b", cek_status: "s", cek_oleh: "s", cek_at: "s", cek_catatan: "s", ...audit },
+    // ---------- notifikasi (v1.3.2) ----------
+    events: { id: "s", tipe: "s", judul: "s", detail: "s", nominal: "n", scope: "s", target_user: "s", tindakan: "s", ref_tabel: "s", ref_id: "s", aktor_id: "s", created_at: "s" },
+    notif_reads: { user_id: "s", read_at: "s" },
+    expense_requests: { id: "s", tanggal: "s", method_id: "s", jenis: "s", kategori_id: "s", bill_id: "s", item: "s", nominal: "n", penerima: "s", bukti: "s", catatan: "s", status: "s", expense_id: "s", diputus_oleh: "s", diputus_at: "s", catatan_owner: "s", ...audit },
+    cash_handovers: { id: "s", tanggal: "s", kasir_id: "s", nominal: "n", saldo_laci: "n", catatan: "s", status: "s", diputus_oleh: "s", diputus_at: "s", catatan_owner: "s", ...audit },
     reconciliations: { id: "s", tanggal: "s", akun: "s", saldo_sistem: "n", saldo_asli: "n", selisih: "n", disesuaikan: "b", alasan: "s", akun_lawan: "s", keterangan: "s", ...audit }
   };
 
@@ -3423,7 +4103,30 @@ var FortunerServer = (() => {
     uuid: () => Utilities.getUuid(),
     now: () => /* @__PURE__ */ new Date(),
     today: () => Utilities.formatDate(/* @__PURE__ */ new Date(), TZ, "yyyy-MM-dd"),
-    timeHM: () => Utilities.formatDate(/* @__PURE__ */ new Date(), TZ, "HH:mm")
+    timeHM: () => Utilities.formatDate(/* @__PURE__ */ new Date(), TZ, "HH:mm"),
+    /** Bukti foto → folder "Fortuner POS - Bukti" di Google Drive pemilik script (bisa dilihat siapa pun yang punya link). */
+    saveFile: (name, dataUrl) => {
+      if (typeof DriveApp === "undefined") return dataUrl;
+      const m = /^data:([^;]+);base64,(.*)$/.exec(dataUrl);
+      if (!m) throw new Error("Format file tidak dikenal.");
+      const props = PropertiesService.getScriptProperties();
+      let folder = null;
+      const fid = props.getProperty("BUKTI_FOLDER_ID");
+      if (fid) {
+        try {
+          folder = DriveApp.getFolderById(fid);
+        } catch (e) {
+          folder = null;
+        }
+      }
+      if (!folder) {
+        folder = DriveApp.createFolder("Fortuner POS - Bukti");
+        props.setProperty("BUKTI_FOLDER_ID", folder.getId());
+      }
+      const file = folder.createFile(Utilities.newBlob(Utilities.base64Decode(m[2]), m[1], name));
+      file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+      return "https://drive.google.com/thumbnail?sz=w1600&id=" + file.getId();
+    }
   };
 
   // src/server/gasEntry.ts

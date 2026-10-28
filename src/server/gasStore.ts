@@ -2,7 +2,7 @@
 import { SCHEMA, type Row } from './schema';
 import type { Env, Store } from './store';
 
-declare const SpreadsheetApp: any, LockService: any, PropertiesService: any, Utilities: any;
+declare const SpreadsheetApp: any, LockService: any, PropertiesService: any, Utilities: any, DriveApp: any;
 
 const TZ = 'Asia/Jakarta';
 
@@ -135,4 +135,18 @@ export const gasEnv: Env = {
   now: () => new Date(),
   today: () => Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd'),
   timeHM: () => Utilities.formatDate(new Date(), TZ, 'HH:mm'),
+  /** Bukti foto → folder "Fortuner POS - Bukti" di Google Drive pemilik script (bisa dilihat siapa pun yang punya link). */
+  saveFile: (name: string, dataUrl: string) => {
+    if (typeof DriveApp === 'undefined') return dataUrl;
+    const m = /^data:([^;]+);base64,(.*)$/.exec(dataUrl);
+    if (!m) throw new Error('Format file tidak dikenal.');
+    const props = PropertiesService.getScriptProperties();
+    let folder: any = null;
+    const fid = props.getProperty('BUKTI_FOLDER_ID');
+    if (fid) { try { folder = DriveApp.getFolderById(fid); } catch (e) { folder = null; } }
+    if (!folder) { folder = DriveApp.createFolder('Fortuner POS - Bukti'); props.setProperty('BUKTI_FOLDER_ID', folder.getId()); }
+    const file = folder.createFile(Utilities.newBlob(Utilities.base64Decode(m[2]), m[1], name));
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    return 'https://drive.google.com/thumbnail?sz=w1600&id=' + file.getId();
+  },
 };

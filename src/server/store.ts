@@ -18,4 +18,6 @@ export interface Env {
   today(): string;
   /** Waktu sekarang "HH:mm" di zona Asia/Jakarta. */
   timeHM(): string;
+  /** Simpan file (data URL) dan kembalikan URL tampilnya. Apps Script: Google Drive. Browser: data URL itu sendiri. */
+  saveFile?(name: string, dataUrl: string): string;
 }

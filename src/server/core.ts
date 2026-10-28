@@ -999,10 +999,13 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
       const t = isYmd(str(p.tanggal)) ? str(p.tanggal) : c.env.today();
       const users = Object.fromEntries(c.s.all('users').map((x) => [x.id, x.nama]));
       const methods = c.s.all('payment_methods');
-      const pays = c.s.all('payments').filter((x) => x.tanggal === t);
+      // Kasir tanpa hak "Pindah dana" hanya melihat rekap lacinya sendiri; owner/admin/keuangan melihat semua kasir.
+      const semua = !!c.perms?.pindah_dana?.lihat;
+      const me = str(c.user?.id);
+      const pays = c.s.all('payments').filter((x) => x.tanggal === t && (semua || x.kasir_id === me));
       const sys: Record<string, number> = {}; const cnt: Record<string, number> = {};
       pays.forEach((x) => { const k = `${x.kasir_id}|${x.method_id}`; sys[k] = (sys[k] || 0) + Number(x.nominal || 0); cnt[k] = (cnt[k] || 0) + 1; });
-      const deps = c.s.all('cash_deposits').filter((d) => d.tanggal === t);
+      const deps = c.s.all('cash_deposits').filter((d) => d.tanggal === t && (semua || d.kasir_id === me));
       const keys = new Set([...Object.keys(sys), ...deps.map((d) => `${d.kasir_id}|${d.method_id}`)]);
       const pcOut = c.s.all('petty_cash').filter((x) => x.tanggal === t && !bool(x.deleted)).reduce((a, x) => a + Number(x.keluar || 0), 0);
       return {
@@ -1025,6 +1028,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
       const t = str(p.tanggal);
       if (!isYmd(t)) fail('VALIDATION', 'Tanggal tidak valid.');
       const rows: any[] = Array.isArray(p.rows) ? p.rows : [];
+      if (!c.perms?.pindah_dana?.lihat && rows.some((r) => str(r.kasir_id) !== str(c.user?.id))) fail('FORBIDDEN', 'Kasir hanya bisa menutup laci sendiri.');
       return c.s.withLock(() => {
         rows.forEach((r) => {
           if (r.aktual === '' || r.aktual == null) return;
@@ -1046,20 +1050,20 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
     auth: true,
     fn: (c, p) => {
       need(c, 'kas');
-      const names: Record<string, string> = Object.fromEntries(c.s.all('payment_methods').map((m) => [str(m.id), str(m.nama)]));
+      const names = ext.accNames(c);
       // Isi ulang / pengembalian lewat Pindah dana & penyesuaian rekonsiliasi ikut tampil (tidak bisa dihapus dari sini).
       const fromTransfers: Row[] = c.s.all('fund_transfers').filter((f) => !bool(f.batal) && (f.ke === 'kas_kecil' || f.dari === 'kas_kecil')).map((f) => {
         const masukKK = f.ke === 'kas_kecil';
         return { id: f.id, tanggal: f.tanggal, item: masukKK ? `Pindah dana dari ${names[str(f.dari)] || f.dari}` : `Pindah dana ke ${names[str(f.ke)] || f.ke}`, masuk: masukKK ? Number(f.nominal) : 0,
-          keluar: masukKK ? 0 : Number(f.nominal) + Number(f.biaya_admin || 0), keterangan: f.keterangan, sumber: 'pindah_dana', created_by: f.created_by, created_at: f.created_at };
+          keluar: masukKK ? 0 : Number(f.nominal) + Number(f.biaya_admin || 0), keterangan: f.keterangan, sumber: 'pindah_dana', ref_tabel: 'fund_transfers', perlu_cek: f.perlu_cek, cek_status: f.cek_status, cek_oleh: f.cek_oleh, cek_catatan: f.cek_catatan, created_by: f.created_by, created_at: f.created_at };
       });
       const fromRecon: Row[] = c.s.all('reconciliations').filter((r) => r.akun === 'kas_kecil' && bool(r.disesuaikan) && Number(r.selisih)).map((r) => ({
         id: r.id, tanggal: r.tanggal, item: `Penyesuaian rekonsiliasi: ${str(r.alasan)}`, masuk: Number(r.selisih) > 0 ? Number(r.selisih) : 0, keluar: Number(r.selisih) < 0 ? -Number(r.selisih) : 0,
         keterangan: r.keterangan, sumber: 'rekonsiliasi', created_by: r.created_by, created_at: r.created_at }));
-      const all = [...c.s.all('petty_cash').filter((x) => !bool(x.deleted)), ...fromTransfers, ...fromRecon].sort((a, b) => (str(a.tanggal) + str(a.created_at)).localeCompare(str(b.tanggal) + str(b.created_at)));
+      const all = [...c.s.all('petty_cash').filter((x) => !bool(x.deleted)).map((x): Row => ({ ...x, ref_tabel: 'petty_cash' })), ...fromTransfers, ...fromRecon].sort((a, b) => (str(a.tanggal) + str(a.created_at)).localeCompare(str(b.tanggal) + str(b.created_at)));
       let saldo = 0;
       const users = Object.fromEntries(c.s.all('users').map((x) => [x.id, x.nama]));
-      const rows: Row[] = all.map((x) => { saldo += Number(x.masuk || 0) - Number(x.keluar || 0); return { ...x, saldo, oleh: str(users[str(x.created_by)]) }; });
+      const rows: Row[] = all.map((x) => { saldo += Number(x.masuk || 0) - Number(x.keluar || 0); return { ...x, saldo, oleh: str(users[str(x.created_by)]), cek_oleh_nama: str(users[str(x.cek_oleh)]) }; });
       const from = str(p.from), to = str(p.to);
       return { saldo, rows: rows.filter((x) => (!from || str(x.tanggal) >= from) && (!to || str(x.tanggal) <= to)) };
     },
@@ -1074,9 +1078,18 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
       const masuk = Math.round(Number(r.masuk) || 0), keluar = Math.round(Number(r.keluar) || 0);
       if ((masuk > 0) === (keluar > 0)) fail('VALIDATION', 'Isi salah satu: uang masuk atau uang keluar.');
       if (masuk < 0 || keluar < 0) fail('VALIDATION', 'Nominal tidak boleh negatif.');
+      if (masuk && !c.perms?.pindah_dana?.tambah) fail('FORBIDDEN', 'Kas kecil diisi lewat "Isi dari laci saya" atau oleh owner.');
       return c.s.withLock(() => {
-        const row = c.s.insert('petty_cash', { id: newId(c.env, 'kk'), tanggal: str(r.tanggal), item: str(r.item).slice(0, 200), masuk, keluar, keterangan: str(r.keterangan).slice(0, 300), deleted: false, ...stamp(c, true) });
+        const set = settingsMap(c.s);
+        const saldo = ext.kasKecilSaldo(c);
+        if (keluar > saldo) fail('VALIDATION', `Saldo kas kecil tidak cukup (sisa Rp ${saldo.toLocaleString('id-ID')}). Isi dulu dari laci atau minta isi ulang ke owner.`);
+        const batas = Number(set.kas_kecil_batas_cek || 300000);
+        const perluCek = keluar > 0 && keluar > batas;
+        const row = c.s.insert('petty_cash', { id: newId(c.env, 'kk'), tanggal: str(r.tanggal), item: str(r.item).slice(0, 200), masuk, keluar, keterangan: str(r.keterangan).slice(0, 300), deleted: false,
+          perlu_cek: perluCek, cek_status: '', cek_oleh: '', cek_at: '', cek_catatan: '', ...stamp(c, true) });
         log(c, 'kas_kecil', 'petty_cash', str(row.id), `${masuk ? 'Masuk' : 'Keluar'} ${(masuk || keluar).toLocaleString('id-ID')}: ${r.item}`);
+        ext.emit(c, { tipe: masuk ? 'kk_masuk' : 'kk_keluar', judul: `${str(c.user?.nama)}: ${masuk ? 'uang masuk' : 'uang keluar'} kas kecil Rp ${(masuk || keluar).toLocaleString('id-ID')}`,
+          detail: str(r.item) + (perluCek ? ` · di atas batas Rp ${batas.toLocaleString('id-ID')}, perlu dicek` : ''), nominal: masuk || keluar, scope: 'kas_kecil', tindakan: perluCek ? 'cek' : '', ref_tabel: 'petty_cash', ref_id: str(row.id) });
         return row;
       });
     },
@@ -1177,6 +1190,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
           c.s.insert('cost_history', { id: newId(c.env, 'cst'), product_id: str(r.product_id), berlaku_mulai: t, harga_beli: hargaBeli, supplier_id: str(r.supplier_id), sumber: `pembelian ${id}`, ...stamp(c, true) });
         }
         log(c, 'pengeluaran', 'expenses', id, `${(cat as Row).nama}: ${r.item} ${total.toLocaleString('id-ID')} (${cara})${hargaBeli != null ? `, harga beli ${hargaBeli}/satuan` : ''}`);
+        ext.emit(c, { tipe: 'pengeluaran', judul: `${str(c.user?.nama)}: pengeluaran Rp ${total.toLocaleString('id-ID')}`, detail: `${(cat as Row).nama} · ${str(r.item)}${cara === 'hutang' ? ' · hutang' : ''}`, nominal: total, scope: 'keuangan', ref_tabel: 'expenses', ref_id: id });
         return { ...row, harga_beli_baru: hargaBeli };
       });
     },
@@ -1233,6 +1247,98 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
       });
     },
   },
+  // ----- titip catat pengeluaran owner (v1.3.3): kasir mencatat, owner mengonfirmasi -----
+  'titip.meta': {
+    auth: true,
+    fn: (c) => {
+      need(c, 'pengeluaran.titip');
+      const sup = Object.fromEntries(c.s.all('suppliers').map((x) => [x.id, x.nama]));
+      return {
+        methods: c.s.all('payment_methods').filter((m) => bool(m.aktif) && m.jenis === 'transfer').map((m) => ({ id: m.id, nama: m.nama })),
+        categories: c.s.all('expense_categories').filter((x) => bool(x.aktif) || x.aktif === '' || x.aktif == null).map((x) => ({ id: x.id, nama: x.nama, jenis: x.jenis })),
+        bills: c.s.all('supplier_bills').filter((b) => Number(b.sisa) > 0).map((b) => ({ id: b.id, supplier: str(sup[str(b.supplier_id)]), nota: b.nota, keterangan: b.keterangan, sisa: Number(b.sisa) })),
+      };
+    },
+  },
+  'titip.create': {
+    auth: true,
+    fn: (c, p) => {
+      need(c, 'pengeluaran.titip', 'tambah');
+      const r = p.titip || {};
+      const t = str(r.tanggal) || c.env.today();
+      if (!isYmd(t) || t > c.env.today()) fail('VALIDATION', 'Tanggal tidak valid.');
+      const jenis = ['umum', 'bahan', 'bon'].includes(str(r.jenis)) ? str(r.jenis) : 'umum';
+      const m = c.s.all('payment_methods').find((x) => x.id === r.method_id && x.jenis === 'transfer') || fail('VALIDATION', 'Pilih rekening yang dipakai owner.');
+      const nominal = Math.round(Number(r.nominal) || 0);
+      if (nominal <= 0) fail('VALIDATION', 'Isi nominal.');
+      if (jenis === 'bon') { const b = c.s.all('supplier_bills').find((x) => x.id === r.bill_id) || fail('VALIDATION', 'Pilih bon supplier yang dibayar.'); if (nominal > Number(b.sisa)) fail('VALIDATION', 'Nominal melebihi sisa bon.'); }
+      else { c.s.all('expense_categories').find((x) => x.id === r.kategori_id) || fail('VALIDATION', 'Pilih kategori.'); if (!str(r.item).trim()) fail('VALIDATION', 'Isi untuk pembayaran apa.'); }
+      const bukti = str(r.bukti);
+      if (!bukti) fail('VALIDATION', 'Lampirkan foto bukti (screenshot chat / bukti transfer).');
+      if (!/^data:image\//.test(bukti)) fail('VALIDATION', 'Bukti harus berupa gambar.');
+      if (bukti.length > 1500000) fail('VALIDATION', 'Foto bukti terlalu besar.');
+      checkPassword(c, p.password);
+      return c.s.withLock(() => {
+        const id = newId(c.env, 'tp');
+        const url = c.env.saveFile ? c.env.saveFile(`bukti-${t}-${id}.jpg`, bukti) : bukti;
+        const row = c.s.insert('expense_requests', { id, tanggal: t, method_id: m.id, jenis, kategori_id: jenis === 'bon' ? '' : str(r.kategori_id), bill_id: jenis === 'bon' ? str(r.bill_id) : '',
+          item: str(r.item).slice(0, 200), nominal, penerima: str(r.penerima).slice(0, 120), bukti: url, catatan: str(r.catatan).slice(0, 300), status: 'menunggu', expense_id: '', diputus_oleh: '', diputus_at: '', catatan_owner: '', ...stamp(c, true) });
+        log(c, 'titip_pengeluaran', 'expense_requests', id, `Titip catat ${jenis} Rp ${nominal.toLocaleString('id-ID')} dari ${m.nama}: ${str(r.item)}`);
+        ext.emit(c, { tipe: 'titip_baru', judul: `${str(c.user?.nama)} mencatat titipan pengeluaran Rp ${nominal.toLocaleString('id-ID')}`, detail: `Menunggu konfirmasi · ${m.nama} · ${str(r.item) || 'bayar bon'}`, nominal, scope: 'setoran', target: str(c.user?.id), tindakan: 'titip', ref_tabel: 'expense_requests', ref_id: id });
+        return row;
+      });
+    },
+  },
+  'titip.cancel': {
+    auth: true,
+    fn: (c, p) => {
+      need(c, 'pengeluaran.titip');
+      return c.s.withLock(() => {
+        const r = c.s.all('expense_requests').find((x) => x.id === p.id) || fail('NOT_FOUND', 'Titipan tidak ditemukan.');
+        if (r.created_by !== c.user!.id) fail('FORBIDDEN', 'Hanya pencatat yang bisa membatalkan.');
+        if (r.status !== 'menunggu') fail('VALIDATION', 'Titipan sudah diputuskan.');
+        c.s.update('expense_requests', 'id', str(r.id), { status: 'dibatalkan', diputus_oleh: str(c.user!.id), diputus_at: iso(c.env), ...stamp(c, false) });
+        log(c, 'titip_batal', 'expense_requests', str(r.id), `Batalkan titipan Rp ${Number(r.nominal).toLocaleString('id-ID')}`);
+        return { ok: true };
+      });
+    },
+  },
+  'titip.decide': {
+    auth: true,
+    fn: (c, p) => {
+      need(c, 'pindah_dana', 'ubah');
+      const ok = !!p.konfirmasi;
+      const cat = str(p.catatan).trim();
+      if (!ok && !cat) fail('VALIDATION', 'Isi alasan penolakan.');
+      checkPassword(c, p.password);
+      return c.s.withLock(() => {
+        const r = c.s.all('expense_requests').find((x) => x.id === p.id) || fail('NOT_FOUND', 'Titipan tidak ditemukan.');
+        if (r.status !== 'menunggu') fail('VALIDATION', 'Titipan ini sudah diputuskan.');
+        const users = Object.fromEntries(c.s.all('users').map((x) => [x.id, x.nama]));
+        const pencatat = str(users[str(r.created_by)]);
+        let expenseId = '';
+        const k = p.koreksi || {};
+        const nominal = Math.round(Number(k.nominal) || Number(r.nominal));
+        const methodId = str(k.method_id) || str(r.method_id);
+        const kategori = str(k.kategori_id) || str(r.kategori_id);
+        if (ok) {
+          const ket = `Titipan dicatat ${pencatat}${r.penerima ? ` · dibayar ke ${str(r.penerima)}` : ''}${r.catatan ? ` · ${str(r.catatan)}` : ''}`;
+          if (r.jenis === 'bon') {
+            handlers['bills.pay'].fn(c, { bill_id: r.bill_id, nominal, method_id: methodId, tanggal: r.tanggal, keterangan: ket });
+            expenseId = 'bill:' + str(r.bill_id);
+          } else {
+            const e = handlers['expense.save'].fn(c, { expense: { tanggal: r.tanggal, kategori_id: kategori, item: r.item, nota: '', supplier_id: '', qty: 1, harga: nominal, satuan: '', cara_bayar: 'lunas', method_id: methodId, keterangan: ket } }) as Row;
+            expenseId = str(e.id);
+          }
+        }
+        c.s.update('expense_requests', 'id', str(r.id), { status: ok ? 'dikonfirmasi' : 'ditolak', expense_id: expenseId, nominal, method_id: methodId, kategori_id: kategori,
+          diputus_oleh: str(c.user!.id), diputus_at: iso(c.env), catatan_owner: cat.slice(0, 300), ...stamp(c, false) });
+        log(c, ok ? 'titip_konfirmasi' : 'titip_tolak', 'expense_requests', str(r.id), `${ok ? 'Konfirmasi' : 'Tolak'} titipan ${pencatat} Rp ${nominal.toLocaleString('id-ID')}`, cat);
+        ext.emit(c, { tipe: ok ? 'titip_konfirmasi' : 'titip_tolak', judul: `Titipan pengeluaran Rp ${nominal.toLocaleString('id-ID')} ${ok ? 'dikonfirmasi' : 'ditolak'}`, detail: `${str(r.item) || 'bayar bon'} · oleh ${str(c.user!.nama)}${cat ? ` · "${cat}"` : ''}`, nominal, scope: 'setoran', target: str(r.created_by), ref_tabel: 'expense_requests', ref_id: str(r.id) });
+        return { ok: true, expense_id: expenseId };
+      });
+    },
+  },
   'bills.pay': {
     auth: true,
     fn: (c, p) => {
@@ -1248,6 +1354,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
         const terbayar = c.s.all('bill_payments').filter((x) => x.bill_id === (b as Row).id).reduce((a, x) => a + Number(x.nominal || 0), 0);
         const row = c.s.update('supplier_bills', 'id', str((b as Row).id), { terbayar, sisa: Number((b as Row).total) - terbayar, ...stamp(c, false) });
         log(c, 'bayar_hutang', 'supplier_bills', str((b as Row).id), `Bayar hutang ${nominal.toLocaleString('id-ID')} (${(b as Row).nota || (b as Row).keterangan})`);
+        ext.emit(c, { tipe: 'bayar_hutang', judul: `${str(c.user?.nama)}: bayar bon supplier Rp ${nominal.toLocaleString('id-ID')}`, detail: str((b as Row).nota || (b as Row).keterangan), nominal, scope: 'keuangan', ref_tabel: 'supplier_bills', ref_id: str((b as Row).id) });
         return row;
       });
     },
@@ -1446,6 +1553,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
       const s = p.settings || {};
       if (s.min_qty_banyak !== undefined && !(Number(s.min_qty_banyak) >= 2)) fail('VALIDATION', 'Minimal qty harga banyak harus angka ≥ 2.');
       if (s.stok_kurang_saat !== undefined && !['selesai', 'bayar'].includes(str(s.stok_kurang_saat))) fail('VALIDATION', 'Pilihan potong stok tidak dikenal.');
+      ['kas_kecil_plafon', 'kas_kecil_batas_cek'].forEach((k) => { if (s[k] !== undefined && !(Number(s[k]) >= 0)) fail('VALIDATION', 'Plafon / batas kas kecil harus angka.'); });
       if (s.margin_min !== undefined && !(Number(s.margin_min) >= 0 && Number(s.margin_min) <= 90)) fail('VALIDATION', 'Margin minimum 0–90%.');
       Object.keys(s).filter((k) => /^target_\d{6}$/.test(k)).forEach((k) => { if (str(s[k]) !== '' && !(Number(s[k]) >= 0)) fail('VALIDATION', 'Target omzet harus angka.'); });
       if (s.sesi_jam !== undefined && !(Number(s.sesi_jam) >= 1 && Number(s.sesi_jam) <= 72)) fail('VALIDATION', 'Lama sesi 1–72 jam.');
@@ -1511,7 +1619,7 @@ export const BASE_CATEGORIES: [string, string][] = [
 export const BASE_PRODUCT_CATEGORIES = ['Kertas', 'Stiker', 'Hitam putih', 'Finishing', 'DTF', 'Jasa', 'Lain-lain'];
 export const BASE_SETTINGS: Record<string, string> = {
   nama_usaha: 'Fortuner Digital Printing', alamat: '', telp: '', min_qty_banyak: '26', sesi_jam: '12', prefix_nota: 'FT', maks_perangkat: '',
-  stok_kurang_saat: 'selesai', margin_min: '20',
+  stok_kurang_saat: 'selesai', margin_min: '20', kas_kecil_plafon: '1000000', kas_kecil_batas_cek: '300000',
   catatan_struk: 'Terima kasih. Barang yang tidak diambil lebih dari 30 hari di luar tanggung jawab kami.',
 };
 

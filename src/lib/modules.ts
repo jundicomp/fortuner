@@ -13,6 +13,7 @@ export const MODULES: { key: string; label: string; group: string }[] = [
   { key: 'hutang', label: 'Hutang Supplier', group: 'Keuangan' },
   { key: 'kas', label: 'Kas', group: 'Keuangan' },
   { key: 'pindah_dana', label: 'Pindah dana & rekonsiliasi', group: 'Keuangan' },
+  { key: 'pengeluaran.titip', label: 'Titip catat pengeluaran owner', group: 'Keuangan' },
   { key: 'mesin', label: 'Mesin & Operator', group: 'Operasional' },
   { key: 'stok', label: 'Stok bahan & opname', group: 'Operasional' },
   { key: 'pembelian', label: 'Pembelian bahan', group: 'Operasional' },
@@ -56,6 +57,7 @@ export function defaultPermissions(role: Role): PermissionMap {
     case 'kasir':
       set(['dashboard', 'produksi', 'master.produk', 'master.konsumen'], view);
       set(['kasir', 'order', 'piutang', 'kas'], { lihat: true, tambah: true, ubah: true, ekspor: true });
+      set(['pengeluaran.titip'], { lihat: true, tambah: true });
       break;
     case 'operator':
       set(['dashboard', 'order'], view);
@@ -64,7 +66,7 @@ export function defaultPermissions(role: Role): PermissionMap {
       break;
     case 'keuangan':
       set(['dashboard', 'order', 'piutang', 'master.produk', 'master.harga_beli', 'master.supplier'], { lihat: true, ekspor: true });
-      set(['pengeluaran', 'hutang', 'kas', 'pindah_dana', 'laporan', 'pembelian'], all);
+      set(['pengeluaran', 'hutang', 'kas', 'pindah_dana', 'pengeluaran.titip', 'laporan', 'pembelian'], all);
       set(['stok'], { lihat: true, tambah: true, ubah: true, ekspor: true });
       break;
   }

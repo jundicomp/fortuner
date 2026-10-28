@@ -7,6 +7,7 @@ import { applyTheme, getThemePref, type ThemePref } from '@/lib/theme';
 import { IS_DEMO } from '@/lib/api';
 import { ROLES } from '@/types';
 import { SyncStatus } from './SyncStatus';
+import { NotifBell } from '@/components/NotifBell';
 import { UpdateNotifier } from '@/components/UpdateDialog';
 import { sync } from '@/lib/offline';
 import { useToast } from '@/components/ui/Toast';
@@ -39,6 +40,7 @@ export function Header({ onBurger, onChangePassword }: { onBurger: () => void; o
         {IS_DEMO && <span className="pill pill-brand hidden sm:inline-flex">Mode demo</span>}
         <UpdateNotifier />
         <SyncStatus />
+        <NotifBell />
         <button className="btn btn-ghost px-2.5" onClick={cycle} title={`Tema: ${theme === 'system' ? 'ikuti sistem' : theme === 'dark' ? 'gelap' : 'terang'}`} aria-label="Ganti tema"><ThemeIcon size={18} /></button>
         <div className="relative" ref={ref}>
           <button className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-sunk" onClick={() => setOpen((o) => !o)} aria-expanded={open}>

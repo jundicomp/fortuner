@@ -16,6 +16,7 @@ function randomId() {
 
 function idbGet(): Promise<string | null> {
   return new Promise((resolve) => {
+    setTimeout(() => resolve(null), 1500); // jangan menggantung bila IndexedDB diblokir (mis. di dalam iframe)
     try {
       const req = indexedDB.open('fortuner', 1);
       req.onupgradeneeded = () => req.result.createObjectStore('kv');

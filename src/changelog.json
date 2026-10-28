@@ -1,5 +1,53 @@
 [
   {
+    "version": "1.3.3",
+    "tanggal": "2026-10-28",
+    "catatan": [
+      "Menu baru Keuangan → Titip Pengeluaran: kasir mencatat pengeluaran yang sudah dibayar owner dari rekening (umum, bahan, atau bayar bon supplier) dengan foto bukti chat WA / bukti transfer dan password.",
+      "Owner/keuangan memeriksa bukti, boleh mengoreksi nominal, rekening, dan kategori, lalu Konfirmasi (langsung masuk Pengeluaran & saldo rekening berkurang) atau Tolak dengan alasan. Kasir mendapat notifikasi hasilnya.",
+      "Hak akses baru \"Titip catat pengeluaran owner\" (default: Kasir lihat+tambah, Keuangan penuh). Konfirmasi mengikuti hak Pindah dana. Kasir tetap tidak melihat saldo bank.",
+      "Foto bukti diperkecil otomatis (±1280px) dan di versi online disimpan ke folder Google Drive \"Fortuner POS - Bukti\"."
+    ]
+  },
+  {
+    "version": "1.3.2",
+    "tanggal": "2026-10-28",
+    "catatan": [
+      "Kas kecil = uang tunai bersama untuk belanja harian, dengan plafon (default Rp 1.000.000). Uang keluar ditolak bila melebihi saldo kas kecil.",
+      "Kasir bisa \"Isi dari laci saya\" saat kas kecil kurang (jumlah, keperluan, password). Langsung berlaku dan masuk daftar Perlu dicek owner. Uang keluar di atas batas (default Rp 300.000) juga wajib dicek.",
+      "Owner: tombol \"Isi ulang sampai plafon\" dari Kas owner, dan tandai Sesuai / Bermasalah (wajib catatan) untuk transaksi yang perlu dicek. Plafon & batas cek diatur di Pengaturan umum.",
+      "Notifikasi: lonceng di kanan atas dengan jumlah belum dibaca, panel transaksi terbaru (owner bisa langsung Terima/Tolak setoran atau Sesuai/Bermasalah), dan pop-up melayang saat ada transaksi baru. Isi notifikasi mengikuti hak akses.",
+      "Menu baru Keuangan → Riwayat: owner/keuangan melihat tab Semua, Perlu dicek, Setoran, Kas kecil, Pindah dana, Pengeluaran, Rekonsiliasi; kasir melihat Laci saya, Setoran saya, Kas kecil."
+    ]
+  },
+  {
+    "version": "1.3.1",
+    "tanggal": "2026-10-28",
+    "catatan": [
+      "Kasir kini bisa melihat saldo laci rekan kasir (kotak terpisah bergaya garis, hanya lihat) supaya saling tahu kondisi kas masing-masing. Rekening bank tetap tidak terlihat oleh kasir.",
+      "Mode demo: browser otomatis disetujui sebagai perangkat kantor, jadi akun FO (Riska) dan kasir (Tina, Rudi) bisa langsung dicoba."
+    ]
+  },
+  {
+    "version": "1.3.0",
+    "tanggal": "2026-10-28",
+    "catatan": [
+      "Setoran laci ke owner: kasir mengisi form setoran (jumlah, catatan, password) setelah menyerahkan uang fisik. Owner/admin menerima atau menolak (penolakan wajib alasan, keduanya pakai password).",
+      "Saldo laci baru berkurang setelah setoran diterima; selama menunggu, kasir bisa membatalkan. Riwayat setoran (menunggu/diterima/ditolak/dibatalkan) tampil di sisi kasir dan owner, plus penanda jumlah setoran yang menunggu.",
+      "\"Kas besar\" diganti nama menjadi \"Kas owner\": tempat uang yang sudah diterima owner dari setoran kasir."
+    ]
+  },
+  {
+    "version": "1.2.9",
+    "tanggal": "2026-10-28",
+    "catatan": [
+      "Laci per kasir otomatis: setiap user ber-role kasir punya laci sendiri. Kasir tetap memilih \"Tunai\" saat terima bayar, uangnya masuk ke laci kasir yang login.",
+      "Metode Tunai kini tampil sebagai \"Kas besar\" (uang tunai yang dipegang owner/keuangan). Pindah Dana mendukung Modal laci kasir, Setor laci ke kas besar, Setor tunai dari laci ke bank, dan Antar laci.",
+      "Kasir hanya melihat saldo laci miliknya (+ kas kecil) dan rekap tutup kasir miliknya sendiri; owner, admin, dan keuangan (hak Pindah dana) melihat semua laci.",
+      "Kartu saldo kas & laci tampil juga di menu Kas."
+    ]
+  },
+  {
     "version": "1.2.8",
     "tanggal": "2026-10-16",
     "catatan": [
