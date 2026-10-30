@@ -1,3 +1,4 @@
+import { OmzetSplit } from '@/components/OmzetSplit';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -9,13 +10,13 @@ import { useToast } from '@/components/ui/Toast';
 import { useAuth } from '@/auth/AuthContext';
 import { nf, rp, tgl, ymd } from '@/lib/format';
 
-interface Trx { omzet_hari_ini: number; omzet_kemarin: number; masuk_hari_ini: number; masuk_kemarin: number; nota_hari_ini: number; nota_kemarin: number; piutang_total: number; piutang_nota: number; tren: { tanggal: string; omzet: number; masuk: number }[] }
+interface Trx { omzet_hari_ini: number; omzet_hari_ini_sisa?: number; omzet_kemarin: number; masuk_hari_ini: number; masuk_kemarin: number; nota_hari_ini: number; nota_kemarin: number; piutang_total: number; piutang_nota: number; tren: { tanggal: string; omzet: number; masuk: number }[] }
 interface Summary {
   trx: Trx | null;
   produksi: { mesin_id: string; mesin: string; antrian: number; proses: number }[] | null;
   hutang: { total: number; tagihan: number; jatuh_tempo: { id: string; supplier: string; sisa: number; jatuh_tempo: string; nota: string }[] } | null;
   bulan: {
-    omzet: number; omzet_bulan_lalu_sd: number; omzet_bulan_lalu: number; top_produk: { nama: string; omzet: number; qty: number }[];
+    omzet: number; omzet_sisa?: number; omzet_bulan_lalu_sd: number; omzet_bulan_lalu: number; top_produk: { nama: string; omzet: number; qty: number }[];
     target: number; hari_ke: number; jumlah_hari: number; proyeksi: number; perlu_per_hari: number; bisa_atur_target: boolean;
   } | null;
   stok: { menipis: { id: string; nama: string; satuan: string; stok: number; stok_min: number }[]; jumlah: number } | null;
@@ -147,6 +148,7 @@ function BulanPanel({ b, h }: { b: Summary['bulan']; h: Summary['hutang'] }) {
               <><span className={`inline-flex items-center gap-0.5 font-bold ${pctB >= 0 ? 'text-ok' : 'text-bad'}`}>{pctB >= 0 ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}{Math.abs(pctB).toFixed(0)}%</span> <span className="text-muted">vs bulan lalu s.d. tanggal {Number(today.slice(8))}</span>
               <div className="num mt-0.5 text-muted">{rp(b.omzet_bulan_lalu_sd)}</div></>}
           </div>
+          <OmzetSplit className="mt-3" omzet={b.omzet} sisa={b.omzet_sisa ?? 0} />
           <div className="mt-3 h-2 overflow-hidden rounded-full bg-sunk" title="Bulan ini dibanding total bulan lalu">
             <div className="h-full rounded-full bg-brand" style={{ width: `${b.omzet_bulan_lalu ? Math.min(100, (b.omzet / b.omzet_bulan_lalu) * 100) : 0}%` }} />
           </div>
@@ -267,7 +269,7 @@ function Delta({ now, before }: { now: number; before: number }) {
 
 function TrxPanel({ t }: { t: Trx }) {
   const tiles = [
-    { label: 'Omzet hari ini', value: rp(t.omzet_hari_ini), icon: Receipt, to: '/order', sub: <Delta now={t.omzet_hari_ini} before={t.omzet_kemarin} />, tint: 'orange' },
+    { label: 'Omzet hari ini', value: rp(t.omzet_hari_ini), icon: Receipt, to: '/order', sub: <Delta now={t.omzet_hari_ini} before={t.omzet_kemarin} />, tint: 'orange', extra: <OmzetSplit className="mt-3" omzet={t.omzet_hari_ini} sisa={t.omzet_hari_ini_sisa ?? 0} /> },
     { label: 'Uang masuk hari ini', value: rp(t.masuk_hari_ini), icon: Wallet, to: '/order', sub: <Delta now={t.masuk_hari_ini} before={t.masuk_kemarin} />, tint: 'blue' },
     { label: 'Nota hari ini', value: nf(t.nota_hari_ini), icon: ShoppingCart, to: '/order', sub: <Delta now={t.nota_hari_ini} before={t.nota_kemarin} />, tint: 'purple' },
     { label: 'Piutang berjalan', value: rp(t.piutang_total), icon: HandCoins, to: '/piutang', sub: <span className="text-xs text-muted">{nf(t.piutang_nota)} nota belum lunas</span>, bad: true, tint: 'rose' },
@@ -280,6 +282,7 @@ function TrxPanel({ t }: { t: Trx }) {
             <div className="flex items-center justify-between"><span className="text-xs font-bold uppercase tracking-wider text-muted">{k.label}</span><span className="tint-chip flex h-8 w-8 items-center justify-center rounded-lg"><k.icon size={17} /></span></div>
             <div className={`num mt-2 text-2xl font-extrabold ${k.bad ? 'text-bad' : ''}`}>{k.value}</div>
             <div className="mt-1">{k.sub}</div>
+            {'extra' in k && k.extra}
           </Link>
         ))}
       </div>

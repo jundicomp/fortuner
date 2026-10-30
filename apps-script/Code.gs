@@ -3681,6 +3681,7 @@ var FortunerServer = (() => {
         const trx = canMoney ? {
           omzet_hari_ini: sumOrders(today),
           omzet_kemarin: sumOrders(yest),
+          omzet_hari_ini_sisa: orders.filter((o) => o.tanggal === today).reduce((a, o) => a + Math.max(0, Number(o.sisa || 0)), 0),
           masuk_hari_ini: sumPays(today),
           masuk_kemarin: sumPays(yest),
           nota_hari_ini: orders.filter((o) => o.tanggal === today).length,
@@ -3738,8 +3739,10 @@ var FortunerServer = (() => {
           const omzetBulan = sumO(m0, today);
           const nDays = Number(addDays(addDays(m0, 32).slice(0, 8) + "01", -1).slice(8, 10));
           const target = Number(settingsMap(c.s)["target_" + today.slice(0, 7).replace("-", "")]) || 0;
+          const sisaBulan = orders.filter((o) => str(o.tanggal) >= m0 && str(o.tanggal) <= today).reduce((x, o) => x + Math.max(0, Number(o.sisa || 0)), 0);
           bulan = {
             omzet: omzetBulan,
+            omzet_sisa: sisaBulan,
             omzet_bulan_lalu_sd: sumO(prev0, prevSame),
             omzet_bulan_lalu: sumO(prev0, prevEnd),
             top_produk: Object.values(top).sort((a, b) => b.omzet - a.omzet).slice(0, 5),

@@ -1,3 +1,4 @@
+import { OmzetSplit } from '@/components/OmzetSplit';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -95,7 +96,7 @@ export function LaporanPage() {
       {d && <p className="-mt-2 mb-4 text-xs text-muted">Periode {tgl(d.from)} – {tgl(d.to)}</p>}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <Kpi tint="orange" label="Omzet" value={rp(r?.omzet)} sub={`${nf(r?.nota)} nota`} loading={q.isLoading} />
+        <Kpi tint="orange" label="Omzet" value={rp(r?.omzet)} sub={`${nf(r?.nota)} nota`} loading={q.isLoading} extra={r && <OmzetSplit className="mt-2.5" omzet={r.omzet} sisa={r.piutang_periode} />} />
         <Kpi tint="purple" label="Rata-rata nota" value={rp(r?.rata_nota)} sub={`${nf(r?.klik)} klik`} loading={q.isLoading} />
         <Kpi tint="blue" label="Uang masuk" value={rp(r?.masuk)} sub={r ? `${pct(r.masuk, r.omzet)} dari omzet` : ''} loading={q.isLoading} />
         <Kpi tint="rose" label="Piutang periode ini" value={rp(r?.piutang_periode)} sub="sisa dari nota periode ini" loading={q.isLoading} bad={!!r?.piutang_periode} />
@@ -127,12 +128,13 @@ export function LaporanPage() {
   );
 }
 
-function Kpi({ label, value, sub, loading, bad, tint = 'orange' }: { label: string; value: string; sub?: string; loading?: boolean; bad?: boolean; tint?: string }) {
+function Kpi({ label, value, sub, loading, bad, tint = 'orange', extra }: { label: string; value: string; sub?: string; loading?: boolean; bad?: boolean; tint?: string; extra?: React.ReactNode }) {
   return (
     <div className={`card tint tint-${tint} p-4`}>
       <div className="text-xs font-bold uppercase tracking-wider text-muted">{label}</div>
       <div className={`num mt-1.5 whitespace-nowrap text-lg font-extrabold sm:text-xl 2xl:text-2xl ${bad ? 'text-bad' : ''}`}>{loading ? '…' : value}</div>
       {sub && <div className="mt-0.5 text-xs text-muted">{sub}</div>}
+      {extra}
     </div>
   );
 }
