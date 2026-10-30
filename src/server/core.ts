@@ -668,6 +668,8 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
         total: cust.length, aktif: aktif.length, nonaktif: cust.length - aktif.length,
         percetakan: aktif.filter((x) => tipeOf[str(x.id)] === 'reseller').length,
         enduser: aktif.filter((x) => tipeOf[str(x.id)] === 'enduser').length,
+        total_percetakan: cust.filter((x) => tipeOf[str(x.id)] === 'reseller').length,
+        total_enduser: cust.filter((x) => tipeOf[str(x.id)] === 'enduser').length,
         baru_bulan_ini: cust.filter((x) => str(x.created_at).slice(0, 10) >= m0).length,
         transaksi_bulan_ini: new Set(bulanIni.map((o) => str(o.customer_id))).size,
         tidur: aktif.filter((x) => terakhir[str(x.id)] && terakhir[str(x.id)] < tidurBatas).length,

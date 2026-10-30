@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
-import { ChevronDown, Moon, Sparkles, UserCheck, Users } from 'lucide-react';
+import { ChevronDown, Contact, Moon, Sparkles, UserCheck, Users } from 'lucide-react';
 import { useState } from 'react';
 import { api } from '@/lib/api';
 import { nf, rp } from '@/lib/format';
 
 interface Stats {
-  total: number; aktif: number; nonaktif: number; percetakan: number; enduser: number;
+  total: number; total_percetakan: number; total_enduser: number; aktif: number; nonaktif: number; percetakan: number; enduser: number;
   baru_bulan_ini: number; transaksi_bulan_ini: number; tidur: number;
   omzet: { reseller: number; enduser: number } | null;
   top: { id: string; nama: string; percetakan: string; tipe: string; omzet: number; nota: number }[] | null;
@@ -55,10 +55,27 @@ export function CustomerStats() {
       <button id="cust-stats-toggle" onClick={toggle} className="mb-2 flex items-center gap-1 text-xs font-bold uppercase tracking-wider text-muted hover:text-ink">
         <ChevronDown size={14} className={`transition ${open ? '' : '-rotate-90'}`} />Ringkasan konsumen
       </button>
-      {open && (q.isLoading ? <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">{[0, 1, 2, 3].map((i) => <div key={i} className="card h-[104px] animate-pulse bg-sunk" />)}</div>
+      {open && (q.isLoading ? <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">{[0, 1, 2, 3, 4].map((i) => <div key={i} className={`card h-[120px] animate-pulse bg-sunk ${i ? '' : 'col-span-2'}`} />)}</div>
         : s && (
           <div className="flex flex-col gap-3">
-            <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 xl:grid-cols-6">
+              <div id="cust-total" className="card col-span-2 flex flex-col p-4">
+                <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold uppercase tracking-wider text-muted">Total konsumen</span><span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-ink text-canvas"><Contact size={17} /></span></div>
+                <div className="mt-2 flex items-end gap-4">
+                  <div className="num text-3xl font-extrabold leading-none">{nf(s.total)}</div>
+                  <div className="mb-0.5 flex h-2 flex-1 overflow-hidden rounded-full bg-sunk">
+                    {s.total > 0 && <><div style={{ width: `${(s.total_percetakan / s.total) * 100}%`, background: C_PRC }} /><div style={{ width: `${(s.total_enduser / s.total) * 100}%`, background: C_EU }} /></>}
+                  </div>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {([['Percetakan', s.total_percetakan, C_PRC], ['End user', s.total_enduser, C_EU]] as const).map(([l, n, col]) => (
+                    <div key={l} className="rounded-xl border border-line px-3 py-2" style={{ borderLeft: `4px solid ${col}` }}>
+                      <div className="text-xs font-semibold text-muted">{l}</div>
+                      <div className="flex items-baseline gap-1.5"><b className="num text-lg">{nf(n)}</b><span className="text-xs text-muted">{pct(n, s.total)}%</span></div>
+                    </div>
+                  ))}
+                </div>
+              </div>
               {tiles.map((k) => (
                 <div key={k.label} className={`card tint tint-${k.tint} p-4`}>
                   <div className="flex items-center justify-between gap-2"><span className="text-xs font-bold uppercase tracking-wider text-muted">{k.label}</span><span className="tint-chip flex h-8 w-8 shrink-0 items-center justify-center rounded-lg"><k.icon size={17} /></span></div>
