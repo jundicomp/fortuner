@@ -17,7 +17,7 @@ const CARA: Record<string, string> = { transfer: 'Transfer', tunai: 'Tunai', edc
 const esc = (s: unknown) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const n0 = (v: number) => (v ? nf(v) : '–');
 
-const CSS = `
+export const REPORT_CSS = `
 @page { size: A4; margin: 14mm 13mm 16mm; }
 * { box-sizing: border-box; }
 body { margin: 0; font-family: Inter, 'Segoe UI', Arial, sans-serif; font-size: 9.5pt; color: #111; line-height: 1.35; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -73,7 +73,7 @@ export function customerReportHtml(p: Profile, shop: ReceiptShop, o: ReportOpts 
     <td class="r">${nf(x.total)}${x.batal_nilai > 0 ? `<br><span class="bad">batal −${nf(x.batal_nilai)}</span>` : ''}</td><td class="r ${x.sisa > 0 ? 'bad' : 'mut'}">${x.sisa > 0 ? nf(x.sisa) : '–'}</td>
     <td>${BAYAR[x.status_bayar] || x.status_bayar}${x.deposit ? ' · deposit' : ''}${x.status_batal === 'sebagian' ? ' · batal sebagian' : ''}</td><td>${x.status_ambil === 'diambil' ? 'Diambil' : x.status_batal === 'penuh' ? '–' : 'Belum'}</td></tr>`).join('');
 
-  const html = `<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><title>Kartu Konsumen ${esc(cu.nama)} #${esc(cu.kode)}</title><style>${CSS}</style></head><body>
+  const html = `<!DOCTYPE html><html lang="id"><head><meta charset="utf-8"><title>Kartu Konsumen ${esc(cu.nama)} #${esc(cu.kode)}</title><style>${REPORT_CSS}</style></head><body>
 <table class="kop"><tr><td style="width:42pt"><table><tr><td class="logo">${esc((shop.nama || 'F').trim()[0] || 'F').toUpperCase()}</td></tr></table></td>
 <td style="padding-left:8pt"><div class="toko">${esc(shop.nama)}</div><div class="mut">${esc([shop.alamat, shop.telp].filter(Boolean).join(' · '))}</div></td>
 <td><div class="judul">KARTU KONSUMEN</div><div class="mut" style="text-align:right">Dicetak ${tglJam(sekarang)}${o.olehNama ? ` · ${esc(o.olehNama)}` : ''}</div></td></tr></table>
@@ -132,12 +132,17 @@ const fileBase = (p: Profile) => `Kartu Konsumen ${p.customer.kode} ${p.customer
 
 /** Cetak A4 / simpan PDF: dokumen dimuat di iframe tersembunyi lalu jendela print dibuka (pilih "Simpan sebagai PDF"). */
 export function printCustomerReport(p: Profile, shop: ReceiptShop, o: ReportOpts = {}) {
+  printHtml(customerReportHtml(p, shop, o), fileBase(p));
+}
+
+/** Cetak dokumen HTML A4 lewat iframe tersembunyi; judul = nama file default saat disimpan PDF. */
+export function printHtml(html: string, title: string) {
   const fr = document.createElement('iframe');
   fr.setAttribute('aria-hidden', 'true');
   fr.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden';
   document.body.appendChild(fr);
   const doc = fr.contentDocument!;
-  doc.open(); doc.write(customerReportHtml(p, shop, o)); doc.close();
+  doc.open(); doc.write(html); doc.close();
   // pakai huruf aplikasi (Inter) bila tersedia
   try {
     const fonts = Array.from(document.styleSheets).flatMap((s) => { try { return Array.from(s.cssRules); } catch { return []; } })
@@ -145,7 +150,7 @@ export function printCustomerReport(p: Profile, shop: ReceiptShop, o: ReportOpts
     if (fonts) { const st = doc.createElement('style'); st.textContent = fonts; doc.head.appendChild(st); }
   } catch { /* huruf cadangan dipakai */ }
   const prevTitle = document.title;
-  document.title = fileBase(p); // nama file default saat "Simpan sebagai PDF"
+  document.title = title; // nama file default saat "Simpan sebagai PDF"
   const go = () => {
     try { fr.contentWindow!.focus(); fr.contentWindow!.print(); } catch { /* pratinjau tertentu memblokir print */ }
     setTimeout(() => { document.title = prevTitle; fr.remove(); }, 1500);
@@ -159,7 +164,7 @@ const INH = ['color', 'font-size', 'font-weight', 'font-style', 'font-family', '
 const ALWAYS = ['color', 'font-size', 'font-family', 'font-weight'];
 const BOX = ['background-color', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left', 'vertical-align'];
 const SIDES = ['top', 'right', 'bottom', 'left'];
-function inlineHtml(html: string): Promise<string> {
+export function inlineHtml(html: string): Promise<string> {
   return new Promise((resolve) => {
     const fr = document.createElement('iframe');
     fr.style.cssText = 'position:fixed;left:-10000px;top:0;width:794px;height:1123px;border:0;visibility:hidden';
@@ -196,8 +201,13 @@ function inlineHtml(html: string): Promise<string> {
 
 /** Unduh sebagai dokumen Word (.doc) yang bisa diedit. Aplikasi PC: tersimpan di Downloads lalu dibuka. */
 export async function downloadCustomerDoc(p: Profile, shop: ReceiptShop, o: ReportOpts = {}) {
-  const body = await inlineHtml(customerReportHtml(p, shop, o));
-  const name = `${fileBase(p)}.doc`;
+  await downloadDoc(customerReportHtml(p, shop, o), fileBase(p));
+}
+
+/** Simpan dokumen HTML sebagai file Word (.doc) A4. */
+export async function downloadDoc(html: string, base: string) {
+  const body = await inlineHtml(html);
+  const name = `${base.replace(/[\\/:*?"<>|]+/g, ' ').trim()}.doc`;
   const bytes = new TextEncoder().encode('﻿' + body);
   if (isTauri) {
     const path = await invoke<string>('save_download', { name, data: Array.from(bytes) });

@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.3.8",
+    "tanggal": "2026-10-31",
+    "catatan": [
+      "Ringkasan konsumen punya pilihan periode: Bulan ini, Tahun ini, Keseluruhan, atau tanggal bebas. Konsumen baru, konsumen yang order, omzet, nota per jenis dan top konsumen mengikuti periode.",
+      "Mode Keseluruhan: kartu Pernah order & Belum pernah order, top 10 konsumen, dan grafik omzet + konsumen baru per bulan.",
+      "Laporan konsumen bisa diekspor: Excel (per jenis, per bulan, rekap per konsumen lengkap), PDF A4, dan Word."
+    ]
+  },
+  {
     "version": "1.3.7",
     "tanggal": "2026-10-31",
     "catatan": [

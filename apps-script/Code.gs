@@ -3432,54 +3432,121 @@ var FortunerServer = (() => {
     },
     "customers.stats": {
       auth: true,
-      fn: (c) => {
+      fn: (c, p) => {
         var _a, _b, _c, _d;
         need(c, "master.konsumen");
         const today = c.env.today();
-        const m0 = today.slice(0, 8) + "01";
+        const adaPeriode = p && ("from" in p || "to" in p);
+        const from = adaPeriode ? str(p.from) : today.slice(0, 8) + "01";
+        const to = adaPeriode ? str(p.to) : today;
+        const dalam = (d) => (!from || d >= from) && (!to || d <= to);
         const tidurBatas = addDays(today, -60);
         const cust = c.s.all("customers");
         const aktif = cust.filter((x) => bool(x.aktif));
         const tipeOf = Object.fromEntries(cust.map((x) => [str(x.id), str(x.tipe) === "reseller" ? "reseller" : "enduser"]));
+        const jn = (id) => tipeOf[id] || "enduser";
         const orders = c.s.all("orders").filter((o) => !bool(o.batal));
-        const terakhir = {};
+        const terakhir = {}, pertama = {};
         orders.forEach((o) => {
-          const k = str(o.customer_id);
-          if (str(o.tanggal) > (terakhir[k] || "")) terakhir[k] = str(o.tanggal);
+          const k = str(o.customer_id), d = str(o.tanggal);
+          if (d > (terakhir[k] || "")) terakhir[k] = d;
+          if (!pertama[k] || d < pertama[k]) pertama[k] = d;
         });
-        const bulanIni = orders.filter((o) => str(o.tanggal) >= m0 && str(o.tanggal) <= today);
+        const periode = orders.filter((o) => dalam(str(o.tanggal)));
+        const pembeli = new Set(periode.map((o) => str(o.customer_id)));
+        const baru = cust.filter((x) => dalam(str(x.created_at).slice(0, 10)));
         const res = {
+          from,
+          to,
           total: cust.length,
           aktif: aktif.length,
           nonaktif: cust.length - aktif.length,
-          percetakan: aktif.filter((x) => tipeOf[str(x.id)] === "reseller").length,
-          enduser: aktif.filter((x) => tipeOf[str(x.id)] === "enduser").length,
-          total_percetakan: cust.filter((x) => tipeOf[str(x.id)] === "reseller").length,
-          total_enduser: cust.filter((x) => tipeOf[str(x.id)] === "enduser").length,
-          baru_bulan_ini: cust.filter((x) => str(x.created_at).slice(0, 10) >= m0).length,
-          transaksi_bulan_ini: new Set(bulanIni.map((o) => str(o.customer_id))).size,
+          percetakan: aktif.filter((x) => jn(str(x.id)) === "reseller").length,
+          enduser: aktif.filter((x) => jn(str(x.id)) === "enduser").length,
+          total_percetakan: cust.filter((x) => jn(str(x.id)) === "reseller").length,
+          total_enduser: cust.filter((x) => jn(str(x.id)) === "enduser").length,
+          baru: baru.length,
+          baru_jenis: { reseller: baru.filter((x) => jn(str(x.id)) === "reseller").length, enduser: baru.filter((x) => jn(str(x.id)) === "enduser").length },
+          transaksi: pembeli.size,
+          transaksi_jenis: { reseller: [...pembeli].filter((k) => jn(k) === "reseller").length, enduser: [...pembeli].filter((k) => jn(k) === "enduser").length },
           tidur: aktif.filter((x) => terakhir[str(x.id)] && terakhir[str(x.id)] < tidurBatas).length,
+          belum_order: aktif.filter((x) => !terakhir[str(x.id)]).length,
           omzet: null,
+          nota: null,
           top: null,
-          piutang: null
+          bulanan: null,
+          rekap: null,
+          piutang: null,
+          // nama lama (klien versi sebelumnya)
+          baru_bulan_ini: baru.length,
+          transaksi_bulan_ini: pembeli.size
         };
-        if ((_b = (_a = c.perms) == null ? void 0 : _a.laporan) == null ? void 0 : _b.lihat) {
+        const lihatLaporan = !!((_b = (_a = c.perms) == null ? void 0 : _a.laporan) == null ? void 0 : _b.lihat), lihatPiutang = !!((_d = (_c = c.perms) == null ? void 0 : _c.piutang) == null ? void 0 : _d.lihat);
+        if (lihatLaporan) {
           const per = {};
-          const om = { reseller: 0, enduser: 0 };
-          bulanIni.forEach((o) => {
-            const k = str(o.customer_id), t = Number(o.total || 0) - Number(o.batal_nilai || 0);
-            const r = per[k] || (per[k] = { omzet: 0, nota: 0 });
+          const om = { reseller: 0, enduser: 0 }, nt = { reseller: 0, enduser: 0 };
+          const bln = {};
+          periode.forEach((o) => {
+            const k = str(o.customer_id), bt = Number(o.batal_nilai || 0), t = Number(o.total || 0) - bt;
+            const r = per[k] || (per[k] = { omzet: 0, nota: 0, batal: 0, dibayar: 0 });
             r.omzet += t;
             r.nota++;
-            om[tipeOf[k] || "enduser"] += t;
+            r.batal += bt;
+            r.dibayar += Math.max(0, t - Math.max(0, Number(o.sisa || 0)));
+            om[jn(k)] += t;
+            nt[jn(k)]++;
+            const m = str(o.tanggal).slice(0, 7), b = bln[m] || (bln[m] = { reseller: 0, enduser: 0, nota: 0 });
+            b[jn(k)] += t;
+            b.nota++;
+          });
+          const baruBln = {};
+          baru.forEach((x) => {
+            const m = str(x.created_at).slice(0, 7);
+            baruBln[m] = (baruBln[m] || 0) + 1;
           });
           res.omzet = om;
-          res.top = Object.entries(per).sort((a, b) => b[1].omzet - a[1].omzet).slice(0, 5).map(([id, v]) => {
+          res.nota = nt;
+          res.top = Object.entries(per).sort((a, b) => b[1].omzet - a[1].omzet).slice(0, 10).map(([id, v]) => {
             const x = cust.find((y) => y.id === id);
-            return { id, nama: str(x == null ? void 0 : x.nama) || "(terhapus)", percetakan: str(x == null ? void 0 : x.percetakan), tipe: tipeOf[id] || "enduser", ...v };
+            return { id, nama: str(x == null ? void 0 : x.nama) || "(terhapus)", percetakan: str(x == null ? void 0 : x.percetakan), tipe: jn(id), omzet: v.omzet, nota: v.nota };
           });
+          res.bulanan = [.../* @__PURE__ */ new Set([...Object.keys(bln), ...Object.keys(baruBln)])].sort().slice(-36).map((m) => {
+            var _a2, _b2, _c2;
+            return { bulan: m, reseller: ((_a2 = bln[m]) == null ? void 0 : _a2.reseller) || 0, enduser: ((_b2 = bln[m]) == null ? void 0 : _b2.enduser) || 0, nota: ((_c2 = bln[m]) == null ? void 0 : _c2.nota) || 0, baru: baruBln[m] || 0 };
+          });
+          const sisa = {};
+          if (lihatPiutang) orders.forEach((o) => {
+            if (Number(o.sisa) > 0) sisa[str(o.customer_id)] = (sisa[str(o.customer_id)] || 0) + Number(o.sisa);
+          });
+          const dep = {};
+          c.s.all("deposit_moves").forEach((m) => {
+            const k = str(m.customer_id);
+            dep[k] = (dep[k] || 0) + Number(m.masuk || 0) - Number(m.keluar || 0);
+          });
+          res.rekap = cust.map((x) => {
+            const id = str(x.id), v = per[id] || { omzet: 0, nota: 0, batal: 0, dibayar: 0 };
+            return {
+              id,
+              kode: str(x.kode),
+              nama: str(x.nama),
+              tipe: jn(id),
+              percetakan: str(x.percetakan),
+              telp: str(x.telp),
+              aktif: bool(x.aktif),
+              terdaftar: str(x.created_at).slice(0, 10),
+              pertama: pertama[id] || "",
+              terakhir: terakhir[id] || "",
+              nota: v.nota,
+              omzet: v.omzet,
+              batal: v.batal,
+              dibayar: v.dibayar,
+              rata: v.nota ? Math.round(v.omzet / v.nota) : 0,
+              piutang: lihatPiutang ? sisa[id] || 0 : null,
+              deposit: Math.round((dep[id] || 0) * 100) / 100
+            };
+          }).sort((a, b) => b.omzet - a.omzet || a.kode.localeCompare(b.kode));
         }
-        if ((_d = (_c = c.perms) == null ? void 0 : _c.piutang) == null ? void 0 : _d.lihat) {
+        if (lihatPiutang) {
           const open = orders.filter((o) => Number(o.sisa) > 0);
           res.piutang = { total: open.reduce((a, o) => a + Number(o.sisa), 0), konsumen: new Set(open.map((o) => str(o.customer_id))).size };
         }
