@@ -5,6 +5,7 @@ import { directReady, printDirect, printerSettings } from '@/platform/printer';
 import { nf, tglJam } from '@/lib/format';
 import { CUT_SIZES, namaSisi, sisiLabel } from '@/lib/pricing';
 import { footerOf, KEEP_NOTE, no4, SAH_NOTE, statusOf, terbilang, untukLabel, viaLabel } from '@/lib/receiptText';
+import { kodeJenis, noPendek } from '@/lib/jenis';
 import { code128 } from '@/lib/code128';
 import '@fontsource/inter/latin-600.css';
 import '@fontsource/inter/latin-700.css';
@@ -29,7 +30,7 @@ export interface ReceiptData {
   desain?: string;
   janji_selesai?: string;
   sebelumnya?: number; // sudah dibayar sebelum pembayaran ini (kwitansi)
-  tipe?: string;       // tipe harga konsumen: "End user" / "Reseller"
+  tipe?: string;       // kode jenis konsumen: "01" (percetakan) / "02" (end user)
   telp?: string;       // telepon/WA konsumen
   csLabel?: string;    // label petugas; bawaan: Kasir (kwitansi) / FO (nota)
   // kwitansi
@@ -46,7 +47,8 @@ export function shopOf(s?: Record<string, string> | null): ReceiptShop {
   return { nama: s?.nama_usaha || 'Fortuner', alamat: s?.alamat, telp: s?.telp, catatan: s?.catatan_struk, footer_spk: s?.footer_spk, footer_kwitansi: s?.footer_kwitansi };
 }
 export { footerOf, no4 };
-export const tipeLabel = (t?: string) => (t === 'reseller' ? 'Reseller' : t === 'enduser' || t === 'end user' ? 'End user' : t || '');
+/** Yang tercetak di nota/kwitansi: kode jenis konsumen (01 percetakan, 02 end user), bukan nama jenisnya. */
+export const tipeLabel = (t?: string) => kodeJenis(t);
 /** Nominal pembayaran yang dicatat kwitansi ini. */
 export const bayarOf = (d: ReceiptData) => d.payments.reduce((a, p) => a + p.nominal, 0);
 
@@ -64,7 +66,7 @@ export function ReceiptBody({ d, shop, width = 80 }: { d: ReceiptData; shop: Rec
           {shop.alamat && <div className="rc-small">{shop.alamat}</div>}
           {shop.telp && <div className="rc-small">Telp/WA {shop.telp}</div>}
         </div>
-        <div className="rc-no receipt-no">{no4(d.nomor)}</div>
+        <div className="rc-no receipt-no">{noPendek(d.nomor, d.tipe)}</div>
       </div>
       <div className="rc-hr2" />
       {d.jenis === 'kwitansi' ? <KwitansiPart d={d} /> : <NotaPart d={d} />}
@@ -82,7 +84,7 @@ const R = ({ l, r, b }: { l: ReactNode; r: ReactNode; b?: boolean }) => <div cla
 function NotaPart({ d }: { d: ReceiptData }) {
   const terbayar = bayarOf(d);
   const st = statusOf(d.sisa, terbayar);
-  const rows: [string, ReactNode][] = [['Nama pelanggan', <>{d.customer}{d.tipe ? ` (${d.tipe})` : ''}</>]];
+  const rows: [string, ReactNode][] = [['Nama pelanggan', d.customer]];
   if (d.telp && d.telp !== '-') rows.push(['No WA', d.telp]);
   if (d.janji_selesai) rows.push(['Target selesai', tglJam(d.janji_selesai)]);
   if (d.desain) rows.push(['Sumber', d.desain]);

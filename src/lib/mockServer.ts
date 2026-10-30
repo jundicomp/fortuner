@@ -3,7 +3,7 @@ import { MockStore, browserEnv } from '@/server/mockStore';
 import { seedDemo } from '@/server/demoSeed';
 import { sha256 } from '@/server/sha256';
 
-const KEY = 'fortuner-demo-db-v12'; // v12: konsumen jenis Percetakan/End user (v1.3.4)
+const KEY = 'fortuner-demo-db-v13'; // v13: pembatalan, refund, deposit (v1.3.5)
 try { ['fortuner-demo-db-v1', 'fortuner-demo-db-v2'].forEach((k) => localStorage.removeItem(k)); } catch { /* abaikan */ }
 let store: MockStore | null = null;
 function getStore() {

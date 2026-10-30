@@ -23,9 +23,14 @@ export function LabaRugiPage() {
   const a = d?.sekarang, b = d?.sebelumnya;
   const open = (akun: string) => nav(`/laporan/buku-besar?akun=${encodeURIComponent(akun)}&from=${d?.from}&to=${d?.to}`);
 
+  const adaBatal = !!(a?.pembatalan || b?.pembatalan);
   const bebanAll = [...(a?.beban || []), ...(b?.beban || []).filter((x) => !a?.beban.some((y) => y.kode === x.kode))];
   const rows = (p: Pnl): [string, string, number, 'head' | 'row' | 'sub' | 'total', string?][] => [
-    ['pend', 'Pendapatan penjualan', p.pendapatan, 'row', '4100'],
+    ...(adaBatal ? [
+      ['pkot', 'Penjualan kotor (semua nota)', p.pendapatan_kotor ?? p.pendapatan, 'row', '4100'],
+      ['pbtl', 'Pembatalan penjualan', -(p.pembatalan || 0) || 0, 'row', '4150'],
+      ['pend', 'Penjualan bersih', p.pendapatan, 'sub'],
+    ] as [string, string, number, 'row' | 'sub', string?][] : [['pend', 'Pendapatan penjualan', p.pendapatan, 'row', '4100'] as [string, string, number, 'row', string]]),
     ...(p.pendapatan_lain ? [['lain', 'Pendapatan lain', p.pendapatan_lain, 'row', '4900'] as [string, string, number, 'row', string]] : []),
     ['h1', 'Harga pokok penjualan (HPP)', 0, 'head'],
     ...p.hpp.filter((h) => h.nilai || ['5100', '5110'].includes(h.kode) || (b?.hpp.find((x) => x.kode === h.kode)?.nilai ?? 0)).map((h) => [h.kode, h.nama, -h.nilai || 0, 'row', h.kode] as [string, string, number, 'row', string]),

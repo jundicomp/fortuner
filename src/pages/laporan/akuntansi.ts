@@ -1,7 +1,7 @@
 export interface Account { kode: string; nama: string; tipe: 'aset' | 'kewajiban' | 'modal' | 'pendapatan' | 'hpp' | 'beban' }
 export interface PnlRow { kode: string; nama: string; nilai: number }
 export interface Pnl {
-  pendapatan: number; pendapatan_lain: number; hpp: PnlRow[]; total_hpp: number; laba_kotor: number; beban: PnlRow[]; total_beban: number; laba_bersih: number;
+  pendapatan: number; pendapatan_kotor?: number; pembatalan?: number; pendapatan_lain: number; hpp: PnlRow[]; total_hpp: number; laba_kotor: number; beban: PnlRow[]; total_beban: number; laba_bersih: number;
 }
 export interface PnlReport {
   from: string; to: string; sekarang: Pnl; sebelumnya: Pnl & { from: string; to: string };

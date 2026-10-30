@@ -33,7 +33,7 @@ export const SCHEMA: Record<string, TableSchema> = {
     rb: 'n', rb_bb: 'n', rs: 'n', rs_bb: 'n', eb: 'n', eb_bb: 'n', es: 'n', es_bb: 'n', catatan: 's', ...audit,
   },
   cost_history: { id: 's', product_id: 's', berlaku_mulai: 's', harga_beli: 'n', supplier_id: 's', sumber: 's', ...audit },
-  customers: { id: 's', kode: 's', nama: 's', percetakan: 's', telp: 's', tipe: 's', alamat: 's', catatan: 's', aktif: 'b', ...audit },
+  customers: { id: 's', kode: 's', nama: 's', percetakan: 's', telp: 's', tipe: 's', kode_jenis: 's', alamat: 's', catatan: 's', aktif: 'b', ...audit },
   suppliers: { id: 's', nama: 's', telp: 's', bahan: 's', aktif: 'b', ...audit },
   machines: { id: 's', nama: 's', pakai_counter: 'b', aktif: 'b', biaya_klik: 'n', ...audit },
   payment_methods: { id: 's', nama: 's', jenis: 's', rekening: 's', aktif: 'b', ...audit },
@@ -42,12 +42,15 @@ export const SCHEMA: Record<string, TableSchema> = {
   orders: {
     id: 's', nomor: 's', tanggal: 's', kode_pc: 's', no_urut: 'n', customer_id: 's', cs_id: 's', total: 'n', terbayar: 'n', sisa: 'n',
     status_bayar: 's', status_ambil: 's', tgl_ambil: 's', batal: 'b', alasan_batal: 's', dibuat_offline: 'b', catatan: 's', desain: 's', janji_selesai: 's', ...audit,
+    // v1.3.5 pembatalan tercatat: nilai yang dibatalkan (pengurang omzet) & uang yang sudah dikembalikan (refund/deposit)
+    batal_nilai: 'n', status_batal: 's', dikembalikan: 'n',
   },
   order_items: {
     id: 's', order_id: 's', product_id: 's', nama_produk: 's', keterangan: 's', qty: 'n', sisi: 'n', ukuran_cutting: 'n', klik: 'n',
     tier: 's', harga_satuan: 'n', harga_beli: 'n', harga_manual: 'b', subtotal: 'n', mesin_id: 's', status_produksi: 's',
     operator_id: 's', selesai_at: 's', price_version_id: 's', ...audit,
     hpp_bahan: 'n', hpp_klik: 'n', stok_at: 's',
+    qty_batal: 'n',
   },
   payments: { id: 's', order_id: 's', tanggal: 's', nominal: 'n', method_id: 's', kasir_id: 's', catatan: 's', ...audit },
 
@@ -85,6 +88,21 @@ export const SCHEMA: Record<string, TableSchema> = {
   notif_reads: { user_id: 's', read_at: 's' },
   expense_requests: { id: 's', tanggal: 's', method_id: 's', jenis: 's', kategori_id: 's', bill_id: 's', item: 's', nominal: 'n', penerima: 's', bukti: 's', catatan: 's', status: 's', expense_id: 's', diputus_oleh: 's', diputus_at: 's', catatan_owner: 's', ...audit },
   cash_handovers: { id: 's', tanggal: 's', kasir_id: 's', nominal: 'n', saldo_laci: 'n', catatan: 's', status: 's', diputus_oleh: 's', diputus_at: 's', catatan_owner: 's', ...audit },
+  // ---------- Pembatalan, refund, deposit konsumen (v1.3.5) ----------
+  cancellations: {
+    id: 's', nomor: 's', tanggal: 's', order_id: 's', customer_id: 's', jenis: 's', status: 's', level: 's', kategori: 's', alasan: 's', lampiran: 's', keinginan: 's',
+    nilai_item: 'n', nilai_produksi: 'n', hpp_estimasi: 'n', hpp_bahan: 'n', hpp_klik: 'n', ditahan_mode: 's', ditahan: 'n', nilai_batal: 'n',
+    terbayar: 'n', kelebihan: 'n', penyelesaian: 's', refund_id: 's', deposit_id: 's', diputus_oleh: 's', diputus_at: 's', catatan_owner: 's', ...audit,
+  },
+  cancellation_items: { id: 's', cancellation_id: 's', order_item_id: 's', nama: 's', qty: 'n', qty_batal: 'n', nilai: 'n', diproduksi: 'b', hpp_estimasi: 'n', hpp_bahan: 'n', hpp_klik: 'n' },
+  refunds: {
+    id: 's', nomor: 's', tanggal: 's', customer_id: 's', sumber: 's', ref_id: 's', order_id: 's', nominal: 'n', cara: 's', status: 's', alasan: 's',
+    method_id: 's', kasir_id: 's', penerima: 's', bukti: 's', diputus_oleh: 's', diputus_at: 's', dibayar_oleh: 's', dibayar_at: 's', catatan: 's', ...audit,
+  },
+  deposit_moves: {
+    id: 's', nomor: 's', tanggal: 's', customer_id: 's', jenis: 's', masuk: 'n', keluar: 'n', saldo: 'n', method_id: 's', kasir_id: 's', bukti: 's',
+    ref_tabel: 's', ref_id: 's', order_id: 's', keterangan: 's', ...audit,
+  },
   reconciliations: { id: 's', tanggal: 's', akun: 's', saldo_sistem: 'n', saldo_asli: 'n', selisih: 'n', disesuaikan: 'b', alasan: 's', akun_lawan: 's', keterangan: 's', ...audit },
 };
 

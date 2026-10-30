@@ -11,6 +11,7 @@ import { MODULES, defaultPermissions } from '../lib/modules';
 import { TIERS, hargaBerlaku, hitungHarga } from '../lib/pricing';
 import type { PermissionMap, Role } from '../types';
 import { makeExt } from './ext';
+import { makeBatal, DEPOSIT } from './batal';
 
 export const API_VERSION = 1;
 
@@ -191,18 +192,35 @@ function statusBayar(total: number, terbayar: number) {
   return total === 0 ? 'lunas' : 'belum';
 }
 
+/**
+ * Hitung ulang terbayar & sisa nota.
+ * Tagihan bersih = total − nilai yang dibatalkan. Terbayar = semua pembayaran − uang yang sudah dikembalikan (refund / jadi deposit).
+ * Sisa negatif = konsumen lebih bayar dan refund-nya belum dibayar.
+ */
+/** Gerakan uang per kasir per metode di satu hari untuk tutup kas: pembayaran (bukan deposit) + deposit masuk − refund dibayar. */
+function kasHarian(c: Ctx, t: string) {
+  const out: { kasir_id: string; method_id: string; nominal: number }[] = [];
+  c.s.all('payments').forEach((x) => { if (x.tanggal === t && x.method_id !== DEPOSIT) out.push({ kasir_id: str(x.kasir_id), method_id: str(x.method_id), nominal: Number(x.nominal || 0) }); });
+  c.s.all('deposit_moves').forEach((m) => { if (m.tanggal === t && m.jenis === 'topup') out.push({ kasir_id: str(m.kasir_id), method_id: str(m.method_id), nominal: Number(m.masuk || 0) }); });
+  c.s.all('refunds').forEach((r) => { if (r.status === 'dibayar' && str(r.dibayar_at).slice(0, 10) === t) out.push({ kasir_id: str(r.kasir_id), method_id: str(r.method_id), nominal: -Number(r.nominal || 0) }); });
+  return out;
+}
+
 function recalcOrder(c: Ctx, orderId: string) {
   const o = c.s.all('orders').find((x) => x.id === orderId)!;
-  const terbayar = c.s.all('payments').filter((x) => x.order_id === orderId).reduce((a, x) => a + Number(x.nominal || 0), 0);
-  const total = Number(o.total);
-  c.s.update('orders', 'id', orderId, { terbayar, sisa: total - terbayar, status_bayar: bool(o.batal) ? 'batal' : statusBayar(total, terbayar), ...stamp(c, false) });
+  const bayar = c.s.all('payments').filter((x) => x.order_id === orderId).reduce((a, x) => a + Number(x.nominal || 0), 0);
+  const terbayar = bayar - Number(o.dikembalikan || 0);
+  const net = Number(o.total) - Number(o.batal_nilai || 0);
+  const sisa = net - terbayar;
+  const status = bool(o.batal) || (str(o.status_batal) === 'penuh' && net <= 0 && sisa === 0) ? 'batal' : statusBayar(net, terbayar);
+  c.s.update('orders', 'id', orderId, { terbayar, sisa, status_bayar: status, ...stamp(c, false) });
 }
 
 function orderDetail(c: Ctx, id: string) {
   const o = c.s.all('orders').find((x) => x.id === id) || fail('NOT_FOUND', 'Nota tidak ditemukan.');
   const cu = c.s.all('customers').find((x) => x.id === (o as Row).customer_id) || {};
   const users = Object.fromEntries(c.s.all('users').map((x) => [x.id, x.nama]));
-  const methods = Object.fromEntries(c.s.all('payment_methods').map((x) => [x.id, x.nama]));
+  const methods: Record<string, unknown> = { ...Object.fromEntries(c.s.all('payment_methods').map((x) => [x.id, x.nama])), [DEPOSIT]: 'Deposit' };
   const machines = Object.fromEntries(c.s.all('machines').map((x) => [x.id, x.nama]));
   const canCost = !!c.perms?.['master.harga_beli']?.lihat;
   const jenis = Object.fromEntries(c.s.all('products').map((x) => [x.id, x.jenis_harga]));
@@ -212,6 +230,10 @@ function orderDetail(c: Ctx, id: string) {
     payments: c.s.all('payments').filter((x) => x.order_id === id).sort((a, b) => str(a.created_at).localeCompare(str(b.created_at)))
       .map((x) => ({ ...x, method_nama: str(methods[str(x.method_id)]), kasir_nama: str(users[str(x.kasir_id)]) })),
     payment_methods: c.s.all('payment_methods').filter((m) => bool(m.aktif)).map((m) => ({ id: m.id, nama: m.nama, jenis: m.jenis })),
+    deposit_saldo: batal.saldoBebas(c, str((o as Row).customer_id)),
+    pembatalan: c.s.all('cancellations').filter((x) => x.order_id === id).sort((a, b) => str(b.created_at).localeCompare(str(a.created_at)))
+      .map((x) => ({ id: x.id, nomor: x.nomor, status: x.status, jenis: x.jenis, nilai_item: x.nilai_item, nilai_batal: x.nilai_batal, ditahan: x.ditahan, alasan: x.alasan, penyelesaian: x.penyelesaian, kelebihan: x.kelebihan, created_at: x.created_at, diajukan: str(users[str(x.created_by)]) })),
+    refund_jalan: c.s.all('refunds').filter((r) => r.order_id === id && r.status === 'siap').map((r) => ({ id: r.id, nomor: r.nomor, nominal: r.nominal, cara: r.cara })),
   };
 }
 
@@ -337,9 +359,10 @@ const MASTER: Record<string, { perm: string; label: string; prefix: string; requ
 
 /** Konsumen: kode selalu dari sistem; jenis Percetakan = harga reseller, End user = harga end user. */
 const custKodeBerikut = (rows: Row[]) => String(rows.reduce((a, x) => Math.max(a, Number(x.kode) || 0), 1000) + 1);
-const custTipe = (v: unknown) => (/^(reseller|percetakan)$/i.test(str(v).trim()) ? 'reseller' : 'enduser');
+/** Jenis konsumen dari teks bebas: "reseller", "percetakan", "01", "1", "01 · Percetakan" → reseller; selain itu end user. */
+const custTipe = (v: unknown) => { const t = str(v).trim().toLowerCase(); return /^0?1(\D|$)/.test(t) || /reseller|percetakan/.test(t) ? 'reseller' : 'enduser'; };
 function custRapikan(r: Row): string {
-  r.nama = str(r.nama).trim(); r.telp = str(r.telp).trim(); r.tipe = custTipe(r.tipe);
+  r.nama = str(r.nama).trim(); r.telp = str(r.telp).trim(); r.tipe = custTipe(r.tipe); r.kode_jenis = r.tipe === 'reseller' ? '01' : '02';
   r.percetakan = r.tipe === 'reseller' ? str(r.percetakan).trim() : '';
   if (!r.nama) return 'Nama wajib diisi.';
   if (!r.telp) return 'Telepon wajib diisi.';
@@ -679,7 +702,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
         const per: Record<string, { omzet: number; nota: number }> = {};
         const om = { reseller: 0, enduser: 0 };
         bulanIni.forEach((o) => {
-          const k = str(o.customer_id), t = Number(o.total || 0);
+          const k = str(o.customer_id), t = Number(o.total || 0) - Number(o.batal_nilai || 0);
           const r = (per[k] ||= { omzet: 0, nota: 0 }); r.omzet += t; r.nota++;
           om[(tipeOf[k] || 'enduser') as 'reseller' | 'enduser'] += t;
         });
@@ -930,11 +953,16 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
         const nominal = Math.round(Number(p.nominal) || 0);
         if (nominal <= 0) fail('VALIDATION', 'Nominal pembayaran harus lebih dari 0.');
         const offline = bool(p.dibuat_offline);
-        if (!offline && nominal > Number((o as Row).sisa)) fail('VALIDATION', `Nominal melebihi sisa tagihan (${Number((o as Row).sisa).toLocaleString('id-ID')}).`);
-        const method = c.s.all('payment_methods').find((m) => m.id === p.method_id) || fail('VALIDATION', 'Pilih metode pembayaran.');
+        const pakaiDeposit = p.method_id === DEPOSIT;
+        const keDeposit = !offline && !pakaiDeposit && !!p.lebih_ke_deposit;
+        if (!offline && !keDeposit && nominal > Number((o as Row).sisa)) fail('VALIDATION', `Nominal melebihi sisa tagihan (${Number((o as Row).sisa).toLocaleString('id-ID')}).`);
+        if (pakaiDeposit && offline) fail('VALIDATION', 'Bayar pakai deposit hanya bisa saat online.');
+        const method = pakaiDeposit ? { id: DEPOSIT, nama: 'Deposit' } : c.s.all('payment_methods').find((m) => m.id === p.method_id) || fail('VALIDATION', 'Pilih metode pembayaran.');
         const tanggal = offline && isYmd(str(p.tanggal)) && str(p.tanggal) <= c.env.today() ? str(p.tanggal) : c.env.today();
+        if (pakaiDeposit) batal.payWithDeposit(c, o as Row, nominal, pid);
         c.s.insert('payments', { id: pid, order_id: (o as Row).id, tanggal, nominal, method_id: (method as Row).id, kasir_id: str(c.user!.id), catatan: str(p.catatan), ...stamp(c, true) });
         recalcOrder(c, str((o as Row).id));
+        if (keDeposit) batal.overpayToDeposit(c, str((o as Row).id));
         ext.hooks.onPayment(c, str((o as Row).id));
         log(c, 'bayar', 'orders', str((o as Row).id), `Pembayaran ${nominal.toLocaleString('id-ID')} (${(method as Row).nama}) untuk ${(o as Row).id}${offline ? ' — dibuat offline' : ''}`);
         return orderDetail(c, str((o as Row).id));
@@ -958,18 +986,8 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
   },
   'orders.cancel': {
     auth: true,
-    fn: (c, p) => {
-      need(c, 'order', 'hapus');
-      if (!str(p.alasan)) fail('VALIDATION', 'Isi alasan pembatalan.');
-      return c.s.withLock(() => {
-        const o = c.s.all('orders').find((x) => x.id === p.order_id) || fail('NOT_FOUND', 'Nota tidak ditemukan.');
-        if (Number((o as Row).terbayar) > 0) fail('VALIDATION', 'Nota sudah ada pembayaran. Pengembalian uang dicatat di modul Pengeluaran (Tahap 5), baru nota bisa dibatalkan.');
-        c.s.update('orders', 'id', str((o as Row).id), { batal: true, alasan_batal: str(p.alasan), sisa: 0, status_bayar: 'batal', ...stamp(c, false) });
-        c.s.all('order_items').filter((i) => i.order_id === (o as Row).id).forEach((i) => c.s.update('order_items', 'id', str(i.id), { status_produksi: 'batal' }));
-        log(c, 'batal_nota', 'orders', str((o as Row).id), `Membatalkan ${(o as Row).id} senilai ${Number((o as Row).total).toLocaleString('id-ID')}`, str(p.alasan));
-        return orderDetail(c, str((o as Row).id));
-      });
-    },
+    // v1.3.5: tidak lagi menandai nota batal langsung. Membuat dokumen pembatalan penuh (jalur cepat atau menunggu persetujuan).
+    fn: (c, p) => (handlers['cancel.request'].fn(c, { order_id: p.order_id, jenis: 'penuh', alasan: p.alasan, kategori: p.kategori || 'Lainnya' }) as { order: unknown }).order,
   },
 
   // ----- produksi (Tahap 4) -----
@@ -1094,9 +1112,8 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
       // Kasir tanpa hak "Pindah dana" hanya melihat rekap lacinya sendiri; owner/admin/keuangan melihat semua kasir.
       const semua = !!c.perms?.pindah_dana?.lihat;
       const me = str(c.user?.id);
-      const pays = c.s.all('payments').filter((x) => x.tanggal === t && (semua || x.kasir_id === me));
       const sys: Record<string, number> = {}; const cnt: Record<string, number> = {};
-      pays.forEach((x) => { const k = `${x.kasir_id}|${x.method_id}`; sys[k] = (sys[k] || 0) + Number(x.nominal || 0); cnt[k] = (cnt[k] || 0) + 1; });
+      kasHarian(c, t).filter((x) => semua || x.kasir_id === me).forEach((x) => { const k = `${x.kasir_id}|${x.method_id}`; sys[k] = (sys[k] || 0) + x.nominal; cnt[k] = (cnt[k] || 0) + 1; });
       const deps = c.s.all('cash_deposits').filter((d) => d.tanggal === t && (semua || d.kasir_id === me));
       const keys = new Set([...Object.keys(sys), ...deps.map((d) => `${d.kasir_id}|${d.method_id}`)]);
       const pcOut = c.s.all('petty_cash').filter((x) => x.tanggal === t && !bool(x.deleted)).reduce((a, x) => a + Number(x.keluar || 0), 0);
@@ -1126,7 +1143,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
           if (r.aktual === '' || r.aktual == null) return;
           const aktual = Math.round(Number(r.aktual));
           if (isNaN(aktual) || aktual < 0) fail('VALIDATION', 'Nominal aktual tidak valid.');
-          const sistem = c.s.all('payments').filter((x) => x.tanggal === t && x.kasir_id === r.kasir_id && x.method_id === r.method_id).reduce((a, x) => a + Number(x.nominal || 0), 0);
+          const sistem = kasHarian(c, t).filter((x) => x.kasir_id === str(r.kasir_id) && x.method_id === str(r.method_id)).reduce((a, x) => a + x.nominal, 0);
           const ex = c.s.all('cash_deposits').find((d) => d.tanggal === t && d.kasir_id === r.kasir_id && d.method_id === r.method_id);
           const data = { tanggal: t, kasir_id: str(r.kasir_id), method_id: str(r.method_id), sistem, aktual, selisih: aktual - sistem, keterangan: str(r.keterangan).slice(0, 300) };
           if (aktual !== sistem && !data.keterangan) fail('VALIDATION', 'Ada selisih. Isi keterangan untuk baris yang tidak cocok.');
@@ -1461,13 +1478,13 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
       const today = c.env.today();
       const tahun = /^\d{4}$/.test(str(p.tahun)) ? str(p.tahun) : today.slice(0, 4);
       const all = c.s.all('orders').filter((o) => !bool(o.batal));
-      const hari: Record<string, { omzet: number; piutang: number; nota: number }> = {};
+      const hari: Record<string, { omzet: number; piutang: number; batal: number; nota: number }> = {};
       all.forEach((o) => {
         const t = str(o.tanggal);
         if (t.slice(0, 4) !== tahun) return;
-        const h = (hari[t] ||= { omzet: 0, piutang: 0, nota: 0 });
-        const total = Number(o.total || 0);
-        h.omzet += total; h.piutang += Math.min(total, Math.max(0, Number(o.sisa || 0))); h.nota++;
+        const h = (hari[t] ||= { omzet: 0, piutang: 0, batal: 0, nota: 0 });
+        const total = Number(o.total || 0), bt = Math.min(total, Number(o.batal_nilai || 0));
+        h.omzet += total; h.batal += bt; h.piutang += Math.min(total - bt, Math.max(0, Number(o.sisa || 0))); h.nota++;
       });
       const tahunAda = [...new Set(all.map((o) => str(o.tanggal).slice(0, 4)).filter((y) => /^\d{4}$/.test(y)))];
       if (!tahunAda.includes(today.slice(0, 4))) tahunAda.push(today.slice(0, 4));
@@ -1491,7 +1508,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
       const orders = c.s.all('orders').filter((o) => !bool(o.batal) && inR(o.tanggal));
       const oIds = new Set(orders.map((o) => o.id));
       const items = c.s.all('order_items').filter((i) => oIds.has(i.order_id));
-      const pays = c.s.all('payments').filter((x) => inR(x.tanggal));
+      const pays = c.s.all('payments').filter((x) => inR(x.tanggal) && x.method_id !== DEPOSIT); // bayar pakai deposit bukan uang masuk baru
       const exps = c.s.all('expenses').filter((x) => !bool(x.deleted) && inR(x.tanggal));
       const billPays = c.s.all('bill_payments').filter((x) => inR(x.tanggal));
       const pc = c.s.all('petty_cash').filter((x) => !bool(x.deleted) && inR(x.tanggal));
@@ -1554,6 +1571,8 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
         ringkas: {
           omzet, nota: orders.length, rata_nota: orders.length ? Math.round(omzet / orders.length) : 0, klik: items.reduce((a, i) => a + Number(i.klik || 0), 0),
           piutang_periode: orders.reduce((a, o) => a + Math.max(0, Number(o.sisa || 0)), 0),
+          batal_nota: orders.reduce((a, o) => a + Number(o.batal_nilai || 0), 0),
+          pembatalan: c.s.all('cancellations').filter((x) => x.status === 'disetujui' && inR(str(x.diputus_at).slice(0, 10))).reduce((a, x) => a + Number(x.nilai_batal || 0), 0),
           masuk, keluar_lunas: keluarLunas, keluar_hutang: keluarHutang, kas_kecil: kasKecil, arus_kas: masuk - keluarLunas - keluarHutang - kasKecil,
           pengeluaran_total: exps.reduce((a, x) => a + Number(x.total || 0), 0),
           ...(canLaba ? { hpp: Math.round(hpp), laba_kotor: Math.round(omzetBerHpp - hpp), omzet_ber_hpp: omzetBerHpp, cakupan_hpp: omzet ? Math.round((omzetBerHpp / omzet) * 1000) / 10 : 0, biaya_operasional: opsNonBahan + kasKecil } : {}),
@@ -1590,7 +1609,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
       const canDev = !!c.perms?.['pengaturan.perangkat']?.lihat;
       // angka transaksi (Tahap 2): hari ini, 14 hari terakhir, piutang
       const orders = c.s.all('orders').filter((o) => !bool(o.batal));
-      const pays = c.s.all('payments');
+      const pays = c.s.all('payments').filter((x) => x.method_id !== DEPOSIT);
       const days: string[] = []; for (let i = 13; i >= 0; i--) days.push(addDays(today, -i));
       const yest = addDays(today, -1);
       const sumOrders = (d: string) => orders.filter((o) => o.tanggal === d).reduce((a, o) => a + Number(o.total || 0), 0);
@@ -1599,6 +1618,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
       const trx = canMoney ? {
         omzet_hari_ini: sumOrders(today), omzet_kemarin: sumOrders(yest),
         omzet_hari_ini_sisa: orders.filter((o) => o.tanggal === today).reduce((a, o) => a + Math.max(0, Number(o.sisa || 0)), 0),
+        omzet_hari_ini_batal: orders.filter((o) => o.tanggal === today).reduce((a, o) => a + Number(o.batal_nilai || 0), 0),
         masuk_hari_ini: sumPays(today), masuk_kemarin: sumPays(yest),
         nota_hari_ini: orders.filter((o) => o.tanggal === today).length, nota_kemarin: orders.filter((o) => o.tanggal === yest).length,
         piutang_total: orders.reduce((a, o) => a + Math.max(0, Number(o.sisa || 0)), 0),
@@ -1640,7 +1660,8 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
         const nDays = Number(addDays(addDays(m0, 32).slice(0, 8) + '01', -1).slice(8, 10));
         const target = Number(settingsMap(c.s)['target_' + today.slice(0, 7).replace('-', '')]) || 0;
         const sisaBulan = orders.filter((o) => str(o.tanggal) >= m0 && str(o.tanggal) <= today).reduce((x, o) => x + Math.max(0, Number(o.sisa || 0)), 0);
-        bulan = { omzet: omzetBulan, omzet_sisa: sisaBulan, omzet_bulan_lalu_sd: sumO(prev0, prevSame), omzet_bulan_lalu: sumO(prev0, prevEnd),
+        const batalBulan = orders.filter((o) => str(o.tanggal) >= m0 && str(o.tanggal) <= today).reduce((x, o) => x + Number(o.batal_nilai || 0), 0);
+        bulan = { omzet: omzetBulan, omzet_sisa: sisaBulan, omzet_batal: batalBulan, omzet_bulan_lalu_sd: sumO(prev0, prevSame), omzet_bulan_lalu: sumO(prev0, prevEnd),
           top_produk: Object.values(top).sort((a, b) => b.omzet - a.omzet).slice(0, 5),
           target, hari_ke: dayN, jumlah_hari: nDays, proyeksi: Math.round((omzetBulan / dayN) * nDays),
           perlu_per_hari: target && dayN < nDays ? Math.max(0, Math.round((target - omzetBulan) / (nDays - dayN))) : 0,
@@ -1670,6 +1691,8 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
       if (s.stok_kurang_saat !== undefined && !['selesai', 'bayar'].includes(str(s.stok_kurang_saat))) fail('VALIDATION', 'Pilihan potong stok tidak dikenal.');
       ['kas_kecil_plafon', 'kas_kecil_batas_cek'].forEach((k) => { if (s[k] !== undefined && !(Number(s[k]) >= 0)) fail('VALIDATION', 'Plafon / batas kas kecil harus angka.'); });
       if (s.margin_min !== undefined && !(Number(s.margin_min) >= 0 && Number(s.margin_min) <= 90)) fail('VALIDATION', 'Margin minimum 0–90%.');
+      if (s.batal_ditahan_mode !== undefined && !['hpp', 'persen', 'manual'].includes(str(s.batal_ditahan_mode))) fail('VALIDATION', 'Pilihan biaya ditahan tidak dikenal.');
+      if (s.batal_ditahan_persen !== undefined && !(Number(s.batal_ditahan_persen) >= 0 && Number(s.batal_ditahan_persen) <= 100)) fail('VALIDATION', 'Persen biaya ditahan 0–100.');
       Object.keys(s).filter((k) => /^target_\d{6}$/.test(k)).forEach((k) => { if (str(s[k]) !== '' && !(Number(s[k]) >= 0)) fail('VALIDATION', 'Target omzet harus angka.'); });
       if (s.sesi_jam !== undefined && !(Number(s.sesi_jam) >= 1 && Number(s.sesi_jam) <= 72)) fail('VALIDATION', 'Lama sesi 1–72 jam.');
       if (s.maks_perangkat !== undefined && str(s.maks_perangkat) !== '' && !(Number.isInteger(Number(s.maks_perangkat)) && Number(s.maks_perangkat) >= 1 && Number(s.maks_perangkat) <= 99)) fail('VALIDATION', 'Batas perangkat 1–99, atau kosongkan untuk tanpa batas.');
@@ -1708,6 +1731,8 @@ function checkPassword(c: Ctx, password: unknown) {
 }
 const ext = makeExt({ fail, str, bool, newId, iso, addDays, isYmd, settingsMap, need, stamp, log, checkPassword });
 Object.keys(ext.handlers).forEach((k) => { if (handlers[k]) throw new Error('Handler ganda: ' + k); handlers[k] = ext.handlers[k]; });
+const batal = makeBatal({ fail, str, bool, newId, iso, addDays, isYmd, settingsMap, stamp, log, checkPassword, recalcOrder, orderDetail, ext });
+Object.keys(batal.handlers).forEach((k) => { if (handlers[k]) throw new Error('Handler ganda: ' + k); handlers[k] = batal.handlers[k]; });
 
 export function handle(s: Store, env: Env, req: Request): Response {
   try {
@@ -1734,7 +1759,7 @@ export const BASE_CATEGORIES: [string, string][] = [
 export const BASE_PRODUCT_CATEGORIES = ['Kertas', 'Stiker', 'Hitam putih', 'Finishing', 'DTF', 'Jasa', 'Lain-lain'];
 export const BASE_SETTINGS: Record<string, string> = {
   nama_usaha: 'Fortuner Digital Printing', alamat: '', telp: '', min_qty_banyak: '26', sesi_jam: '12', prefix_nota: 'FT', maks_perangkat: '',
-  stok_kurang_saat: 'selesai', margin_min: '20', kas_kecil_plafon: '1000000', kas_kecil_batas_cek: '300000',
+  stok_kurang_saat: 'selesai', margin_min: '20', batal_ditahan_mode: 'hpp', batal_ditahan_persen: '50', kas_kecil_plafon: '1000000', kas_kecil_batas_cek: '300000',
   catatan_struk: 'Terima kasih. Barang yang tidak diambil lebih dari 30 hari di luar tanggung jawab kami.',
 };
 
@@ -1744,6 +1769,8 @@ export function seedBase(s: Store, env: Env, owner: { username: string; password
   const st = { created_at: now, created_by: 'setup', updated_at: now, updated_by: 'setup' };
   const cur = settingsMap(s);
   Object.entries(BASE_SETTINGS).forEach(([k, v]) => { if (!(k in cur)) s.insert('settings', { key: k, value: v }); });
+  // v1.3.6: kode jenis konsumen (01 percetakan / 02 end user) untuk data lama
+  s.all('customers').forEach((c) => { const k = c.tipe === 'reseller' ? '01' : '02'; if (str(c.kode_jenis) !== k) s.update('customers', 'id', str(c.id), { kode_jenis: k }); });
   if (!s.all('machines').length) BASE_MACHINES.forEach((n) => s.insert('machines', { id: newId(env, 'mes'), nama: n, pakai_counter: ['versant', 'Mahogani', 'Dopo'].includes(n), aktif: true, ...st }));
   if (!s.all('expense_categories').length) BASE_CATEGORIES.forEach(([n, j]) => s.insert('expense_categories', { id: newId(env, 'cat'), nama: n, jenis: j, aktif: true, ...st }));
   if (!s.all('expense_categories').some((x) => x.jenis === 'klik')) s.insert('expense_categories', { id: newId(env, 'cat'), nama: 'Tagihan biaya klik mesin', jenis: 'klik', aktif: true, ...st });

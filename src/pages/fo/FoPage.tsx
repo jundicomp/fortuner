@@ -397,7 +397,7 @@ function NewCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
         <Field label={<>Nama{req}</>}><input id="nc-nama" className="input" autoFocus value={f.nama} onChange={(e) => setF({ ...f, nama: e.target.value })} /></Field>
         <Field label={<>Jenis konsumen{req}</>} hint={f.tipe === 'reseller' ? 'Memakai harga reseller.' : 'Memakai harga end user.'}>
           <div className="grid grid-cols-2 gap-2">
-            {[['reseller', 'Percetakan'], ['enduser', 'End user']].map(([v, l]) => (
+            {[['reseller', '01 · Percetakan'], ['enduser', '02 · End user']].map(([v, l]) => (
               <button key={v} type="button" id={`nc-tipe-${v}`} onClick={() => setF({ ...f, tipe: v })} className={`rounded-xl border px-3 py-2 text-sm font-semibold ${f.tipe === v ? 'border-brand bg-brand/10 text-brand' : 'border-line hover:bg-sunk'}`}>{l}</button>
             ))}
           </div>
@@ -410,9 +410,9 @@ function NewCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreat
   );
 }
 
-/** Tipe konsumen dengan warna standar: Reseller oranye, End user hijau tua. */
+/** Jenis konsumen dengan kode & warna standar: 01 Percetakan oranye, 02 End user hijau tua. */
 function TipeTag({ tipe }: { tipe?: string }) {
-  return tipe === 'reseller' ? <span className="tag-r">Reseller</span> : <span className="tag-e">End user</span>;
+  return tipe === 'reseller' ? <span className="tag-r">01 · Percetakan</span> : <span className="tag-e">02 · End user</span>;
 }
 
 /** Harga ringkas di daftar produk: R (reseller) oranye, E (end user) hijau tua, harga banyak per unit. */

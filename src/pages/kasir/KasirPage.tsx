@@ -1,10 +1,11 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft, Banknote, CheckCircle2, CloudOff, CreditCard, FileText, HandCoins, Landmark, MessageCircle, RefreshCw, ScanLine, StickyNote } from 'lucide-react';
+import { ArrowLeft, Banknote, CheckCircle2, CloudOff, CreditCard, FileText, HandCoins, Landmark, MessageCircle, RefreshCw, ScanLine, StickyNote, WalletCards } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { ErrorBox } from '@/components/ui/Field';
 import { Money } from '@/components/ui/Money';
 import { useToast } from '@/components/ui/Toast';
-import { no4, printReceipt, shopOf, tipeLabel, type ReceiptData } from '@/components/Receipt';
+import { printReceipt, shopOf, tipeLabel, type ReceiptData } from '@/components/Receipt';
+import { noPendek } from '@/lib/jenis';
 import { ReceiptModal } from '@/components/ReceiptModal';
 import { api, ApiError } from '@/lib/api';
 import { useAuth } from '@/auth/AuthContext';
@@ -31,7 +32,7 @@ const numIn = (s: string) => Number(String(s).replace(/[^\d]/g, '')) || 0;
 const readQ = (): Order[] => { try { return JSON.parse(localStorage.getItem(QKEY) || '[]'); } catch { return []; } };
 /** 1.320.000 → 1,32jt · 61.000 → 61rb · 17.400 → 17,4rb */
 const singkat = (v: number) => v >= 1e6 ? `${(v / 1e6).toLocaleString('id-ID', { maximumFractionDigits: 2 })}jt` : v >= 1e3 ? `${(v / 1e3).toLocaleString('id-ID', { maximumFractionDigits: 1 })}rb` : nf(v);
-const METHOD_ICON = { tunai: Banknote, transfer: Landmark, edc: CreditCard } as Record<string, typeof Banknote>;
+const METHOD_ICON = { tunai: Banknote, transfer: Landmark, edc: CreditCard, deposit: WalletCards } as Record<string, typeof Banknote>;
 
 export function KasirPage() {
   const { user } = useAuth();
@@ -75,12 +76,12 @@ export function KasirPage() {
   }).filter((r) => r.sisa > 0);
   const all = [...pendingOrders, ...serverRows].sort((a, b) => b.created_at.localeCompare(a.created_at));
   const term = search.trim().toLowerCase();
-  const rows = all.filter((r) => (scope === 'semua' || r.tanggal === today || term) && (!term || `${r.nomor} ${r.customer}`.toLowerCase().includes(term)));
+  const rows = all.filter((r) => (scope === 'semua' || r.tanggal === today || term) && (!term || `${r.nomor} ${noPendek(r.nomor, r.tipe)} ${r.customer}`.toLowerCase().includes(term)));
   const sel = all.find((r) => r.id === selId) || null;
 
   // Enter / scan di kotak cari: nomor persis atau satu-satunya hasil langsung dipilih
   const onSearchEnter = () => {
-    const exact = rows.find((r) => r.nomor.toLowerCase() === term) || (rows.length === 1 ? rows[0] : null);
+    const exact = rows.find((r) => r.nomor.toLowerCase() === term || noPendek(r.nomor, r.tipe) === term) || (rows.length === 1 ? rows[0] : null);
     if (exact) { setSelId(exact.id); setSearch(''); }
   };
 
@@ -123,7 +124,7 @@ export function KasirPage() {
                 <li key={r.id}>
                   <button className={`queue-row flex w-full items-center gap-2.5 border-b border-black/5 px-3.5 py-2.5 text-left transition dark:border-white/5 ${on ? '!bg-surface shadow-[inset_3px_0_0_rgb(var(--brand))]' : ''}`}
                     onClick={() => setSelId(r.id)} title={`${r.nomor}${r.ringkas ? ` · ${r.ringkas}` : ''}`}>
-                    <span className="num w-11 shrink-0 font-mono text-[15px] font-bold">{no4(r.nomor)}</span>
+                    <span className="num w-[60px] shrink-0 font-mono text-[15px] font-bold">{noPendek(r.nomor, r.tipe)}</span>
                     <span className="min-w-0 flex-1">
                       <span className="block truncate text-sm font-semibold">{r.customer}</span>
                       <span className="flex items-center gap-1 text-[11px] text-muted">{r.pending && <CloudOff size={11} className="text-warn" />}{jam(r.created_at)}{r.status === 'dp' ? ' · DP' : ''}</span>
@@ -157,7 +158,7 @@ export function KasirPage() {
 
       {done && (
         <ReceiptModal d={done.receipt} shop={shop} width={width} waTemplate={pos.data?.settings.wa_pesan_kwitansi}
-          title={<span className="inline-flex items-center gap-2">{done.offline ? <CloudOff size={18} className="text-warn" /> : <CheckCircle2 size={18} className="text-ok" />}{done.lunas ? `Nota ${no4(done.receipt.nomor)} lunas` : 'Pembayaran diterima'}</span>}
+          title={<span className="inline-flex items-center gap-2">{done.offline ? <CloudOff size={18} className="text-warn" /> : <CheckCircle2 size={18} className="text-ok" />}{done.lunas ? `Nota ${noPendek(done.receipt.nomor, done.receipt.tipe)} lunas` : 'Pembayaran diterima'}</span>}
           subtitle={`${done.receipt.customer} · dibayar ${rp(done.receipt.payments[0]?.nominal)}${done.receipt.sisa > 0 ? ` · sisa ${rp(done.receipt.sisa)} jadi piutang` : ''}`}
           printLabel="Cetak kwitansi" onPrint={() => printReceipt(done.receipt, shop, width)}
           closeLabel="Selesai" onClose={finish}>
@@ -192,8 +193,10 @@ function PayPanel({ row, methods, onBack, onDone, kasirNama, active }: { row: Qu
   const op = s.outbox.find((o) => o.id === row.id);
   const items = detail.data?.items.map((i) => ({ nama: namaSisi(i.nama_produk, i.sisi) + (i.jenis_harga === 'cutting' ? ` · ${CUT_SIZES[i.ukuran_cutting]}` : ''), keterangan: i.keterangan, qty: i.qty, harga: i.harga_satuan, sisi: i.sisi, jenis: i.jenis_harga }))
     || (op?.view?.items || []).map((i) => ({ ...i, sisi: undefined as number | undefined, jenis: undefined as string | undefined }));
-  const methodList: Method[] = methods.length ? methods : detail.data?.payment_methods || [];
+  const depSaldo = !row.pending && s.online ? detail.data?.deposit_saldo || 0 : 0;
+  const methodList: Method[] = [...(methods.length ? methods : detail.data?.payment_methods || []), ...(depSaldo > 0 ? [{ id: 'deposit', nama: `Deposit · ${rp(depSaldo)}`, jenis: 'deposit' }] : [])];
   const sisa = row.sisa;
+  const [keDeposit, setKeDeposit] = useState(false);
   const [methodId, setMethodId] = useState(methodList.find((m) => m.jenis === 'tunai')?.id || methodList[0]?.id || '');
   const [amountIn, setAmountIn] = useState(String(sisa));
   const [catatan, setCatatan] = useState('');
@@ -206,9 +209,13 @@ function PayPanel({ row, methods, onBack, onDone, kasirNama, active }: { row: Qu
 
   const method = methodList.find((m) => m.id === methodId);
   const isTunai = method?.jenis === 'tunai';
+  const isDeposit = methodId === 'deposit';
   const amount = numIn(amountIn);
-  const nominal = Math.min(amount, sisa);
-  const kembalian = isTunai && amount > sisa ? amount - sisa : 0;
+  const lebih = !isDeposit && amount > sisa ? amount - sisa : 0;
+  const bisaKeDeposit = lebih > 0 && !row.pending && s.online;
+  const simpanLebih = bisaKeDeposit && keDeposit;
+  const nominal = isDeposit ? Math.min(amount, sisa, depSaldo) : simpanLebih ? amount : Math.min(amount, sisa);
+  const kembalian = isTunai && amount > sisa && !simpanLebih ? amount - sisa : 0;
   const lunas = nominal >= sisa;
   const o = detail.data?.order;
   const selesai = o ? detail.data!.items.length > 0 && detail.data!.items.every((i) => i.status_produksi === 'selesai') : row.selesai;
@@ -224,12 +231,13 @@ function PayPanel({ row, methods, onBack, onDone, kasirNama, active }: { row: Qu
     if (nominal <= 0) { setErr(new Error(isTunai ? 'Isi uang diterima.' : 'Isi nominal pembayaran.')); amountRef.current?.focus(); return; }
     if (!methodId) { setErr(new Error('Pilih metode pembayaran.')); return; }
     setBusy(true);
-    const payload = { order_id: row.id, payment_id: payId, nominal, method_id: methodId, catatan: catatan.trim(), tanggal: ymd() };
+    if (isDeposit && (row.pending || !s.online)) { setErr(new Error('Bayar pakai deposit hanya bisa saat online.')); setBusy(false); return; }
+    const payload = { order_id: row.id, payment_id: payId, nominal, method_id: methodId, catatan: catatan.trim(), tanggal: ymd(), ...(simpanLebih ? { lebih_ke_deposit: true } : {}) };
     const receipt = (): ReceiptData => ({
       jenis: 'kwitansi', nomor: row.nomor, waktu: new Date().toISOString(), customer: row.customer, tipe, telp, cs: kasirNama.split(' ')[0], catatan: catatan.trim(),
-      kw_no: `KW-${no4(row.nomor)}-${ke}`, ke, metode: method?.nama, metode_jenis: method?.jenis, item_count: items.length,
+      kw_no: `KW-${noPendek(row.nomor, row.tipe)}-${ke}`, ke, metode: method?.nama, metode_jenis: method?.jenis, item_count: items.length,
       items: items.map((i) => ({ nama: i.nama, keterangan: i.keterangan, qty: i.qty, harga: i.harga, subtotal: i.harga * i.qty })),
-      total: row.total, sebelumnya: row.terbayar, payments: [{ label: `Bayar ${method?.nama || ''}`, nominal }], sisa: sisa - nominal, diterima: isTunai ? amount : undefined, kembalian,
+      total: row.total, sebelumnya: row.terbayar, payments: [{ label: `Bayar ${isDeposit ? 'Deposit' : method?.nama || ''}`, nominal: simpanLebih ? sisa : nominal }, ...(simpanLebih ? [{ label: 'Kelebihan jadi deposit', nominal: lebih }] : [])], sisa: Math.max(0, sisa - nominal), diterima: isTunai ? amount : undefined, kembalian,
     });
     const offline = () => {
       sync.enqueue({ id: payId, kind: 'orders.pay', payload: { ...payload, dibuat_offline: true }, label: `${row.nomor} · ${row.customer}`, total: nominal });
@@ -265,7 +273,7 @@ function PayPanel({ row, methods, onBack, onDone, kasirNama, active }: { row: Qu
       <div className="flex items-start gap-3">
         <button className="btn btn-ghost btn-sm -ml-2 px-2 lg:hidden" onClick={onBack} aria-label="Kembali ke antrian"><ArrowLeft size={16} /></button>
         <div className="min-w-0 flex-1">
-          <div className="text-xl font-bold leading-tight">{row.customer}{tipe && <span className="text-base font-normal text-muted"> ({tipe})</span>}</div>
+          <div className="text-xl font-bold leading-tight">{row.customer}</div>
           <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
             <span className="font-mono">{row.nomor}</span>
             {row.cs && <span>· FO {row.cs}</span>}
@@ -281,7 +289,7 @@ function PayPanel({ row, methods, onBack, onDone, kasirNama, active }: { row: Qu
             </div>
           )}
         </div>
-        <div className="shrink-0 rounded-lg bg-black px-3 py-1 font-mono text-3xl font-bold tracking-wider text-white ring-1 ring-white/10" aria-label={`Nomor nota ${row.nomor}`}>{no4(row.nomor)}</div>
+        <div className="shrink-0 rounded-lg bg-black px-3 py-1 font-mono text-3xl font-bold tracking-wider text-white ring-1 ring-white/10" aria-label={`Nomor nota ${row.nomor}`}>{noPendek(row.nomor, o?.customer_tipe || row.tipe)}</div>
       </div>
 
       {/* isi nota */}
@@ -306,6 +314,7 @@ function PayPanel({ row, methods, onBack, onDone, kasirNama, active }: { row: Qu
           </tbody>
           <tfoot>
             <tr><td colSpan={3} className="px-2.5 py-1.5 text-right text-muted">Total</td><td className="px-2 py-1.5"><Money v={row.total} /></td></tr>
+            {!!o?.batal_nilai && <tr><td colSpan={3} className="px-2.5 py-1.5 text-right text-muted">Dibatalkan</td><td className="px-2 py-1.5 text-bad">− <Money v={o.batal_nilai} /></td></tr>}
             {row.terbayar > 0 && <tr><td colSpan={3} className="px-2.5 py-1.5 text-right text-muted">Sudah dibayar</td><td className="px-2 py-1.5"><Money v={row.terbayar} /></td></tr>}
             <tr className="bg-brand/10"><td colSpan={3} className="px-2.5 py-2 text-right font-bold">Sisa tagihan</td><td className="px-2 py-2 text-lg font-extrabold"><Money v={sisa} /></td></tr>
           </tfoot>
@@ -319,7 +328,7 @@ function PayPanel({ row, methods, onBack, onDone, kasirNama, active }: { row: Qu
             const Icon = METHOD_ICON[m.jenis] || CreditCard;
             const on = m.id === methodId;
             return (
-              <button key={m.id} type="button" onClick={() => { setMethodId(m.id); if (m.jenis !== 'tunai' && amount > sisa) setAmountIn(String(sisa)); setTimeout(() => amountRef.current?.select(), 0); }}
+              <button key={m.id} type="button" onClick={() => { setMethodId(m.id); if (m.id === 'deposit') setAmountIn(String(Math.min(sisa, depSaldo))); else if (m.jenis !== 'tunai' && amount > sisa) setAmountIn(String(sisa)); setTimeout(() => amountRef.current?.select(), 0); }}
                 className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-semibold transition ${on ? 'border-ink bg-ink text-canvas' : 'border-line bg-surface hover:border-muted'}`}>
                 <Icon size={15} />{m.nama}
               </button>
@@ -342,13 +351,20 @@ function PayPanel({ row, methods, onBack, onDone, kasirNama, active }: { row: Qu
             <button key={l} type="button" className="btn btn-sm flex-1" onClick={() => { setAmountIn(String(v)); amountRef.current?.focus(); }}>{l}</button>
           ))}
         </div>
-        {!isTunai && <input id="kasir-ref" className="input" value={catatan} onChange={(e) => setCatatan(e.target.value)} placeholder="No. referensi / catatan (mis. 4 digit akhir rekening)" />}
+        {bisaKeDeposit && (
+          <label className="flex items-center gap-2 rounded-lg border border-brand/40 bg-brand/5 px-3 py-2 text-sm">
+            <input id="kasir-ke-deposit" type="checkbox" checked={keDeposit} onChange={(e) => setKeDeposit(e.target.checked)} />
+            <span>{isTunai ? 'Kembalian' : 'Kelebihan'} <b className="num">{rp(lebih)}</b> simpan sebagai <b>deposit konsumen</b></span>
+          </label>
+        )}
+        {isDeposit && <p className="rounded-lg bg-sunk px-3 py-2 text-xs text-muted">Dibayar dari saldo deposit konsumen (tersedia {rp(depSaldo)}). Tidak masuk laci dan tidak dihitung sebagai uang masuk. Sisa tagihan bisa dibayar dengan metode lain.</p>}
+        {!isTunai && !isDeposit && <input id="kasir-ref" className="input" value={catatan} onChange={(e) => setCatatan(e.target.value)} placeholder="No. referensi / catatan (mis. 4 digit akhir rekening)" />}
         <ErrorBox error={err} />
         <button id="kasir-bayar" className="btn btn-primary py-3 text-base" disabled={busy || nominal <= 0} onClick={submit}>
           <HandCoins size={18} />{busy ? 'Menyimpan…' : nominal <= 0 ? 'Isi nominal' : lunas ? `Lunasi ${rp(sisa)}` : `Catat DP ${rp(nominal)}`} <span className="kbd">F9</span>
         </button>
         <p className="text-center text-[11px] text-muted">
-          {isTunai ? (laci ? `Laci terbuka otomatis${kembalian ? ` · kembalian ${rp(kembalian)}` : ''}` : 'Pembayaran tunai') : 'Pastikan dana sudah masuk di mutasi rekening.'} · kwitansi tampil setelah bayar
+          {isDeposit ? 'Saldo deposit konsumen berkurang' : isTunai ? (laci ? `Laci terbuka otomatis${kembalian ? ` · kembalian ${rp(kembalian)}` : ''}` : 'Pembayaran tunai') : 'Pastikan dana sudah masuk di mutasi rekening.'} · kwitansi tampil setelah bayar
         </p>
       </section>
     </div>

@@ -8,10 +8,10 @@ import { useAuth } from '@/auth/AuthContext';
 import { api } from '@/lib/api';
 import { nf, rp } from '@/lib/format';
 
-interface Hari { omzet: number; piutang: number; nota: number }
+interface Hari { omzet: number; piutang: number; nota: number; batal?: number }
 interface Res { tahun: string; today: string; hari: Record<string, Hari>; tahun_tersedia: string[] }
 type Mode = 'split' | 'omzet' | 'nota';
-interface Cell { omzet: number; cash: number; piutang: number; nota: number; dow: number; fut: boolean }
+interface Cell { omzet: number; cash: number; piutang: number; batal: number; nota: number; dow: number; fut: boolean }
 
 const BLN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'];
 const BLN_L = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
@@ -27,7 +27,7 @@ function useGrid(d?: Res) {
     if (!d) return null;
     const y = Number(d.tahun);
     const grid: (Cell | null)[][] = [];
-    const bulan = Array.from({ length: 12 }, () => ({ omzet: 0, cash: 0, piutang: 0, nota: 0, hari: 0, jalan: false }));
+    const bulan = Array.from({ length: 12 }, () => ({ omzet: 0, cash: 0, piutang: 0, batal: 0, nota: 0, hari: 0, jalan: false }));
     let best = { v: 0, m: 0, d: 0 };
     for (let m = 0; m < 12; m++) {
       grid[m] = [];
@@ -37,13 +37,13 @@ function useGrid(d?: Res) {
         const key = `${y}-${pad(m + 1)}-${pad(day)}`;
         const h = d.hari[key] || { omzet: 0, piutang: 0, nota: 0 };
         const fut = key > d.today;
-        const c: Cell = { omzet: h.omzet, piutang: h.piutang, cash: h.omzet - h.piutang, nota: h.nota, dow: new Date(y, m, day).getDay(), fut };
+        const c: Cell = { omzet: h.omzet, piutang: h.piutang, batal: h.batal || 0, cash: h.omzet - (h.batal || 0) - h.piutang, nota: h.nota, dow: new Date(y, m, day).getDay(), fut };
         grid[m][day] = c;
-        if (!fut) { const b = bulan[m]; b.jalan = true; b.hari++; b.omzet += c.omzet; b.cash += c.cash; b.piutang += c.piutang; b.nota += c.nota; }
+        if (!fut) { const b = bulan[m]; b.jalan = true; b.hari++; b.omzet += c.omzet; b.cash += c.cash; b.piutang += c.piutang; b.batal += c.batal; b.nota += c.nota; }
         if (c.omzet > best.v) best = { v: c.omzet, m, d: day };
       }
     }
-    const tot = bulan.reduce((a, b) => ({ omzet: a.omzet + b.omzet, cash: a.cash + b.cash, piutang: a.piutang + b.piutang, nota: a.nota + b.nota }), { omzet: 0, cash: 0, piutang: 0, nota: 0 });
+    const tot = bulan.reduce((a, b) => ({ omzet: a.omzet + b.omzet, cash: a.cash + b.cash, piutang: a.piutang + b.piutang, batal: a.batal + b.batal, nota: a.nota + b.nota }), { omzet: 0, cash: 0, piutang: 0, batal: 0, nota: 0 });
     const jalan = bulan.filter((b) => b.omzet > 0).length; // rata-rata hanya dari bulan yang ada omzetnya
     const bestM = bulan.reduce((a, b, i) => (b.omzet > a.v ? { v: b.omzet, m: i } : a), { v: 0, m: -1 });
     let maxC = 0, maxP = 0, maxO = 0, maxN = 0;
@@ -67,6 +67,7 @@ export function OmzetHarianPage() {
   const cur = sel || def;
   const selCell = g && cur ? g.grid[cur.m][cur.d] : null;
   const pc = g && g.tot.omzet ? Math.round((g.tot.cash / g.tot.omzet) * 100) : 0;
+  const pp = g && g.tot.omzet ? Math.round((g.tot.piutang / g.tot.omzet) * 100) : 0;
 
   const doExport = () => {
     if (!g) return;
@@ -108,9 +109,10 @@ export function OmzetHarianPage() {
           <div className="card tint tint-orange p-4">
             <div className="text-xs font-bold uppercase tracking-wider text-muted">Omzet {g.y}</div>
             <div className="num mt-1.5 text-xl font-extrabold sm:text-2xl">{rp(g.tot.omzet)}</div>
-            <div className="mt-2 flex h-1.5 overflow-hidden rounded-full bg-sunk"><div className="bg-ok" style={{ width: `${pc}%` }} /><div className="bg-bad" style={{ width: `${g.tot.omzet ? 100 - pc : 0}%` }} /></div>
+            <div className="mt-2 flex h-1.5 overflow-hidden rounded-full bg-sunk"><div className="bg-ok" style={{ width: `${pc}%` }} /><div className="bg-bad" style={{ width: `${pp}%` }} /><div className="bg-muted/50" style={{ width: `${g.tot.omzet ? 100 - pc - pp : 0}%` }} /></div>
             <div className="mt-1.5 flex justify-between text-xs"><span className="text-ok">Cash {pc}%</span><b className="num text-ok">{rp(g.tot.cash)}</b></div>
-            <div className="flex justify-between text-xs"><span className="text-bad">Piutang {g.tot.omzet ? 100 - pc : 0}%</span><b className="num text-bad">{rp(g.tot.piutang)}</b></div>
+            <div className="flex justify-between text-xs"><span className="text-bad">Piutang {pp}%</span><b className="num text-bad">{rp(g.tot.piutang)}</b></div>
+            {g.tot.batal > 0 && <div className="flex justify-between text-xs"><span className="text-muted">Batal {g.tot.omzet ? 100 - pc - pp : 0}%</span><b className="num text-muted">{rp(g.tot.batal)}</b></div>}
           </div>
           <div className="card p-4"><div className="text-xs font-bold uppercase tracking-wider text-muted">Rata-rata per bulan</div><div className="num mt-1.5 text-xl font-extrabold">{rp(g.jalan ? g.tot.omzet / g.jalan : 0)}</div><div className="mt-0.5 text-xs text-muted">{g.jalan} bulan dengan omzet · {nf(g.tot.nota)} nota</div></div>
           <div className="card p-4"><div className="text-xs font-bold uppercase tracking-wider text-muted">Bulan terbaik</div><div className="mt-1.5 text-xl font-extrabold">{g.bestM.m >= 0 && g.bestM.v ? BLN_L[g.bestM.m] : '–'}</div><div className="num mt-0.5 text-xs text-muted">{g.bestM.v ? rp(g.bestM.v) : 'belum ada omzet'}</div></div>
@@ -165,6 +167,7 @@ export function OmzetHarianPage() {
                 {(mode === 'split' ? [
                   ['total', 'Total', (m: number) => [rb(g.bulan[m].cash), rb(g.bulan[m].piutang)]],
                   ['', 'Persen', (m: number) => { const b = g.bulan[m]; return b.omzet ? [`${Math.round((b.cash / b.omzet) * 100)}%`, `${Math.round((b.piutang / b.omzet) * 100)}%`] : ['–', '–']; }],
+                  ...(g.tot.batal ? [['', 'Batal', (m: number) => rb(g.bulan[m].batal)]] : []),
                   ['', 'Omzet', (m: number) => rb(g.bulan[m].omzet)],
                   ['', 'Nota', (m: number) => nf(g.bulan[m].nota)],
                 ] : [

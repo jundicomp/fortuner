@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeftRight, Bell, Check, CheckCircle2, Clock, HandCoins, Receipt, Scale, ShoppingCart, TriangleAlert, Wallet, X, XCircle } from 'lucide-react';
+import { ArrowLeftRight, Ban, WalletCards, Bell, Check, CheckCircle2, Clock, HandCoins, Receipt, Scale, ShoppingCart, TriangleAlert, Wallet, X, XCircle } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '@/lib/api';
@@ -8,6 +8,7 @@ import { tglJam } from '@/lib/format';
 import { DecideModal } from '@/pages/kas/SetoranTab';
 import { CekModal, type CekTarget } from '@/components/CekModal';
 import { TitipDecideById } from '@/components/Titip';
+import { CancelDecideModal, RefundDecideModal, type RefundRow } from '@/components/Pembatalan';
 
 export interface NotifItem {
   id: string; tipe: string; judul: string; detail: string; nominal: number; scope: string; tindakan: string; ref_tabel: string; ref_id: string;
@@ -21,6 +22,9 @@ const ICON: Record<string, [typeof Bell, string]> = {
   cek_sesuai: [CheckCircle2, 'bg-green-100 text-green-700'], cek_bermasalah: [TriangleAlert, 'bg-red-100 text-red-700'],
   pindah_dana: [ArrowLeftRight, 'bg-blue-100 text-blue-700'], pindah_batal: [ArrowLeftRight, 'bg-red-100 text-red-700'], rekonsiliasi: [Scale, 'bg-purple-100 text-purple-700'],
   pengeluaran: [Receipt, 'bg-red-100 text-red-700'], titip_baru: [Receipt, 'bg-amber-100 text-amber-700'], titip_konfirmasi: [CheckCircle2, 'bg-green-100 text-green-700'], titip_tolak: [XCircle, 'bg-red-100 text-red-700'], bayar_hutang: [HandCoins, 'bg-red-100 text-red-700'],
+  batal_ajukan: [Ban, 'bg-amber-100 text-amber-700'], batal_cepat: [Ban, 'bg-slate-100 text-slate-600'], batal_setuju: [CheckCircle2, 'bg-green-100 text-green-700'], batal_tolak: [XCircle, 'bg-red-100 text-red-700'],
+  refund_siap: [HandCoins, 'bg-orange-100 text-orange-700'], refund_bayar: [HandCoins, 'bg-red-100 text-red-700'],
+  deposit_topup: [WalletCards, 'bg-green-100 text-green-700'], cair_ajukan: [WalletCards, 'bg-amber-100 text-amber-700'], cair_setuju: [CheckCircle2, 'bg-green-100 text-green-700'], cair_tolak: [XCircle, 'bg-red-100 text-red-700'],
 };
 const iconOf = (t: string) => ICON[t] || [Bell, 'bg-slate-100 text-slate-600'];
 const ago = (iso: string) => {
@@ -42,6 +46,8 @@ export function NotifBell() {
   const [decide, setDecide] = useState<{ it: NotifItem; terima: boolean } | null>(null);
   const [cek, setCek] = useState<CekTarget | null>(null);
   const [titip, setTitip] = useState<{ id: string; terima: boolean } | null>(null);
+  const [batal, setBatal] = useState('');
+  const [cair, setCair] = useState('');
   const seen = useRef<Set<string> | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const read = useMutation({ mutationFn: () => api('notif.read'), onSuccess: () => qc.invalidateQueries({ queryKey: ['notif'] }) });
@@ -87,6 +93,12 @@ export function NotifBell() {
         <button className="btn btn-sm border-green-700 bg-green-700 px-2.5 text-xs text-white" onClick={() => { setOpen(false); setTitip({ id: it.ref_id, terima: true }); }}><Check size={13} />Periksa &amp; konfirmasi</button>
         <button className="btn btn-sm border-bad px-2.5 text-xs text-bad" onClick={() => { setOpen(false); setTitip({ id: it.ref_id, terima: false }); }}><X size={13} />Tolak</button>
       </div>
+    );
+    if (it.tindakan === 'batal') return (
+      <div className="mt-1.5 flex gap-1.5"><button className="btn btn-sm btn-primary px-2.5 text-xs" onClick={() => { setOpen(false); setBatal(it.ref_id); }}><Check size={13} />Periksa pembatalan</button></div>
+    );
+    if (it.tindakan === 'cair') return (
+      <div className="mt-1.5 flex gap-1.5"><button className="btn btn-sm btn-primary px-2.5 text-xs" onClick={() => { setOpen(false); setCair(it.ref_id); }}><Check size={13} />Periksa pencairan</button></div>
     );
     if (it.tindakan === 'cek') {
       const t = { tabel: it.ref_tabel, id: it.ref_id, judul: it.detail.replace(/^Perlu dicek · /, '') || it.judul, nominal: it.nominal };
@@ -149,6 +161,14 @@ export function NotifBell() {
       {decide && <DecideModal s={{ id: decide.it.ref_id, kasir_nama: decide.it.aktor, nominal: decide.it.nominal, tanggal: decide.it.created_at.slice(0, 10) }} terima={decide.terima} onClose={() => setDecide(null)} />}
       {cek && <CekModal t={cek} onClose={() => setCek(null)} />}
       {titip && <TitipDecideById id={titip.id} terima={titip.terima} onClose={() => setTitip(null)} />}
+      {batal && <CancelDecideModal id={batal} onClose={() => setBatal('')} />}
+      {cair && <CairById id={cair} onClose={() => setCair('')} />}
     </>
   );
+}
+
+function CairById({ id, onClose }: { id: string; onClose: () => void }) {
+  const q = useQuery({ queryKey: ['refunds', 'one', id], queryFn: async () => (await api<RefundRow[]>('refund.list', {})).find((r) => r.id === id) || null });
+  if (!q.data) return null;
+  return <RefundDecideModal r={q.data} onClose={onClose} />;
 }

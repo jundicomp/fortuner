@@ -61,7 +61,7 @@ export interface Product {
   harga_berikutnya?: PriceRow | null; // harga terjadwal (bila ada)
 }
 
-export interface Customer { id: string; kode: string; nama: string; percetakan?: string; telp: string; tipe: 'reseller' | 'enduser'; alamat: string; catatan: string; aktif: boolean; created_at?: string }
+export interface Customer { id: string; kode: string; nama: string; percetakan?: string; telp: string; tipe: 'reseller' | 'enduser'; kode_jenis?: string; alamat: string; catatan: string; aktif: boolean; created_at?: string }
 export interface Supplier { id: string; nama: string; telp: string; bahan: string; aktif: boolean }
 export interface Machine { id: string; nama: string; pakai_counter: boolean; aktif: boolean; biaya_klik?: number }
 export interface PaymentMethod { id: string; nama: string; jenis: 'tunai' | 'transfer' | 'edc'; rekening: string; aktif: boolean }
@@ -116,12 +116,17 @@ export interface Order {
   batal: boolean; alasan_batal: string; dibuat_offline: boolean; catatan: string; desain?: string; janji_selesai?: string; created_at: string;
   customer_nama?: string; customer_telp?: string; customer_tipe?: string; customer_kode?: string; cs_nama?: string;
   item_count?: number; ringkas?: string; produksi_selesai?: boolean;
+  batal_nilai?: number; status_batal?: '' | 'sebagian' | 'penuh'; dikembalikan?: number;
 }
 export interface OrderItem {
   id: string; order_id: string; product_id: string; nama_produk: string; keterangan: string; qty: number; sisi: number; ukuran_cutting: number;
   klik: number; tier: string; harga_satuan: number; harga_beli: number | null; harga_manual: boolean; subtotal: number; mesin_id: string; mesin_nama?: string;
   status_produksi: 'antrian' | 'proses' | 'selesai' | 'batal';
-  jenis_harga?: string;
+  jenis_harga?: string; qty_batal?: number; stok_at?: string;
 }
 export interface Payment { id: string; order_id: string; tanggal: string; nominal: number; method_id: string; method_nama?: string; kasir_nama?: string; catatan: string; created_at: string }
-export interface OrderDetail { order: Order; items: OrderItem[]; payments: Payment[]; payment_methods?: { id: string; nama: string; jenis: string }[]; duplikat?: boolean; renomor?: boolean; nomor_awal?: string }
+export interface CancelBrief { id: string; nomor: string; status: 'menunggu' | 'disetujui' | 'ditolak'; jenis: string; nilai_item: number; nilai_batal: number; ditahan: number; alasan: string; penyelesaian: string; kelebihan: number; created_at: string; diajukan: string }
+export interface OrderDetail {
+  order: Order; items: OrderItem[]; payments: Payment[]; payment_methods?: { id: string; nama: string; jenis: string }[]; duplikat?: boolean; renomor?: boolean; nomor_awal?: string;
+  deposit_saldo?: number; pembatalan?: CancelBrief[]; refund_jalan?: { id: string; nomor: string; nominal: number; cara: string }[];
+}

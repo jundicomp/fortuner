@@ -5,7 +5,8 @@
  */
 import { CUT_SIZES, namaSisi, sisiLabel } from './pricing';
 import type { ReceiptData, ReceiptShop } from '@/components/Receipt';
-import { footerOf, KEEP_NOTE, no4, SAH_NOTE, statusOf, terbilang, untukLabel, viaLabel } from './receiptText';
+import { footerOf, KEEP_NOTE, SAH_NOTE, statusOf, terbilang, untukLabel, viaLabel } from './receiptText';
+import { noPendek } from './jenis';
 
 const ESC = 0x1b, GS = 0x1d;
 
@@ -137,7 +138,7 @@ export function receiptEscPos(d: ReceiptData, shop: ReceiptShop, o: EscOptions):
   const kw = d.jenis === 'kwitansi';
   if (o.drawer) p.drawer();
   p.align('left');
-  p.leftBig(shop.nama, no4(d.nomor));
+  p.leftBig(shop.nama, noPendek(d.nomor, d.tipe));
   if (shop.alamat) p.text(shop.alamat);
   if (shop.telp) p.text('Telp/WA ' + shop.telp);
   p.hr('=');
@@ -149,7 +150,7 @@ export function receiptEscPos(d: ReceiptData, shop: ReceiptShop, o: EscOptions):
   p.align('left').hr();
   const bayar = d.payments.reduce((a, x) => a + x.nominal, 0);
   if (!kw) {
-    const rows: [string, string][] = [['Nama pelanggan', d.customer + (d.tipe ? ` (${d.tipe})` : '')]];
+    const rows: [string, string][] = [['Nama pelanggan', d.customer]];
     if (d.telp && d.telp !== '-') rows.push(['No WA', d.telp]);
     if (d.janji_selesai) rows.push(['Target selesai', tglJamS(d.janji_selesai)]);
     if (d.desain) rows.push(['Sumber', d.desain]);

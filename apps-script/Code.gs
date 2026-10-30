@@ -173,6 +173,9 @@ var FortunerServer = (() => {
     { key: "kas", label: "Kas", group: "Keuangan" },
     { key: "pindah_dana", label: "Pindah dana & rekonsiliasi", group: "Keuangan" },
     { key: "pengeluaran.titip", label: "Titip catat pengeluaran owner", group: "Keuangan" },
+    { key: "pembatalan", label: "Pembatalan nota (tambah = ajukan, ubah = setujui)", group: "Keuangan" },
+    { key: "pembatalan.owner", label: "Setujui pembatalan besar & pencairan deposit", group: "Keuangan" },
+    { key: "deposit", label: "Deposit konsumen (tambah = top-up)", group: "Keuangan" },
     { key: "mesin", label: "Mesin & Operator", group: "Operasional" },
     { key: "stok", label: "Stok bahan & opname", group: "Operasional" },
     { key: "pembelian", label: "Pembelian bahan", group: "Operasional" },
@@ -201,17 +204,21 @@ var FortunerServer = (() => {
         set(MODULES.map((m) => m.key), all);
         break;
       case "admin":
-        set(MODULES.map((m) => m.key).filter((k) => k !== "laporan.laba"), all);
+        set(MODULES.map((m) => m.key).filter((k) => k !== "laporan.laba" && k !== "pembatalan.owner"), all);
         break;
       case "cs":
         set(["dashboard", "order", "produksi", "master.produk"], view);
         set(["fo"], { lihat: true, tambah: true });
         set(["master.konsumen"], { lihat: true, tambah: true, ubah: true });
+        set(["pembatalan"], { tambah: true });
+        set(["deposit"], view);
         break;
       case "kasir":
         set(["dashboard", "produksi", "master.produk", "master.konsumen"], view);
         set(["kasir", "order", "piutang", "kas"], { lihat: true, tambah: true, ubah: true, ekspor: true });
         set(["pengeluaran.titip"], { lihat: true, tambah: true });
+        set(["pembatalan"], { tambah: true });
+        set(["deposit"], { lihat: true, tambah: true });
         break;
       case "operator":
         set(["dashboard", "order"], view);
@@ -222,6 +229,8 @@ var FortunerServer = (() => {
         set(["dashboard", "order", "piutang", "master.produk", "master.harga_beli", "master.supplier"], { lihat: true, ekspor: true });
         set(["pengeluaran", "hutang", "kas", "pindah_dana", "pengeluaran.titip", "laporan", "pembelian"], all);
         set(["stok"], { lihat: true, tambah: true, ubah: true, ekspor: true });
+        set(["pembatalan"], { lihat: true, tambah: true, ubah: true, ekspor: true });
+        set(["deposit"], { lihat: true, tambah: true, ubah: true, ekspor: true });
         break;
     }
     return p;
@@ -278,14 +287,17 @@ var FortunerServer = (() => {
     { kode: "1400", nama: "Aset tetap & peralatan", tipe: "aset" },
     { kode: "2100", nama: "Hutang usaha (supplier)", tipe: "kewajiban" },
     { kode: "2110", nama: "Hutang biaya klik mesin", tipe: "kewajiban" },
+    { kode: "2150", nama: "Uang muka (deposit) konsumen", tipe: "kewajiban" },
     { kode: "3100", nama: "Modal / saldo awal", tipe: "modal" },
     { kode: "3200", nama: "Prive (ambil pribadi)", tipe: "modal" },
     { kode: "4100", nama: "Pendapatan penjualan", tipe: "pendapatan" },
+    { kode: "4150", nama: "Pembatalan penjualan", tipe: "pendapatan" },
     { kode: "4900", nama: "Pendapatan lain", tipe: "pendapatan" },
     { kode: "5100", nama: "HPP bahan baku", tipe: "hpp" },
     { kode: "5110", nama: "HPP biaya klik mesin", tipe: "hpp" },
     { kode: "5120", nama: "Bahan di luar stok", tipe: "hpp" },
     { kode: "5130", nama: "Selisih persediaan (opname)", tipe: "hpp" },
+    { kode: "5190", nama: "Kerugian order batal", tipe: "hpp" },
     { kode: "6900", nama: "Beban kas kecil", tipe: "beban" },
     { kode: "6910", nama: "Selisih kas", tipe: "beban" },
     { kode: "6920", nama: "Beban administrasi bank", tipe: "beban" }
@@ -401,6 +413,12 @@ var FortunerServer = (() => {
       c.s.all("expense_requests").forEach((r) => {
         if (r.status === "menunggu") set.add("expense_requests:" + str2(r.id));
       });
+      c.s.all("cancellations").forEach((r) => {
+        if (r.status === "menunggu") set.add("cancellations:" + str2(r.id));
+      });
+      c.s.all("refunds").forEach((r) => {
+        if (r.status === "menunggu" || r.status === "siap") set.add("refunds:" + str2(r.id));
+      });
       return set;
     }
     function riwayat(c, tab, from, to) {
@@ -408,7 +426,7 @@ var FortunerServer = (() => {
       needAny(c, [["kas", "lihat"], ["pengeluaran.titip", "lihat"]]);
       const boss = pemutus(c), decide = can(c, "pindah_dana", "ubah");
       const me = str2((_a = c.user) == null ? void 0 : _a.id), users = userNames(c), names = accNames(c);
-      const tabs = boss ? [["semua", "Semua"], ["cek", "Perlu dicek"], ["setoran", "Setoran"], ["titip", "Titipan"], ["kaskecil", "Kas kecil"], ["pindah", "Pindah dana"], ...can(c, "pengeluaran") || can(c, "hutang") ? [["pengeluaran", "Pengeluaran"]] : [], ["rekon", "Rekonsiliasi"]] : [["laci", "Laci saya"], ["setoran", "Setoran saya"], ...can(c, "pengeluaran.titip") ? [["titip", "Titipan saya"]] : [], ["kaskecil", "Kas kecil"]];
+      const tabs = boss ? [["semua", "Semua"], ["cek", "Perlu dicek"], ["setoran", "Setoran"], ["titip", "Titipan"], ["kaskecil", "Kas kecil"], ["pindah", "Pindah dana"], ["refund", "Refund & deposit"], ...can(c, "pengeluaran") || can(c, "hutang") ? [["pengeluaran", "Pengeluaran"]] : [], ["rekon", "Rekonsiliasi"]] : [["laci", "Laci saya"], ["setoran", "Setoran saya"], ...can(c, "pengeluaran.titip") ? [["titip", "Titipan saya"]] : [], ["kaskecil", "Kas kecil"]];
       if (!tabs.some(([k]) => k === tab)) tab = tabs[0][0];
       const open = openActions(c);
       const inR = (t) => (!from || str2(t) >= from) && (!to || str2(t) <= to);
@@ -550,6 +568,61 @@ var FortunerServer = (() => {
         ref_tabel: "reconciliations",
         ref_id: str2(r.id)
       }));
+      const RF = { menunggu: ["Menunggu persetujuan", "warn"], siap: ["Siap dibayar", "brand"], dibayar: ["Dibayar", "ok"], ditolak: ["Ditolak", "bad"] };
+      const custs = byId(c.s.all("customers"));
+      const refundRows = (onlyMine) => c.s.all("refunds").filter((r) => !onlyMine || r.kasir_id === me || r.created_by === me).map((r) => {
+        var _a2, _b, _c;
+        return mk({
+          key: "refunds:" + r.id,
+          waktu: str2(r.dibayar_at || r.created_at),
+          tanggal: str2(r.dibayar_at).slice(0, 10) || str2(r.tanggal),
+          jenis: "Refund",
+          keterangan: `${str2(r.nomor)} \xB7 ${str2((_a2 = custs[str2(r.customer_id)]) == null ? void 0 : _a2.nama)} \xB7 ${r.sumber === "deposit" ? "pencairan deposit" : "pembatalan"} \xB7 ${str2(r.cara)}${r.status === "dibayar" ? ` dari ${r.kasir_id ? names[LACI + str2(r.kasir_id)] || "laci" : names[str2(r.method_id)] || ""} ke ${str2(r.penerima)}` : ""}`,
+          nominal: num(r.nominal),
+          keluar: r.status === "dibayar" ? num(r.nominal) : 0,
+          oleh: users[str2(r.dibayar_oleh || r.created_by)] || "",
+          status: ((_b = RF[str2(r.status)]) == null ? void 0 : _b[0]) || str2(r.status),
+          tone: ((_c = RF[str2(r.status)]) == null ? void 0 : _c[1]) || "",
+          ref_tabel: "refunds",
+          ref_id: str2(r.id),
+          bukti: str2(r.bukti)
+        });
+      });
+      const depositRows = (onlyMine) => c.s.all("deposit_moves").filter((m) => m.jenis === "topup" && (!onlyMine || m.kasir_id === me)).map((m) => {
+        var _a2;
+        return mk({
+          key: "deposit_moves:" + m.id,
+          waktu: str2(m.created_at),
+          tanggal: str2(m.tanggal),
+          jenis: "Deposit",
+          keterangan: `${str2(m.nomor)} \xB7 ${str2((_a2 = custs[str2(m.customer_id)]) == null ? void 0 : _a2.nama)} \xB7 titip di muka \xB7 ${m.kasir_id ? names[LACI + str2(m.kasir_id)] || "laci" : names[str2(m.method_id)] || ""}`,
+          nominal: num(m.masuk),
+          masuk: num(m.masuk),
+          oleh: users[str2(m.created_by)] || "",
+          status: "Masuk",
+          tone: "ok",
+          ref_tabel: "deposit_moves",
+          ref_id: str2(m.id),
+          bukti: str2(m.bukti)
+        });
+      });
+      const BT = { menunggu: ["Menunggu persetujuan", "warn"], disetujui: ["Disetujui", "ok"], ditolak: ["Ditolak", "bad"] };
+      const batalRows = () => c.s.all("cancellations").map((x) => {
+        var _a2, _b, _c;
+        return mk({
+          key: "cancellations:" + x.id,
+          waktu: str2(x.diputus_at || x.created_at),
+          tanggal: str2(x.tanggal),
+          jenis: "Pembatalan",
+          keterangan: `${str2(x.nomor)} \xB7 ${str2((_a2 = custs[str2(x.customer_id)]) == null ? void 0 : _a2.nama)} \xB7 "${str2(x.alasan).slice(0, 60)}"`,
+          nominal: num(x.nilai_batal) || num(x.nilai_item),
+          oleh: users[str2(x.created_by)] || "",
+          status: ((_b = BT[str2(x.status)]) == null ? void 0 : _b[0]) || str2(x.status),
+          tone: ((_c = BT[str2(x.status)]) == null ? void 0 : _c[1]) || "",
+          ref_tabel: "cancellations",
+          ref_id: str2(x.id)
+        });
+      });
       const laciSaya = () => {
         const tn = tunaiMethod(c), myLaci = LACI + me;
         const orders = byId(c.s.all("orders"));
@@ -571,7 +644,9 @@ var FortunerServer = (() => {
             });
           }),
           ...setoran(true).map((r) => ({ ...r, keluar: r.status === "Diterima" ? r.nominal : 0 })),
-          ...c.s.all("fund_transfers").filter((f) => f.dari === myLaci || f.ke === myLaci).map((f) => fundRow(f, myLaci))
+          ...c.s.all("fund_transfers").filter((f) => f.dari === myLaci || f.ke === myLaci).map((f) => fundRow(f, myLaci)),
+          ...refundRows(false).filter((r) => c.s.all("refunds").some((x) => x.id === r.ref_id && x.kasir_id === me && x.status === "dibayar")),
+          ...depositRows(true)
         ];
       };
       let rows = [];
@@ -582,9 +657,10 @@ var FortunerServer = (() => {
       else if (tab === "pindah") rows = c.s.all("fund_transfers").map((f) => fundRow(f));
       else if (tab === "pengeluaran") rows = pengeluaran();
       else if (tab === "rekon") rows = rekon();
+      else if (tab === "refund") rows = [...refundRows(false), ...depositRows(false), ...batalRows()];
       else {
         const seen = /* @__PURE__ */ new Set();
-        rows = [...setoran(false), ...titip(false), ...kasKecil(), ...c.s.all("fund_transfers").map((f) => fundRow(f)), ...can(c, "pengeluaran") || can(c, "hutang") ? pengeluaran() : [], ...rekon()].filter((r) => seen.has(r.key) ? false : (seen.add(r.key), true));
+        rows = [...setoran(false), ...titip(false), ...kasKecil(), ...c.s.all("fund_transfers").map((f) => fundRow(f)), ...can(c, "pengeluaran") || can(c, "hutang") ? pengeluaran() : [], ...rekon(), ...refundRows(false), ...depositRows(false), ...batalRows()].filter((r) => seen.has(r.key) ? false : (seen.add(r.key), true));
         if (tab === "cek") rows = rows.filter((r) => open.has(r.key));
       }
       if (tab !== "cek") rows = rows.filter((r) => inR(r.tanggal) || open.has(r.key));
@@ -644,17 +720,19 @@ var FortunerServer = (() => {
       const recipes = ((cache == null ? void 0 : cache.recipes) || c.s.all("recipes")).filter((r) => r.product_id === item.product_id);
       const machines = (cache == null ? void 0 : cache.machines) || byId(c.s.all("machines"));
       const o = ((cache == null ? void 0 : cache.orders) || byId(c.s.all("orders")))[str2(item.order_id)];
+      const aktif = num(item.qty) > 0 ? Math.max(0, num(item.qty) - num(item.qty_batal)) / num(item.qty) : 1;
+      if (aktif <= 0) return false;
       let hppB = 0;
       recipes.forEach((r) => {
         const m = mats[str2(r.material_id)];
         if (!m) return;
-        const q = r2(num(r.qty) * (r.per === "klik" ? num(item.klik) : num(item.qty)));
+        const q = r2(num(r.qty) * (r.per === "klik" ? num(item.klik) : num(item.qty)) * aktif);
         if (!(q > 0)) return;
         const hr = num(m.harga_rata);
         move(c, m, -q, "pakai", hr, tanggal, "order_items", str2(item.id), `${str2(o == null ? void 0 : o.nomor)} ${str2(item.nama_produk)}`);
         hppB += q * hr;
       });
-      const hppK = num(item.klik) * num((_a = machines[str2(item.mesin_id)]) == null ? void 0 : _a.biaya_klik);
+      const hppK = num(item.klik) * aktif * num((_a = machines[str2(item.mesin_id)]) == null ? void 0 : _a.biaya_klik);
       const patch = { hpp_bahan: Math.round(hppB), hpp_klik: Math.round(hppK), stok_at: tanggal + "T" + iso2(c.env).slice(11) };
       c.s.update("order_items", "id", str2(item.id), patch);
       Object.assign(item, patch);
@@ -712,7 +790,7 @@ var FortunerServer = (() => {
         if (!accounts[k]) accounts[k] = { kode: k, nama: `Kas & bank: Laci ${laciName(uNames[str2(userId)] || str2(userId))}`, tipe: "aset" };
         return k;
       };
-      const kasOf = (methodId, kasirId) => tunai && str2(methodId) === str2(tunai.id) && str2(kasirId) ? laci(kasirId) : kas(methodId);
+      const kasOf = (methodId, kasirId) => str2(methodId) === "deposit" ? "2150" : tunai && str2(methodId) === str2(tunai.id) && str2(kasirId) ? laci(kasirId) : kas(methodId);
       const kasirIds = new Set(c.s.all("users").filter((u) => u.role === "kasir").map((u) => str2(u.id)));
       const cats = byId(c.s.all("expense_categories"));
       c.s.all("expense_categories").forEach((x) => {
@@ -758,6 +836,28 @@ var FortunerServer = (() => {
         add(str2(x.tanggal), str2(x.nota) || "PENGELUARAN", "pengeluaran", str2(x.item), [{ akun: dr, d: num(x.total), k: 0 }, x.cara_bayar === "hutang" ? { akun: "2100", d: 0, k: num(x.total) } : { akun: kas(x.method_id), d: 0, k: num(x.total) }]);
       });
       c.s.all("bill_payments").forEach((b) => add(str2(b.tanggal), "BAYAR HUTANG", "hutang", str2(b.keterangan) || "Pembayaran hutang supplier", [{ akun: "2100", d: num(b.nominal), k: 0 }, { akun: kas(b.method_id), d: 0, k: num(b.nominal) }]));
+      c.s.all("cancellations").forEach((x) => {
+        var _a;
+        if (x.status !== "disetujui") return;
+        const t = str2(x.diputus_at).slice(0, 10) || str2(x.tanggal), nota = str2((_a = oById[str2(x.order_id)]) == null ? void 0 : _a.nomor);
+        add(t, str2(x.nomor), "pembatalan", `Pembatalan ${nota}`, [{ akun: "4150", d: num(x.nilai_batal), k: 0 }, { akun: "1200", d: 0, k: num(x.nilai_batal) }]);
+        const hb = num(x.hpp_bahan), hk = num(x.hpp_klik);
+        if (hb + hk) add(t, str2(x.nomor), "pembatalan", `Bahan & klik terbuang ${nota}`, [{ akun: "5190", d: hb + hk, k: 0 }, { akun: "5100", d: 0, k: hb }, { akun: "5110", d: 0, k: hk }]);
+      });
+      c.s.all("deposit_moves").forEach((m) => {
+        if (m.jenis === "topup") add(str2(m.tanggal), str2(m.nomor), "deposit", `Deposit masuk (titip di muka)`, [{ akun: kasOf(m.method_id, m.kasir_id), d: num(m.masuk), k: 0 }, { akun: "2150", d: 0, k: num(m.masuk) }]);
+        else if (m.jenis === "pembatalan" || m.jenis === "lebih_bayar") add(str2(m.tanggal), str2(m.nomor), "deposit", m.jenis === "pembatalan" ? "Sisa uang pembatalan jadi deposit" : "Kelebihan bayar jadi deposit", [{ akun: "1200", d: num(m.masuk), k: 0 }, { akun: "2150", d: 0, k: num(m.masuk) }]);
+      });
+      c.s.all("refunds").forEach((r) => {
+        if (r.status !== "dibayar") return;
+        add(
+          str2(r.dibayar_at).slice(0, 10) || str2(r.tanggal),
+          str2(r.nomor),
+          "refund",
+          `Refund ${r.sumber === "deposit" ? "pencairan deposit" : "pembatalan"} ke konsumen`,
+          [{ akun: r.sumber === "deposit" ? "2150" : "1200", d: num(r.nominal), k: 0 }, { akun: kasOf(r.method_id, r.kasir_id), d: 0, k: num(r.nominal) }]
+        );
+      });
       c.s.all("petty_cash").forEach((p) => {
         if (bool2(p.deleted)) return;
         if (num(p.masuk)) add(str2(p.tanggal), "KAS KECIL", "kas kecil", str2(p.item) || "Isi kas kecil", [{ akun: "1110", d: num(p.masuk), k: 0 }, { akun: !tunai ? "3100" : kasirIds.has(str2(p.created_by)) ? laci(p.created_by) : kas(tunai.id), d: 0, k: num(p.masuk) }]);
@@ -836,18 +936,21 @@ var FortunerServer = (() => {
         const a = accounts[k];
         return a && !debitNormal(a.tipe) ? -(sum[k] || 0) : sum[k] || 0;
       };
-      const pendapatan = val("4100");
+      const kotor = val("4100");
+      const pembatalan = -val("4150");
+      const pendapatan = kotor - pembatalan;
       const lain = val("4900");
       const hpp = [
         { kode: "5100", nama: "Bahan baku (kertas, stiker, film)", nilai: val("5100") },
         { kode: "5110", nama: "Biaya klik mesin", nilai: val("5110") },
         { kode: "5120", nama: "Bahan di luar stok", nilai: val("5120") },
-        { kode: "5130", nama: "Selisih persediaan (opname)", nilai: val("5130") }
+        { kode: "5130", nama: "Selisih persediaan (opname)", nilai: val("5130") },
+        { kode: "5190", nama: "Kerugian order batal (bahan & klik terbuang)", nilai: val("5190") }
       ];
       const totalHpp = hpp.reduce((s, x) => s + x.nilai, 0);
       const beban = Object.keys(accounts).filter((k) => accounts[k].tipe === "beban" && val(k)).map((k) => ({ kode: k, nama: accounts[k].nama, nilai: val(k) })).sort((a, b) => b.nilai - a.nilai);
       const totalBeban = beban.reduce((s, x) => s + x.nilai, 0);
-      return { pendapatan, pendapatan_lain: lain, hpp, total_hpp: totalHpp, laba_kotor: pendapatan + lain - totalHpp, beban, total_beban: totalBeban, laba_bersih: pendapatan + lain - totalHpp - totalBeban };
+      return { pendapatan_kotor: kotor, pembatalan, pendapatan, pendapatan_lain: lain, hpp, total_hpp: totalHpp, laba_kotor: pendapatan + lain - totalHpp, beban, total_beban: totalBeban, laba_bersih: pendapatan + lain - totalHpp - totalBeban };
     }
     const handlers2 = {
       "stock.meta": {
@@ -1266,6 +1369,15 @@ var FortunerServer = (() => {
           allOrders.forEach((o) => piutangEv.push([str2(o.tanggal), num(o.total)]));
           c.s.all("payments").forEach((x) => {
             if (oById[str2(x.order_id)]) piutangEv.push([str2(x.tanggal), -num(x.nominal)]);
+          });
+          c.s.all("cancellations").forEach((x) => {
+            if (x.status === "disetujui" && oById[str2(x.order_id)]) piutangEv.push([str2(x.diputus_at).slice(0, 10), -num(x.nilai_batal)]);
+          });
+          c.s.all("deposit_moves").forEach((m) => {
+            if ((m.jenis === "pembatalan" || m.jenis === "lebih_bayar") && oById[str2(m.order_id)]) piutangEv.push([str2(m.tanggal), num(m.masuk)]);
+          });
+          c.s.all("refunds").forEach((r) => {
+            if (r.status === "dibayar" && r.sumber === "pembatalan" && oById[str2(r.order_id)]) piutangEv.push([str2(r.dibayar_at).slice(0, 10), num(r.nominal)]);
           });
           const piutang = cum(piutangEv);
           let hutang = null;
@@ -1770,6 +1882,835 @@ var FortunerServer = (() => {
     return { handlers: handlers2, hooks, deductItem, move, productCost, buildJournal, pnl, trial, lowStock, emit, kasKecilSaldo, accNames };
   }
 
+  // src/server/batal.ts
+  var DEPOSIT = "deposit";
+  var KATEGORI_BATAL = ["Konsumen batal / acara diundur", "Ganti desain", "Salah input FO", "Hasil cetak tidak sesuai", "Lainnya"];
+  function makeBatal(d) {
+    const { fail: fail2, str: str2, bool: bool2, newId: newId2, iso: iso2, addDays: addDays2, isYmd: isYmd2, settingsMap: settingsMap2, stamp: stamp2, log: log2, checkPassword: checkPassword2, recalcOrder: recalcOrder2, orderDetail: orderDetail2, ext: ext2 } = d;
+    const num2 = (v) => Number(v) || 0;
+    const fmt = (n) => Math.round(n).toLocaleString("id-ID");
+    const can = (c, key, op = "lihat") => {
+      var _a, _b;
+      return !!((_b = (_a = c.perms) == null ? void 0 : _a[key]) == null ? void 0 : _b[op]);
+    };
+    const needAny = (c, keys) => {
+      if (!keys.some(([k, o]) => can(c, k, o))) fail2("FORBIDDEN", "Anda tidak punya akses untuk tindakan ini.");
+    };
+    const today = (c) => c.env.today();
+    const byId = (rows) => Object.fromEntries(rows.map((r) => [str2(r.id), r]));
+    const users = (c) => Object.fromEntries(c.s.all("users").map((u) => [str2(u.id), str2(u.nama)]));
+    const me = (c) => {
+      var _a;
+      return str2((_a = c.user) == null ? void 0 : _a.id);
+    };
+    const tunai = (c) => c.s.all("payment_methods").find((m) => m.jenis === "tunai");
+    function nomor(c, prefix) {
+      const t = today(c);
+      const key = `${prefix.toLowerCase()}-${t.slice(0, 7)}`;
+      const row = c.s.all("counters").find((r) => r.key === key);
+      const n = num2(row == null ? void 0 : row.value) + 1;
+      if (!row) c.s.insert("counters", { key, value: n });
+      else c.s.update("counters", "key", key, { value: n });
+      return `${prefix}-${t.slice(5, 7)}${t.slice(2, 4)}-${String(n).padStart(4, "0")}`;
+    }
+    const saveBukti = (c, nama, dataUrl) => {
+      if (!dataUrl) return "";
+      if (!/^data:image\//.test(dataUrl)) fail2("VALIDATION", "Lampiran harus berupa gambar.");
+      if (dataUrl.length > 15e5) fail2("VALIDATION", "Foto terlalu besar.");
+      return c.env.saveFile ? c.env.saveFile(nama, dataUrl) : dataUrl;
+    };
+    const moves = (c, custId) => c.s.all("deposit_moves").filter((m) => !custId || m.customer_id === custId);
+    const saldoOf = (c, custId) => moves(c, custId).reduce((a, m) => a + num2(m.masuk) - num2(m.keluar), 0);
+    const ditahan = (c, custId) => c.s.all("refunds").filter((r) => r.sumber === "deposit" && r.customer_id === custId && (r.status === "menunggu" || r.status === "siap")).reduce((a, r) => a + num2(r.nominal), 0);
+    const saldoBebas = (c, custId) => saldoOf(c, custId) - ditahan(c, custId);
+    function addDeposit(c, m) {
+      const masuk = Math.round(num2(m.masuk)), keluar = Math.round(num2(m.keluar));
+      const saldo = saldoOf(c, m.customer_id) + masuk - keluar;
+      if (saldo < 0) fail2("VALIDATION", "Saldo deposit tidak cukup.");
+      return c.s.insert("deposit_moves", {
+        id: newId2(c.env, "dep"),
+        nomor: nomor(c, "DEP"),
+        tanggal: today(c),
+        customer_id: m.customer_id,
+        jenis: m.jenis,
+        masuk,
+        keluar,
+        saldo,
+        method_id: str2(m.method_id),
+        kasir_id: str2(m.kasir_id),
+        bukti: str2(m.bukti),
+        ref_tabel: str2(m.ref_tabel),
+        ref_id: str2(m.ref_id),
+        order_id: str2(m.order_id),
+        keterangan: str2(m.keterangan).slice(0, 200),
+        ...stamp2(c, true)
+      });
+    }
+    const custName = (c, id) => {
+      var _a;
+      return str2((_a = c.s.all("customers").find((x) => x.id === id)) == null ? void 0 : _a.nama);
+    };
+    function payWithDeposit(c, order, nominal, paymentId) {
+      const cust = str2(order.customer_id);
+      const bebas = saldoBebas(c, cust);
+      if (nominal > bebas) fail2("VALIDATION", `Saldo deposit konsumen hanya ${fmt(bebas)}.`);
+      addDeposit(c, { customer_id: cust, jenis: "pakai", keluar: nominal, ref_tabel: "payments", ref_id: paymentId, order_id: str2(order.id), keterangan: `Bayar ${str2(order.nomor)}` });
+    }
+    function overpayToDeposit(c, orderId, ket = "Kelebihan bayar") {
+      const o = c.s.all("orders").find((x) => x.id === orderId);
+      const refundJalan = c.s.all("refunds").filter((r) => r.order_id === orderId && r.sumber === "pembatalan" && r.status === "siap").reduce((a, r) => a + num2(r.nominal), 0);
+      const lebih = Math.max(0, -num2(o.sisa) - refundJalan);
+      if (!lebih) return 0;
+      addDeposit(c, { customer_id: str2(o.customer_id), jenis: "lebih_bayar", masuk: lebih, ref_tabel: "orders", ref_id: orderId, order_id: orderId, keterangan: `${ket} ${str2(o.nomor)}` });
+      c.s.update("orders", "id", orderId, { dikembalikan: num2(o.dikembalikan) + lebih });
+      recalcOrder2(c, orderId);
+      return lebih;
+    }
+    const diproduksi = (i) => !!str2(i.stok_at) || i.status_produksi === "proses" || i.status_produksi === "selesai";
+    function analyze(c, order, jenis, req) {
+      const items = c.s.all("order_items").filter((i) => i.order_id === order.id);
+      const want = {};
+      if (jenis === "penuh") items.forEach((i) => {
+        want[str2(i.id)] = num2(i.qty) - num2(i.qty_batal);
+      });
+      else (req || []).forEach((r) => {
+        want[str2(r.id)] = Math.round(num2(r.qty));
+      });
+      const lines = [];
+      items.forEach((i) => {
+        const sisaQty = num2(i.qty) - num2(i.qty_batal);
+        const q = Math.min(sisaQty, Math.max(0, want[str2(i.id)] || 0));
+        if (!(q > 0)) return;
+        const ratio = q / Math.max(1, num2(i.qty));
+        const prod = diproduksi(i);
+        const hb = str2(i.stok_at) ? Math.round(num2(i.hpp_bahan) * ratio) : 0, hk = str2(i.stok_at) ? Math.round(num2(i.hpp_klik) * ratio) : 0;
+        const est = prod ? str2(i.stok_at) ? hb + hk : Math.round(num2(i.harga_beli) * q) : 0;
+        lines.push({ item: i, qty: q, nilai: Math.round(num2(i.subtotal) * ratio), diproduksi: prod, hpp_estimasi: est, hpp_bahan: hb, hpp_klik: hk });
+      });
+      if (!lines.length) fail2("VALIDATION", "Pilih item dan jumlah yang dibatalkan.");
+      const nilai = lines.reduce((a, l) => a + l.nilai, 0);
+      const nilaiProd = lines.filter((l) => l.diproduksi).reduce((a, l) => a + l.nilai, 0);
+      const hpp = lines.reduce((a, l) => a + l.hpp_estimasi, 0);
+      const terbayar = num2(order.terbayar);
+      const penuh = items.every((i) => {
+        var _a;
+        return num2(i.qty) - num2(i.qty_batal) - (((_a = lines.find((l) => l.item.id === i.id)) == null ? void 0 : _a.qty) || 0) <= 0;
+      });
+      const bulanLalu = str2(order.tanggal).slice(0, 7) < today(c).slice(0, 7);
+      const milikSendiri = order.cs_id === me(c) || order.created_by === me(c);
+      const level = terbayar > 0 || nilaiProd > 0 || bulanLalu ? "owner" : milikSendiri && order.tanggal === today(c) ? "cepat" : "admin";
+      const alasanLevel = level === "owner" ? [terbayar > 0 ? "konsumen sudah membayar" : "", nilaiProd > 0 ? "ada item yang sudah diproduksi" : "", bulanLalu ? "nota dari bulan yang sudah lewat" : ""].filter(Boolean).join(", ") : level === "admin" ? "belum diproduksi dan belum ada pembayaran" : "nota Anda sendiri hari ini, belum dibayar & belum diproduksi";
+      return { lines, nilai, nilai_produksi: nilaiProd, hpp_estimasi: hpp, terbayar, jenis: penuh ? "penuh" : "sebagian", level, alasan_level: alasanLevel };
+    }
+    const settingDitahan = (c) => {
+      const s = settingsMap2(c.s);
+      return { mode: ["hpp", "persen", "manual"].includes(s.batal_ditahan_mode) ? s.batal_ditahan_mode : "hpp", persen: Number(s.batal_ditahan_persen || 50) };
+    };
+    function hitungDitahan(cn, mode, persen, manual) {
+      const prod = num2(cn.nilai_produksi);
+      const v = !prod ? 0 : mode === "persen" ? Math.round(prod * Math.min(100, Math.max(0, persen)) / 100) : mode === "manual" ? Math.round(manual) : num2(cn.hpp_estimasi);
+      return Math.max(0, Math.min(num2(cn.nilai_item), v));
+    }
+    function flagPengganti(_c, cn, orders) {
+      const o = orders.find((x) => x.id === cn.order_id);
+      if (!o) return "";
+      const hari = [str2(o.tanggal), str2(cn.tanggal)];
+      const p = orders.find((x) => x.id !== o.id && x.customer_id === o.customer_id && hari.includes(str2(x.tanggal)) && str2(x.created_at) > str2(o.created_at) && num2(x.total) < num2(o.total));
+      return p ? `Nota ${str2(p.nomor)} lebih murah dibuat di hari yang sama` : "";
+    }
+    function applyDecision(c, cn, opt) {
+      const order = c.s.all("orders").find((x) => x.id === cn.order_id) || fail2("NOT_FOUND", "Nota tidak ditemukan.");
+      const lines = c.s.all("cancellation_items").filter((l) => l.cancellation_id === cn.id);
+      const items = byId(c.s.all("order_items").filter((i) => i.order_id === order.id));
+      lines.forEach((l) => {
+        const i = items[str2(l.order_item_id)];
+        if (!i) fail2("VALIDATION", "Item nota sudah berubah. Ajukan ulang pembatalan.");
+        if (num2(i.qty_batal) + num2(l.qty_batal) > num2(i.qty)) fail2("VALIDATION", `${str2(i.nama_produk)} sudah dibatalkan sebagian. Ajukan ulang.`);
+      });
+      const nilaiBatal = num2(cn.nilai_item) - opt.ditahan;
+      lines.forEach((l) => {
+        const i = items[str2(l.order_item_id)];
+        const qb = num2(i.qty_batal) + num2(l.qty_batal);
+        const patch = { qty_batal: qb, ...stamp2(c, false) };
+        if (qb >= num2(i.qty) && !bool2(l.diproduksi)) patch.status_produksi = "batal";
+        c.s.update("order_items", "id", str2(i.id), patch);
+        Object.assign(i, patch);
+      });
+      const semua = Object.values(items).every((i) => num2(i.qty_batal) >= num2(i.qty));
+      c.s.update("orders", "id", str2(order.id), { batal_nilai: num2(order.batal_nilai) + nilaiBatal, status_batal: semua ? "penuh" : "sebagian", alasan_batal: str2(cn.alasan).slice(0, 200), ...stamp2(c, false) });
+      recalcOrder2(c, str2(order.id));
+      const o2 = c.s.all("orders").find((x) => x.id === order.id);
+      const refundJalan = c.s.all("refunds").filter((r) => r.order_id === order.id && r.sumber === "pembatalan" && r.status === "siap").reduce((a, r) => a + num2(r.nominal), 0);
+      const kelebihan = Math.max(0, -num2(o2.sisa) - refundJalan);
+      let penyelesaian = "", refundId = "", depositId = "";
+      if (kelebihan > 0) {
+        penyelesaian = ["deposit", "tunai", "transfer"].includes(opt.penyelesaian) ? opt.penyelesaian : "deposit";
+        if (penyelesaian === "deposit") {
+          const dm = addDeposit(c, { customer_id: str2(order.customer_id), jenis: "pembatalan", masuk: kelebihan, ref_tabel: "cancellations", ref_id: str2(cn.id), order_id: str2(order.id), keterangan: `Pembatalan ${str2(cn.nomor)} \xB7 ${str2(order.nomor)}` });
+          depositId = str2(dm.id);
+          c.s.update("orders", "id", str2(order.id), { dikembalikan: num2(o2.dikembalikan) + kelebihan });
+          recalcOrder2(c, str2(order.id));
+        } else {
+          refundId = newId2(c.env, "rf");
+          c.s.insert("refunds", {
+            id: refundId,
+            nomor: nomor(c, "RF"),
+            tanggal: today(c),
+            customer_id: str2(order.customer_id),
+            sumber: "pembatalan",
+            ref_id: str2(cn.id),
+            order_id: str2(order.id),
+            nominal: kelebihan,
+            cara: penyelesaian,
+            status: "siap",
+            alasan: `Pembatalan ${str2(cn.nomor)}`,
+            method_id: "",
+            kasir_id: "",
+            penerima: "",
+            bukti: "",
+            diputus_oleh: me(c),
+            diputus_at: iso2(c.env),
+            dibayar_oleh: "",
+            dibayar_at: "",
+            catatan: "",
+            ...stamp2(c, true)
+          });
+        }
+      }
+      const lp = lines.filter((l) => bool2(l.diproduksi));
+      c.s.update("cancellations", "id", str2(cn.id), {
+        status: "disetujui",
+        tanggal: today(c),
+        ditahan_mode: opt.mode,
+        ditahan: opt.ditahan,
+        nilai_batal: nilaiBatal,
+        terbayar: num2(order.terbayar),
+        kelebihan,
+        penyelesaian,
+        refund_id: refundId,
+        deposit_id: depositId,
+        hpp_bahan: lp.reduce((a, l) => a + num2(l.hpp_bahan), 0),
+        hpp_klik: lp.reduce((a, l) => a + num2(l.hpp_klik), 0),
+        diputus_oleh: me(c),
+        diputus_at: iso2(c.env),
+        catatan_owner: opt.catatan.slice(0, 300),
+        ...stamp2(c, false)
+      });
+      log2(c, "batal_setuju", "cancellations", str2(cn.id), `${str2(cn.nomor)} disetujui: batal ${fmt(nilaiBatal)}${opt.ditahan ? `, ditahan ${fmt(opt.ditahan)}` : ""}${kelebihan ? `, kelebihan ${fmt(kelebihan)} \u2192 ${penyelesaian}` : ""} (${str2(order.nomor)})`);
+      ext2.emit(c, { tipe: "batal_setuju", judul: `Pembatalan ${str2(cn.nomor)} disetujui`, detail: `${str2(order.nomor)} \xB7 batal Rp ${fmt(nilaiBatal)}${kelebihan ? ` \xB7 Rp ${fmt(kelebihan)} jadi ${penyelesaian === "deposit" ? "deposit" : "refund " + penyelesaian}` : ""}`, nominal: nilaiBatal, scope: "setoran", target: str2(cn.created_by), ref_tabel: "cancellations", ref_id: str2(cn.id) });
+      if (refundId) ext2.emit(c, { tipe: "refund_siap", judul: `Refund Rp ${fmt(kelebihan)} siap dibayar (${penyelesaian})`, detail: `${custName(c, str2(order.customer_id))} \xB7 ${str2(order.nomor)}`, nominal: kelebihan, scope: penyelesaian === "tunai" ? "kas_kecil" : "keuangan", ref_tabel: "refunds", ref_id: refundId });
+    }
+    const cnView = (c, cn) => {
+      const u = users(c);
+      const o = c.s.all("orders").find((x) => x.id === cn.order_id);
+      const rf = cn.refund_id ? c.s.all("refunds").find((r) => r.id === cn.refund_id) : null;
+      return { ...cn, order_nomor: str2(o == null ? void 0 : o.nomor), order_tanggal: str2(o == null ? void 0 : o.tanggal), order_total: num2(o == null ? void 0 : o.total), customer_nama: custName(c, str2(cn.customer_id)), diajukan_nama: u[str2(cn.created_by)] || "", diputus_nama: u[str2(cn.diputus_oleh)] || "", refund_status: str2(rf == null ? void 0 : rf.status), refund_nomor: str2(rf == null ? void 0 : rf.nomor) };
+    };
+    const bisaPutus = (c, cn) => cn.level === "owner" ? can(c, "pembatalan.owner", "ubah") : can(c, "pembatalan", "ubah") || can(c, "pembatalan.owner", "ubah");
+    const handlers2 = {
+      "cancel.preview": {
+        auth: true,
+        fn: (c, p) => {
+          needAny(c, [["pembatalan", "tambah"], ["order", "hapus"]]);
+          const o = c.s.all("orders").find((x) => x.id === p.order_id) || fail2("NOT_FOUND", "Nota tidak ditemukan.");
+          if (bool2(o.batal)) fail2("VALIDATION", "Nota ini sudah dibatalkan.");
+          const a = analyze(c, o, str2(p.jenis) === "sebagian" ? "sebagian" : "penuh", p.items);
+          const pending = c.s.all("cancellations").some((x) => x.order_id === o.id && x.status === "menunggu");
+          return {
+            nilai: a.nilai,
+            nilai_produksi: a.nilai_produksi,
+            terbayar: a.terbayar,
+            jenis: a.jenis,
+            level: a.level,
+            alasan_level: a.alasan_level,
+            ada_pengajuan: pending,
+            lines: a.lines.map((l) => ({ id: l.item.id, nama: l.item.nama_produk, qty: l.qty, nilai: l.nilai, diproduksi: l.diproduksi })),
+            kategori: KATEGORI_BATAL
+          };
+        }
+      },
+      "cancel.request": {
+        auth: true,
+        fn: (c, p) => {
+          needAny(c, [["pembatalan", "tambah"], ["order", "hapus"]]);
+          const alasan = str2(p.alasan);
+          if (!alasan) fail2("VALIDATION", "Isi alasan pembatalan.");
+          const kategori = KATEGORI_BATAL.includes(str2(p.kategori)) ? str2(p.kategori) : "Lainnya";
+          const lampiranRaw = str2(p.lampiran);
+          return c.s.withLock(() => {
+            var _a, _b;
+            const o = c.s.all("orders").find((x) => x.id === p.order_id) || fail2("NOT_FOUND", "Nota tidak ditemukan.");
+            if (bool2(o.batal)) fail2("VALIDATION", "Nota ini sudah dibatalkan.");
+            if (c.s.all("cancellations").some((x) => x.order_id === o.id && x.status === "menunggu")) fail2("VALIDATION", "Nota ini masih punya pengajuan pembatalan yang menunggu persetujuan.");
+            const a = analyze(c, o, str2(p.jenis) === "sebagian" ? "sebagian" : "penuh", p.items);
+            const id = newId2(c.env, "btl");
+            const lampiran = saveBukti(c, `batal-${today(c)}-${id}.jpg`, lampiranRaw);
+            const cn = c.s.insert("cancellations", {
+              id,
+              nomor: nomor(c, "BTL"),
+              tanggal: today(c),
+              order_id: o.id,
+              customer_id: o.customer_id,
+              jenis: a.jenis,
+              status: "menunggu",
+              level: a.level,
+              kategori,
+              alasan: alasan.slice(0, 300),
+              lampiran,
+              keinginan: ["deposit", "tunai", "transfer"].includes(str2(p.keinginan)) ? str2(p.keinginan) : "deposit",
+              nilai_item: a.nilai,
+              nilai_produksi: a.nilai_produksi,
+              hpp_estimasi: a.hpp_estimasi,
+              hpp_bahan: 0,
+              hpp_klik: 0,
+              ditahan_mode: "",
+              ditahan: 0,
+              nilai_batal: 0,
+              terbayar: a.terbayar,
+              kelebihan: 0,
+              penyelesaian: "",
+              refund_id: "",
+              deposit_id: "",
+              diputus_oleh: "",
+              diputus_at: "",
+              catatan_owner: "",
+              ...stamp2(c, true)
+            });
+            a.lines.forEach((l) => c.s.insert("cancellation_items", { id: newId2(c.env, "bti"), cancellation_id: id, order_item_id: l.item.id, nama: l.item.nama_produk, qty: num2(l.item.qty), qty_batal: l.qty, nilai: l.nilai, diproduksi: l.diproduksi, hpp_estimasi: l.hpp_estimasi, hpp_bahan: l.hpp_bahan, hpp_klik: l.hpp_klik }));
+            log2(c, "batal_ajukan", "cancellations", id, `Ajukan ${str2(cn.nomor)} (${a.jenis}) untuk ${str2(o.nomor)} senilai ${fmt(a.nilai)}`, alasan);
+            if (a.level === "cepat") {
+              applyDecision(c, cn, { ditahan: 0, mode: "", penyelesaian: "", catatan: "Jalur cepat" });
+              ext2.emit(c, { tipe: "batal_cepat", judul: `${str2((_a = c.user) == null ? void 0 : _a.nama)} membatalkan ${str2(o.nomor)} (jalur cepat)`, detail: `Rp ${fmt(a.nilai)} \xB7 ${kategori} \xB7 "${alasan.slice(0, 80)}"`, nominal: a.nilai, scope: "keuangan", ref_tabel: "cancellations", ref_id: id });
+            } else {
+              ext2.emit(c, { tipe: "batal_ajukan", judul: `${str2((_b = c.user) == null ? void 0 : _b.nama)} mengajukan pembatalan ${str2(o.nomor)}`, detail: `Rp ${fmt(a.nilai)} \xB7 perlu persetujuan ${a.level === "owner" ? "owner" : "admin"} \xB7 "${alasan.slice(0, 80)}"`, nominal: a.nilai, scope: "keuangan", tindakan: "batal", ref_tabel: "cancellations", ref_id: id });
+            }
+            return { cancellation: cnView(c, c.s.all("cancellations").find((x) => x.id === id)), order: orderDetail2(c, str2(o.id)) };
+          });
+        }
+      },
+      "cancel.get": {
+        auth: true,
+        fn: (c, p) => {
+          const cn = c.s.all("cancellations").find((x) => x.id === p.id) || fail2("NOT_FOUND", "Dokumen pembatalan tidak ditemukan.");
+          if (!(can(c, "pembatalan", "lihat") || can(c, "pembatalan", "ubah") || can(c, "pembatalan.owner", "ubah") || cn.created_by === me(c))) fail2("FORBIDDEN", "Anda tidak punya akses untuk tindakan ini.");
+          const st = settingDitahan(c);
+          const o = c.s.all("orders").find((x) => x.id === cn.order_id);
+          const sisaSebelum = o ? num2(o.total) - num2(o.batal_nilai) - num2(o.terbayar) : 0;
+          return {
+            ...cnView(c, cn),
+            items: c.s.all("cancellation_items").filter((l) => l.cancellation_id === cn.id),
+            bisa_putuskan: cn.status === "menunggu" && bisaPutus(c, cn),
+            setting: st,
+            sisa_sebelum: sisaSebelum,
+            saran: { hpp: hitungDitahan(cn, "hpp", 0, 0), persen: hitungDitahan(cn, "persen", st.persen, 0) },
+            flag: flagPengganti(c, cn, c.s.all("orders"))
+          };
+        }
+      },
+      "cancel.decide": {
+        auth: true,
+        fn: (c, p) => {
+          const cn0 = c.s.all("cancellations").find((x) => x.id === p.id) || fail2("NOT_FOUND", "Dokumen pembatalan tidak ditemukan.");
+          if (!bisaPutus(c, cn0)) fail2("FORBIDDEN", cn0.level === "owner" ? "Pembatalan ini perlu persetujuan owner." : "Anda tidak punya akses untuk menyetujui pembatalan.");
+          checkPassword2(c, p.password);
+          return c.s.withLock(() => {
+            const cn = c.s.all("cancellations").find((x) => x.id === p.id);
+            if (cn.status !== "menunggu") fail2("VALIDATION", "Pengajuan ini sudah diputuskan.");
+            if (!p.setuju) {
+              const cat = str2(p.catatan);
+              if (!cat) fail2("VALIDATION", "Isi alasan penolakan.");
+              c.s.update("cancellations", "id", str2(cn.id), { status: "ditolak", diputus_oleh: me(c), diputus_at: iso2(c.env), catatan_owner: cat.slice(0, 300), ...stamp2(c, false) });
+              log2(c, "batal_tolak", "cancellations", str2(cn.id), `${str2(cn.nomor)} ditolak`, cat);
+              ext2.emit(c, { tipe: "batal_tolak", judul: `Pembatalan ${str2(cn.nomor)} ditolak`, detail: `"${cat.slice(0, 100)}"`, nominal: num2(cn.nilai_item), scope: "setoran", target: str2(cn.created_by), ref_tabel: "cancellations", ref_id: str2(cn.id) });
+            } else {
+              const st = settingDitahan(c);
+              const mode = ["hpp", "persen", "manual"].includes(str2(p.ditahan_mode)) ? str2(p.ditahan_mode) : st.mode;
+              const dt = hitungDitahan(cn, mode, p.ditahan_persen != null ? num2(p.ditahan_persen) : st.persen, num2(p.ditahan_manual));
+              applyDecision(c, cn, { ditahan: dt, mode: num2(cn.nilai_produksi) ? mode : "", penyelesaian: str2(p.penyelesaian), catatan: str2(p.catatan) });
+            }
+            return cnView(c, c.s.all("cancellations").find((x) => x.id === p.id));
+          });
+        }
+      },
+      "cancel.list": {
+        auth: true,
+        fn: (c, p) => {
+          needAny(c, [["pembatalan", "lihat"], ["pembatalan", "ubah"], ["pembatalan.owner", "ubah"]]);
+          const t = today(c);
+          const from = isYmd2(str2(p.from)) ? str2(p.from) : t.slice(0, 8) + "01", to = isYmd2(str2(p.to)) ? str2(p.to) : t;
+          const inR = (v) => str2(v).slice(0, 10) >= from && str2(v).slice(0, 10) <= to;
+          const orders = c.s.all("orders");
+          const all2 = c.s.all("cancellations");
+          const rows = all2.filter((x) => x.status === "menunggu" || inR(x.tanggal) || inR(x.created_at)).map((x) => ({ ...cnView(c, x), flag: flagPengganti(c, x, orders), bisa_putuskan: x.status === "menunggu" && bisaPutus(c, x) })).sort((a, b) => str2(b.created_at).localeCompare(str2(a.created_at)));
+          const ok = all2.filter((x) => x.status === "disetujui" && inR(x.diputus_at));
+          const omzet = orders.filter((o) => !bool2(o.batal) && str2(o.tanggal) >= from && str2(o.tanggal) <= to).reduce((a, o) => a + num2(o.total), 0);
+          const nilai = ok.reduce((a, x) => a + num2(x.nilai_batal), 0);
+          const rfs = c.s.all("refunds").filter((r) => r.sumber === "pembatalan" && r.status === "dibayar" && inR(r.dibayar_at));
+          const deps = c.s.all("deposit_moves").filter((m) => m.jenis === "pembatalan" && inR(m.tanggal));
+          const wait = all2.filter((x) => x.status === "menunggu");
+          const omzetUser = {};
+          orders.filter((o) => !bool2(o.batal) && str2(o.tanggal) >= from && str2(o.tanggal) <= to).forEach((o) => {
+            omzetUser[str2(o.cs_id)] = (omzetUser[str2(o.cs_id)] || 0) + num2(o.total);
+          });
+          const u = users(c);
+          const perUser = {};
+          ok.forEach((x) => {
+            const k = str2(x.created_by);
+            const r = perUser[k] || (perUser[k] = { nama: u[k] || "\u2013", dokumen: 0, nilai: 0 });
+            r.dokumen++;
+            r.nilai += num2(x.nilai_batal);
+          });
+          const perKat = {};
+          ok.forEach((x) => {
+            perKat[str2(x.kategori) || "Lainnya"] = (perKat[str2(x.kategori) || "Lainnya"] || 0) + 1;
+          });
+          return {
+            from,
+            to,
+            rows,
+            ringkas: {
+              nilai,
+              dokumen: ok.length,
+              persen_omzet: omzet ? Math.round(nilai / omzet * 1e3) / 10 : 0,
+              omzet,
+              kerugian: ok.reduce((a, x) => a + num2(x.hpp_bahan) + num2(x.hpp_klik), 0),
+              kerugian_nota: ok.filter((x) => num2(x.hpp_bahan) + num2(x.hpp_klik) > 0).length,
+              refund: rfs.reduce((a, r) => a + num2(r.nominal), 0),
+              refund_tunai: rfs.filter((r) => r.cara === "tunai").reduce((a, r) => a + num2(r.nominal), 0),
+              refund_transfer: rfs.filter((r) => r.cara === "transfer").reduce((a, r) => a + num2(r.nominal), 0),
+              deposit: deps.reduce((a, m) => a + num2(m.masuk), 0),
+              deposit_konsumen: new Set(deps.map((m) => str2(m.customer_id))).size,
+              menunggu: wait.length,
+              menunggu_nilai: wait.reduce((a, x) => a + num2(x.nilai_item), 0),
+              menunggu_tertua: wait.length ? Math.max(...wait.map((x) => Math.round((Date.parse(t) - Date.parse(str2(x.created_at).slice(0, 10))) / 864e5))) : 0,
+              ditandai: rows.filter((r) => r.flag).length
+            },
+            per_user: Object.entries(perUser).map(([id, r]) => ({ id, ...r, persen: omzetUser[id] ? Math.round(r.nilai / omzetUser[id] * 1e3) / 10 : null })).sort((a, b) => b.nilai - a.nilai),
+            per_kategori: Object.entries(perKat).map(([k, n]) => ({ kategori: k, jumlah: n })).sort((a, b) => b.jumlah - a.jumlah),
+            bisa_putuskan: can(c, "pembatalan", "ubah") || can(c, "pembatalan.owner", "ubah")
+          };
+        }
+      },
+      // ---------------- refund ----------------
+      "refund.list": {
+        auth: true,
+        fn: (c, p) => {
+          needAny(c, [["kasir", "tambah"], ["pindah_dana", "lihat"], ["deposit", "lihat"], ["pembatalan", "lihat"]]);
+          const u = users(c);
+          const orders = byId(c.s.all("orders"));
+          const meths = byId(c.s.all("payment_methods"));
+          const st = str2(p.status);
+          return c.s.all("refunds").filter((r) => !st || r.status === st).sort((a, b) => str2(b.created_at).localeCompare(str2(a.created_at))).slice(0, 500).map((r) => {
+            var _a, _b;
+            return {
+              ...r,
+              customer_nama: custName(c, str2(r.customer_id)),
+              order_nomor: str2((_a = orders[str2(r.order_id)]) == null ? void 0 : _a.nomor),
+              method_nama: str2((_b = meths[str2(r.method_id)]) == null ? void 0 : _b.nama),
+              dibayar_nama: u[str2(r.dibayar_oleh)] || "",
+              diputus_nama: u[str2(r.diputus_oleh)] || "",
+              diajukan_nama: u[str2(r.created_by)] || "",
+              bisa_bayar: r.status === "siap" && (r.cara === "tunai" ? can(c, "kasir", "tambah") || can(c, "pindah_dana", "ubah") : can(c, "pindah_dana", "ubah")),
+              bisa_putuskan: r.status === "menunggu" && can(c, "pembatalan.owner", "ubah")
+            };
+          });
+        }
+      },
+      "refund.pay": {
+        auth: true,
+        fn: (c, p) => {
+          var _a;
+          const r0 = c.s.all("refunds").find((x) => x.id === p.id) || fail2("NOT_FOUND", "Refund tidak ditemukan.");
+          const cara = ["tunai", "transfer"].includes(str2(p.cara)) ? str2(p.cara) : str2(r0.cara);
+          const tn = tunai(c);
+          let methodId = "", kasirId = "";
+          if (cara === "tunai") {
+            needAny(c, [["kasir", "tambah"], ["pindah_dana", "ubah"]]);
+            if (!tn) fail2("VALIDATION", "Metode Tunai belum ada.");
+            methodId = str2(tn.id);
+            const rows = Object.fromEntries(ext2.trial(c, "2000-01-01", today(c)).rows.map((x) => [x.kode, x.saldo_akhir]));
+            const laci = Math.round(num2(rows[`1100:${methodId}:${me(c)}`]));
+            if (((_a = c.user) == null ? void 0 : _a.role) === "kasir" || laci > 0) {
+              kasirId = me(c);
+              if (laci < num2(r0.nominal)) fail2("VALIDATION", `Saldo laci Anda ${fmt(laci)}, tidak cukup untuk refund ${fmt(num2(r0.nominal))}.`);
+            } else if (!can(c, "pindah_dana", "ubah")) fail2("FORBIDDEN", "Refund tunai dibayar dari laci kasir.");
+          } else {
+            needAny(c, [["pindah_dana", "ubah"]]);
+            const m = c.s.all("payment_methods").find((x) => x.id === p.method_id && x.jenis !== "tunai") || fail2("VALIDATION", "Pilih rekening asal transfer.");
+            methodId = str2(m.id);
+            if (!str2(p.bukti)) fail2("VALIDATION", "Lampirkan foto bukti transfer.");
+          }
+          if (!str2(p.penerima)) fail2("VALIDATION", "Isi nama penerima uang.");
+          checkPassword2(c, p.password);
+          return c.s.withLock(() => {
+            var _a2;
+            const r = c.s.all("refunds").find((x) => x.id === p.id);
+            if (r.status !== "siap") fail2("VALIDATION", r.status === "dibayar" ? "Refund ini sudah dibayar." : "Refund ini belum disetujui.");
+            const bukti = saveBukti(c, `refund-${today(c)}-${str2(r.id)}.jpg`, str2(p.bukti));
+            c.s.update("refunds", "id", str2(r.id), { status: "dibayar", cara, method_id: methodId, kasir_id: kasirId, penerima: str2(p.penerima).slice(0, 120), bukti, dibayar_oleh: me(c), dibayar_at: iso2(c.env), catatan: str2(p.catatan).slice(0, 200), ...stamp2(c, false) });
+            if (r.sumber === "pembatalan" && r.order_id) {
+              const o = c.s.all("orders").find((x) => x.id === r.order_id);
+              if (o) {
+                c.s.update("orders", "id", str2(o.id), { dikembalikan: num2(o.dikembalikan) + num2(r.nominal) });
+                recalcOrder2(c, str2(o.id));
+              }
+            } else if (r.sumber === "deposit") {
+              addDeposit(c, { customer_id: str2(r.customer_id), jenis: "cair", keluar: num2(r.nominal), method_id: methodId, kasir_id: kasirId, ref_tabel: "refunds", ref_id: str2(r.id), keterangan: `Pencairan ${str2(r.nomor)}` });
+            }
+            log2(c, "refund_bayar", "refunds", str2(r.id), `${str2(r.nomor)} dibayar ${cara} Rp ${fmt(num2(r.nominal))} ke ${str2(p.penerima)}`);
+            ext2.emit(c, { tipe: "refund_bayar", judul: `${str2((_a2 = c.user) == null ? void 0 : _a2.nama)} membayar refund Rp ${fmt(num2(r.nominal))} (${cara})`, detail: `${custName(c, str2(r.customer_id))} \xB7 ${str2(r.nomor)} \xB7 diterima ${str2(p.penerima)}`, nominal: num2(r.nominal), scope: "keuangan", ref_tabel: "refunds", ref_id: str2(r.id) });
+            return c.s.all("refunds").find((x) => x.id === r.id);
+          });
+        }
+      },
+      "refund.decide": {
+        auth: true,
+        fn: (c, p) => {
+          needAny(c, [["pembatalan.owner", "ubah"]]);
+          checkPassword2(c, p.password);
+          return c.s.withLock(() => {
+            const r = c.s.all("refunds").find((x) => x.id === p.id) || fail2("NOT_FOUND", "Pengajuan tidak ditemukan.");
+            if (r.status !== "menunggu") fail2("VALIDATION", "Pengajuan ini sudah diputuskan.");
+            if (!p.setuju && !str2(p.catatan)) fail2("VALIDATION", "Isi alasan penolakan.");
+            if (p.setuju && num2(r.nominal) > saldoOf(c, str2(r.customer_id))) fail2("VALIDATION", "Saldo deposit konsumen sudah berubah dan tidak cukup.");
+            c.s.update("refunds", "id", str2(r.id), { status: p.setuju ? "siap" : "ditolak", diputus_oleh: me(c), diputus_at: iso2(c.env), catatan: str2(p.catatan).slice(0, 200), ...stamp2(c, false) });
+            log2(c, p.setuju ? "cair_setuju" : "cair_tolak", "refunds", str2(r.id), `Pencairan deposit ${str2(r.nomor)} ${p.setuju ? "disetujui" : "ditolak"}`, str2(p.catatan));
+            ext2.emit(c, { tipe: p.setuju ? "cair_setuju" : "cair_tolak", judul: `Pencairan deposit ${str2(r.nomor)} ${p.setuju ? "disetujui, siap dibayar" : "ditolak"}`, detail: `${custName(c, str2(r.customer_id))} \xB7 Rp ${fmt(num2(r.nominal))}`, nominal: num2(r.nominal), scope: "setoran", target: str2(r.created_by), ref_tabel: "refunds", ref_id: str2(r.id) });
+            return c.s.all("refunds").find((x) => x.id === r.id);
+          });
+        }
+      },
+      // ---------------- deposit ----------------
+      "deposit.summary": {
+        auth: true,
+        fn: (c, p) => {
+          var _a;
+          needAny(c, [["deposit", "lihat"]]);
+          const t = today(c);
+          const from = isYmd2(str2(p.from)) ? str2(p.from) : t.slice(0, 8) + "01", to = isYmd2(str2(p.to)) ? str2(p.to) : t;
+          const all2 = moves(c);
+          const cust = byId(c.s.all("customers"));
+          const per = {};
+          all2.slice().sort((a, b) => str2(a.created_at).localeCompare(str2(b.created_at))).forEach((m) => {
+            const k = str2(m.customer_id);
+            const r = per[k] || (per[k] = { saldo: 0, terakhir: "", jenis_terakhir: "", mutasi: 0 });
+            r.saldo += num2(m.masuk) - num2(m.keluar);
+            r.terakhir = str2(m.tanggal);
+            r.jenis_terakhir = str2(m.jenis);
+            r.mutasi++;
+          });
+          const inR = (m) => str2(m.tanggal) >= from && str2(m.tanggal) <= to;
+          const rng = all2.filter(inR);
+          const total = Object.values(per).reduce((a, r) => a + r.saldo, 0);
+          const buku = Math.round(num2((_a = ext2.trial(c, "2000-01-01", t).rows.find((r) => r.kode === "2150")) == null ? void 0 : _a.saldo_akhir));
+          const sumJ = (j, k) => rng.filter((m) => m.jenis === j).reduce((a, m) => a + num2(m[k]), 0);
+          return {
+            from,
+            to,
+            ringkas: {
+              total,
+              konsumen: Object.values(per).filter((r) => Math.round(r.saldo) > 0).length,
+              masuk: rng.reduce((a, m) => a + num2(m.masuk), 0),
+              topup: sumJ("topup", "masuk"),
+              dari_batal: sumJ("pembatalan", "masuk"),
+              lebih_bayar: sumJ("lebih_bayar", "masuk"),
+              dipakai: sumJ("pakai", "keluar"),
+              dipakai_nota: rng.filter((m) => m.jenis === "pakai").length,
+              dicairkan: sumJ("cair", "keluar"),
+              dicairkan_n: rng.filter((m) => m.jenis === "cair").length,
+              buku_besar: buku,
+              cocok: Math.round(total) === buku,
+              selisih: Math.round(total) - buku
+            },
+            konsumen: Object.entries(per).filter(([, r]) => Math.round(r.saldo) !== 0).map(([id, r]) => {
+              var _a2, _b, _c, _d;
+              return {
+                customer_id: id,
+                nama: str2((_a2 = cust[id]) == null ? void 0 : _a2.nama) || "(terhapus)",
+                kode: str2((_b = cust[id]) == null ? void 0 : _b.kode),
+                tipe: str2((_c = cust[id]) == null ? void 0 : _c.tipe),
+                percetakan: str2((_d = cust[id]) == null ? void 0 : _d.percetakan),
+                saldo: Math.round(r.saldo),
+                ditahan: ditahan(c, id),
+                terakhir: r.terakhir,
+                jenis_terakhir: r.jenis_terakhir,
+                umur: Math.round((Date.parse(t) - Date.parse(r.terakhir)) / 864e5)
+              };
+            }).sort((a, b) => b.saldo - a.saldo),
+            bisa_topup: can(c, "deposit", "tambah"),
+            bisa_cair: can(c, "deposit", "tambah"),
+            pilihan: can(c, "deposit", "tambah") ? c.s.all("customers").filter((x) => bool2(x.aktif)).map((x) => ({ id: x.id, nama: x.nama, kode: x.kode, percetakan: x.percetakan })) : [],
+            methods: c.s.all("payment_methods").filter((m) => bool2(m.aktif)).map((m) => ({ id: m.id, nama: m.nama, jenis: m.jenis }))
+          };
+        }
+      },
+      "deposit.card": {
+        auth: true,
+        fn: (c, p) => {
+          needAny(c, [["deposit", "lihat"], ["master.konsumen", "lihat"], ["kasir", "tambah"]]);
+          const cid = str2(p.customer_id);
+          const u = users(c);
+          const meths = byId(c.s.all("payment_methods"));
+          const list = moves(c, cid).sort((a, b) => str2(a.created_at).localeCompare(str2(b.created_at))).map((m) => {
+            var _a;
+            return { ...m, oleh: u[str2(m.created_by)] || "", method_nama: str2((_a = meths[str2(m.method_id)]) == null ? void 0 : _a.nama) };
+          });
+          const cu = c.s.all("customers").find((x) => x.id === cid);
+          return { customer: cu ? { id: cu.id, nama: cu.nama, kode: cu.kode, telp: cu.telp, percetakan: cu.percetakan, tipe: cu.tipe } : null, saldo: saldoOf(c, cid), bebas: saldoBebas(c, cid), mutasi: list };
+        }
+      },
+      "deposit.topup": {
+        auth: true,
+        fn: (c, p) => {
+          needAny(c, [["deposit", "tambah"]]);
+          const cu = c.s.all("customers").find((x) => x.id === p.customer_id) || fail2("VALIDATION", "Pilih konsumen.");
+          const nominal = Math.round(num2(p.nominal));
+          if (nominal <= 0) fail2("VALIDATION", "Isi nominal deposit.");
+          const m = c.s.all("payment_methods").find((x) => x.id === p.method_id && bool2(x.aktif)) || fail2("VALIDATION", "Pilih uang diterima lewat apa.");
+          return c.s.withLock(() => {
+            var _a, _b;
+            const id = newId2(c.env, "dpt");
+            const bukti = saveBukti(c, `deposit-${today(c)}-${id}.jpg`, str2(p.bukti));
+            const kasir = m.jenis === "tunai" && (((_a = c.user) == null ? void 0 : _a.role) === "kasir" || !can(c, "pindah_dana", "ubah")) ? me(c) : "";
+            const row = addDeposit(c, { customer_id: str2(cu.id), jenis: "topup", masuk: nominal, method_id: str2(m.id), kasir_id: kasir, bukti, ref_tabel: "", ref_id: id, keterangan: str2(p.catatan) || `Titip di muka \xB7 ${str2(m.nama)}` });
+            log2(c, "deposit_topup", "deposit_moves", str2(row.id), `Deposit ${str2(cu.nama)} +${fmt(nominal)} (${str2(m.nama)})`);
+            ext2.emit(c, { tipe: "deposit_topup", judul: `Deposit masuk Rp ${fmt(nominal)} \xB7 ${str2(cu.nama)}`, detail: `${str2(row.nomor)} \xB7 ${str2(m.nama)} \xB7 ${str2((_b = c.user) == null ? void 0 : _b.nama)}`, nominal, scope: "keuangan", ref_tabel: "deposit_moves", ref_id: str2(row.id) });
+            return { ...row, customer_nama: cu.nama, method_nama: m.nama };
+          });
+        }
+      },
+      "deposit.cair": {
+        auth: true,
+        fn: (c, p) => {
+          needAny(c, [["deposit", "tambah"]]);
+          const cu = c.s.all("customers").find((x) => x.id === p.customer_id) || fail2("VALIDATION", "Pilih konsumen.");
+          const nominal = Math.round(num2(p.nominal));
+          if (nominal <= 0) fail2("VALIDATION", "Isi nominal yang dicairkan.");
+          if (!str2(p.alasan)) fail2("VALIDATION", "Isi alasan pencairan.");
+          const cara = str2(p.cara) === "transfer" ? "transfer" : "tunai";
+          return c.s.withLock(() => {
+            var _a;
+            const bebas = saldoBebas(c, str2(cu.id));
+            if (nominal > bebas) fail2("VALIDATION", `Saldo deposit yang bisa dicairkan ${fmt(bebas)}.`);
+            const id = newId2(c.env, "rf");
+            const row = c.s.insert("refunds", {
+              id,
+              nomor: nomor(c, "RF"),
+              tanggal: today(c),
+              customer_id: cu.id,
+              sumber: "deposit",
+              ref_id: "",
+              order_id: "",
+              nominal,
+              cara,
+              status: "menunggu",
+              alasan: str2(p.alasan).slice(0, 300),
+              method_id: "",
+              kasir_id: "",
+              penerima: "",
+              bukti: "",
+              diputus_oleh: "",
+              diputus_at: "",
+              dibayar_oleh: "",
+              dibayar_at: "",
+              catatan: "",
+              ...stamp2(c, true)
+            });
+            log2(c, "cair_ajukan", "refunds", id, `Ajukan pencairan deposit ${str2(cu.nama)} Rp ${fmt(nominal)}`, str2(p.alasan));
+            ext2.emit(c, { tipe: "cair_ajukan", judul: `${str2((_a = c.user) == null ? void 0 : _a.nama)} mengajukan pencairan deposit Rp ${fmt(nominal)}`, detail: `${str2(cu.nama)} \xB7 ${cara} \xB7 "${str2(p.alasan).slice(0, 80)}"`, nominal, scope: "keuangan", tindakan: "cair", ref_tabel: "refunds", ref_id: id });
+            return row;
+          });
+        }
+      },
+      "deposit.methods": {
+        auth: true,
+        fn: (c) => {
+          needAny(c, [["kasir", "tambah"], ["pindah_dana", "lihat"], ["deposit", "lihat"]]);
+          return c.s.all("payment_methods").filter((m) => bool2(m.aktif)).map((m) => ({ id: m.id, nama: m.nama, jenis: m.jenis }));
+        }
+      },
+      "order.lebih_ke_deposit": {
+        auth: true,
+        fn: (c, p) => {
+          needAny(c, [["kasir", "tambah"], ["pembatalan", "ubah"]]);
+          return c.s.withLock(() => {
+            const o = c.s.all("orders").find((x) => x.id === p.order_id) || fail2("NOT_FOUND", "Nota tidak ditemukan.");
+            const n = overpayToDeposit(c, str2(o.id));
+            if (!n) fail2("VALIDATION", "Tidak ada kelebihan bayar pada nota ini.");
+            log2(c, "lebih_deposit", "orders", str2(o.id), `Kelebihan bayar ${str2(o.nomor)} Rp ${fmt(n)} jadi deposit`);
+            return orderDetail2(c, str2(o.id));
+          });
+        }
+      },
+      // ---------------- kartu konsumen ----------------
+      "customer.profile": {
+        auth: true,
+        fn: (c, p) => {
+          needAny(c, [["master.konsumen", "lihat"]]);
+          const cid = str2(p.customer_id);
+          const cu = c.s.all("customers").find((x) => x.id === cid) || fail2("NOT_FOUND", "Konsumen tidak ditemukan.");
+          const t = today(c);
+          const u = users(c);
+          const allOrders = c.s.all("orders").filter((o) => !bool2(o.batal));
+          const orders = allOrders.filter((o) => o.customer_id === cid).sort((a, b) => str2(b.created_at).localeCompare(str2(a.created_at)));
+          const net = (o) => num2(o.total) - num2(o.batal_nilai);
+          const ids = new Set(orders.map((o) => str2(o.id)));
+          const items = c.s.all("order_items").filter((i) => ids.has(str2(i.order_id)));
+          const pays = c.s.all("payments").filter((x) => ids.has(str2(x.order_id)));
+          const meths = byId(c.s.all("payment_methods"));
+          const belanja = orders.reduce((a, o) => a + net(o), 0);
+          const totals = {};
+          allOrders.forEach((o) => {
+            totals[str2(o.customer_id)] = (totals[str2(o.customer_id)] || 0) + net(o);
+          });
+          const rank = Object.values(totals).filter((v) => v > belanja).length + 1;
+          const tgl = [...new Set(orders.map((o) => str2(o.tanggal)))].sort();
+          const interval = tgl.length > 1 ? Math.round((Date.parse(tgl[tgl.length - 1]) - Date.parse(tgl[0])) / 864e5 / (tgl.length - 1)) : null;
+          const open = orders.filter((o) => num2(o.sisa) > 0);
+          const umur = (o) => Math.round((Date.parse(t) - Date.parse(str2(o.tanggal))) / 864e5);
+          const aging = { a: 0, an: 0, b: 0, bn: 0, c: 0, cn: 0 };
+          open.forEach((o) => {
+            const d2 = umur(o);
+            if (d2 <= 30) {
+              aging.a += num2(o.sisa);
+              aging.an++;
+            } else if (d2 <= 60) {
+              aging.b += num2(o.sisa);
+              aging.bn++;
+            } else {
+              aging.c += num2(o.sisa);
+              aging.cn++;
+            }
+          });
+          const cns = c.s.all("cancellations").filter((x) => x.customer_id === cid);
+          const cnOk = cns.filter((x) => x.status === "disetujui");
+          const status = { lunas: 0, dp: 0, belum: 0, batal: 0 };
+          orders.forEach((o) => {
+            const s = str2(o.status_bayar);
+            status[s] = (status[s] || 0) + 1;
+          });
+          const year = t.slice(0, 4);
+          const bulan = Array.from({ length: 12 }, () => ({ cash: 0, piutang: 0, batal: 0 }));
+          orders.forEach((o) => {
+            if (str2(o.tanggal).slice(0, 4) !== year) return;
+            const m = Number(str2(o.tanggal).slice(5, 7)) - 1, n = net(o), pi = Math.max(0, Math.min(n, num2(o.sisa)));
+            bulan[m].cash += n - pi;
+            bulan[m].piutang += pi;
+            bulan[m].batal += num2(o.batal_nilai);
+          });
+          const prod = {};
+          items.forEach((i) => {
+            const q = num2(i.qty) - num2(i.qty_batal);
+            if (q <= 0) return;
+            const k = str2(i.product_id);
+            const r = prod[k] || (prod[k] = { nama: str2(i.nama_produk), nilai: 0, qty: 0 });
+            r.nilai += Math.round(num2(i.subtotal) * (q / Math.max(1, num2(i.qty))));
+            r.qty += q;
+          });
+          const hari = [0, 0, 0, 0, 0, 0, 0], jam = {};
+          orders.forEach((o) => {
+            hari[(/* @__PURE__ */ new Date(str2(o.tanggal) + "T00:00:00")).getDay()]++;
+            const h = Number(str2(o.created_at).slice(11, 13));
+            if (!Number.isNaN(h)) jam[h] = (jam[h] || 0) + 1;
+          });
+          const HARI = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+          const topHari = hari.map((n, i) => ({ n, i })).filter((x) => x.n).sort((a, b) => b.n - a.n).slice(0, 2).map((x) => HARI[x.i]);
+          const jamTop = Object.entries(jam).sort((a, b) => b[1] - a[1])[0];
+          const lunasDays = [];
+          orders.filter((o) => o.status_bayar === "lunas").forEach((o) => {
+            const ps = pays.filter((x) => x.order_id === o.id);
+            if (!ps.length) return;
+            const last = ps.map((x) => str2(x.tanggal)).sort().pop();
+            lunasDays.push(Math.max(0, Math.round((Date.parse(last) - Date.parse(str2(o.tanggal))) / 864e5)));
+          });
+          const cara = {};
+          pays.forEach((x) => {
+            var _a;
+            const j = x.method_id === DEPOSIT ? "deposit" : str2((_a = meths[str2(x.method_id)]) == null ? void 0 : _a.jenis) || "lain";
+            cara[j] = (cara[j] || 0) + num2(x.nominal);
+          });
+          const csCount = {};
+          orders.forEach((o) => {
+            csCount[str2(o.cs_id)] = (csCount[str2(o.cs_id)] || 0) + 1;
+          });
+          const csTop = Object.entries(csCount).sort((a, b) => b[1] - a[1])[0];
+          const dm = moves(c, cid).sort((a, b) => str2(a.created_at).localeCompare(str2(b.created_at)));
+          const itemsBy = {};
+          items.forEach((i) => {
+            var _a;
+            (itemsBy[_a = str2(i.order_id)] || (itemsBy[_a] = [])).push(i);
+          });
+          const timeline = [];
+          pays.slice().sort((a, b) => str2(b.created_at).localeCompare(str2(a.created_at))).slice(0, 8).forEach((x) => {
+            var _a, _b;
+            return timeline.push({ waktu: str2(x.created_at), jenis: "bayar", judul: `Pembayaran Rp ${fmt(num2(x.nominal))}`, detail: `${u[str2(x.kasir_id)] || ""} \xB7 ${x.method_id === DEPOSIT ? "deposit" : str2((_a = meths[str2(x.method_id)]) == null ? void 0 : _a.nama)} \xB7 ${str2((_b = orders.find((o) => o.id === x.order_id)) == null ? void 0 : _b.nomor)}` });
+          });
+          cns.forEach((x) => timeline.push({ waktu: str2(x.diputus_at || x.created_at), jenis: "batal", judul: `Pembatalan ${x.status === "disetujui" ? "disetujui" : x.status === "ditolak" ? "ditolak" : "diajukan"}`, detail: `${str2(x.nomor)} \xB7 ${u[str2(x.diputus_oleh || x.created_by)] || ""}` }));
+          dm.filter((m) => m.jenis === "topup" || m.jenis === "cair").forEach((m) => timeline.push({ waktu: str2(m.created_at), jenis: m.jenis === "topup" ? "deposit" : "cair", judul: `${m.jenis === "topup" ? "Top-up deposit" : "Pencairan deposit"} Rp ${fmt(num2(m.masuk) || num2(m.keluar))}`, detail: `${u[str2(m.created_by)] || ""} \xB7 ${str2(m.nomor)}` }));
+          c.s.all("activity_log").filter((l) => l.tabel === "customers" && l.record_id === cid).forEach((l) => timeline.push({ waktu: str2(l.waktu), jenis: "data", judul: l.aksi === "tambah" ? "Konsumen dibuat" : "Data konsumen diubah", detail: str2(l.user_nama) }));
+          if (!timeline.some((x) => x.judul === "Konsumen dibuat") && cu.created_at) timeline.push({ waktu: str2(cu.created_at), jenis: "data", judul: "Konsumen dibuat", detail: u[str2(cu.created_by)] || "" });
+          timeline.sort((a, b) => b.waktu.localeCompare(a.waktu));
+          return {
+            customer: cu,
+            cs_terbanyak: csTop ? u[csTop[0]] || "" : "",
+            pelanggan_sejak: tgl[0] || str2(cu.created_at).slice(0, 10),
+            kpi: {
+              belanja,
+              nota: orders.length,
+              rata_nota: orders.length ? Math.round(belanja / orders.length) : 0,
+              peringkat: belanja > 0 ? rank : null,
+              jumlah_konsumen: Object.keys(totals).length,
+              terakhir: orders[0] ? str2(orders[0].tanggal) : "",
+              hari_sejak: orders[0] ? umur(orders[0]) : null,
+              interval,
+              piutang: open.reduce((a, o) => a + num2(o.sisa), 0),
+              piutang_nota: open.length,
+              piutang_tertua: open.length ? Math.max(...open.map(umur)) : 0,
+              deposit: saldoOf(c, cid),
+              deposit_bebas: saldoBebas(c, cid),
+              batal_dokumen: cnOk.length,
+              batal_nilai: cnOk.reduce((a, x) => a + num2(x.nilai_batal), 0),
+              batal_menunggu: cns.filter((x) => x.status === "menunggu").length
+            },
+            status,
+            aging,
+            tahun: year,
+            bulan,
+            produk: Object.values(prod).sort((a, b) => b.nilai - a.nilai).slice(0, 5),
+            kebiasaan: { hari: topHari, jam: jamTop ? `${String(jamTop[0]).padStart(2, "0")}.00\u2013${String(Number(jamTop[0]) + 1).padStart(2, "0")}.00` : "", lama_bayar: lunasDays.length ? Math.round(lunasDays.reduce((a, b) => a + b, 0) / lunasDays.length) : null, cara },
+            orders: orders.slice(0, 300).map((o) => {
+              var _a;
+              const its = itemsBy[str2(o.id)] || [];
+              return {
+                id: o.id,
+                nomor: o.nomor,
+                tanggal: o.tanggal,
+                total: num2(o.total),
+                batal_nilai: num2(o.batal_nilai),
+                terbayar: num2(o.terbayar),
+                sisa: num2(o.sisa),
+                status_bayar: o.status_bayar,
+                status_ambil: o.status_ambil,
+                status_batal: str2(o.status_batal),
+                ringkas: `${str2((_a = its[0]) == null ? void 0 : _a.nama_produk)}${its.length > 1 ? ` \xB7 ${its.length} item` : ""}`,
+                umur: umur(o),
+                deposit: pays.some((x) => x.order_id === o.id && x.method_id === DEPOSIT)
+              };
+            }),
+            payments: pays.sort((a, b) => str2(b.created_at).localeCompare(str2(a.created_at))).slice(0, 300).map((x) => {
+              var _a, _b;
+              return { id: x.id, tanggal: x.tanggal, nominal: num2(x.nominal), metode: x.method_id === DEPOSIT ? "Deposit" : str2((_a = meths[str2(x.method_id)]) == null ? void 0 : _a.nama), kasir: u[str2(x.kasir_id)] || "", nota: str2((_b = orders.find((o) => o.id === x.order_id)) == null ? void 0 : _b.nomor) };
+            }),
+            deposit: dm.map((m) => ({ ...m, oleh: u[str2(m.created_by)] || "" })),
+            pembatalan: cns.sort((a, b) => str2(b.created_at).localeCompare(str2(a.created_at))).map((x) => cnView(c, x)),
+            timeline: timeline.slice(0, 14)
+          };
+        }
+      }
+    };
+    return { handlers: handlers2, payWithDeposit, overpayToDeposit, saldoOf, saldoBebas, nomor, addDays: addDays2 };
+  }
+
   // src/server/core.ts
   var API_VERSION = 1;
   var ApiError = class extends Error {
@@ -1949,18 +2890,34 @@ var FortunerServer = (() => {
     if (terbayar > 0) return "dp";
     return total === 0 ? "lunas" : "belum";
   }
+  function kasHarian(c, t) {
+    const out = [];
+    c.s.all("payments").forEach((x) => {
+      if (x.tanggal === t && x.method_id !== DEPOSIT) out.push({ kasir_id: str(x.kasir_id), method_id: str(x.method_id), nominal: Number(x.nominal || 0) });
+    });
+    c.s.all("deposit_moves").forEach((m) => {
+      if (m.tanggal === t && m.jenis === "topup") out.push({ kasir_id: str(m.kasir_id), method_id: str(m.method_id), nominal: Number(m.masuk || 0) });
+    });
+    c.s.all("refunds").forEach((r) => {
+      if (r.status === "dibayar" && str(r.dibayar_at).slice(0, 10) === t) out.push({ kasir_id: str(r.kasir_id), method_id: str(r.method_id), nominal: -Number(r.nominal || 0) });
+    });
+    return out;
+  }
   function recalcOrder(c, orderId) {
     const o = c.s.all("orders").find((x) => x.id === orderId);
-    const terbayar = c.s.all("payments").filter((x) => x.order_id === orderId).reduce((a, x) => a + Number(x.nominal || 0), 0);
-    const total = Number(o.total);
-    c.s.update("orders", "id", orderId, { terbayar, sisa: total - terbayar, status_bayar: bool(o.batal) ? "batal" : statusBayar(total, terbayar), ...stamp(c, false) });
+    const bayar = c.s.all("payments").filter((x) => x.order_id === orderId).reduce((a, x) => a + Number(x.nominal || 0), 0);
+    const terbayar = bayar - Number(o.dikembalikan || 0);
+    const net = Number(o.total) - Number(o.batal_nilai || 0);
+    const sisa = net - terbayar;
+    const status = bool(o.batal) || str(o.status_batal) === "penuh" && net <= 0 && sisa === 0 ? "batal" : statusBayar(net, terbayar);
+    c.s.update("orders", "id", orderId, { terbayar, sisa, status_bayar: status, ...stamp(c, false) });
   }
   function orderDetail(c, id) {
     var _a, _b;
     const o = c.s.all("orders").find((x) => x.id === id) || fail("NOT_FOUND", "Nota tidak ditemukan.");
     const cu = c.s.all("customers").find((x) => x.id === o.customer_id) || {};
     const users = Object.fromEntries(c.s.all("users").map((x) => [x.id, x.nama]));
-    const methods = Object.fromEntries(c.s.all("payment_methods").map((x) => [x.id, x.nama]));
+    const methods = { ...Object.fromEntries(c.s.all("payment_methods").map((x) => [x.id, x.nama])), [DEPOSIT]: "Deposit" };
     const machines = Object.fromEntries(c.s.all("machines").map((x) => [x.id, x.nama]));
     const canCost = !!((_b = (_a = c.perms) == null ? void 0 : _a["master.harga_beli"]) == null ? void 0 : _b.lihat);
     const jenis = Object.fromEntries(c.s.all("products").map((x) => [x.id, x.jenis_harga]));
@@ -1968,7 +2925,10 @@ var FortunerServer = (() => {
       order: { ...o, customer_nama: str(cu.nama), customer_telp: str(cu.telp), customer_tipe: str(cu.tipe), customer_kode: str(cu.kode), cs_nama: str(users[str(o.cs_id)]) },
       items: c.s.all("order_items").filter((i) => i.order_id === id).map((i) => ({ ...i, harga_beli: canCost ? i.harga_beli : null, hpp_bahan: canCost ? i.hpp_bahan : null, hpp_klik: canCost ? i.hpp_klik : null, mesin_nama: str(machines[str(i.mesin_id)]), jenis_harga: str(jenis[str(i.product_id)]) })),
       payments: c.s.all("payments").filter((x) => x.order_id === id).sort((a, b) => str(a.created_at).localeCompare(str(b.created_at))).map((x) => ({ ...x, method_nama: str(methods[str(x.method_id)]), kasir_nama: str(users[str(x.kasir_id)]) })),
-      payment_methods: c.s.all("payment_methods").filter((m) => bool(m.aktif)).map((m) => ({ id: m.id, nama: m.nama, jenis: m.jenis }))
+      payment_methods: c.s.all("payment_methods").filter((m) => bool(m.aktif)).map((m) => ({ id: m.id, nama: m.nama, jenis: m.jenis })),
+      deposit_saldo: batal.saldoBebas(c, str(o.customer_id)),
+      pembatalan: c.s.all("cancellations").filter((x) => x.order_id === id).sort((a, b) => str(b.created_at).localeCompare(str(a.created_at))).map((x) => ({ id: x.id, nomor: x.nomor, status: x.status, jenis: x.jenis, nilai_item: x.nilai_item, nilai_batal: x.nilai_batal, ditahan: x.ditahan, alasan: x.alasan, penyelesaian: x.penyelesaian, kelebihan: x.kelebihan, created_at: x.created_at, diajukan: str(users[str(x.created_by)]) })),
+      refund_jalan: c.s.all("refunds").filter((r) => r.order_id === id && r.status === "siap").map((r) => ({ id: r.id, nomor: r.nomor, nominal: r.nominal, cara: r.cara }))
     };
   }
   function createOrder(c, p) {
@@ -2113,11 +3073,15 @@ var FortunerServer = (() => {
     product_categories: { perm: "master.produk", label: "kategori produk", prefix: "kat", required: ["nama"] }
   };
   var custKodeBerikut = (rows) => String(rows.reduce((a, x) => Math.max(a, Number(x.kode) || 0), 1e3) + 1);
-  var custTipe = (v) => /^(reseller|percetakan)$/i.test(str(v).trim()) ? "reseller" : "enduser";
+  var custTipe = (v) => {
+    const t = str(v).trim().toLowerCase();
+    return /^0?1(\D|$)/.test(t) || /reseller|percetakan/.test(t) ? "reseller" : "enduser";
+  };
   function custRapikan(r) {
     r.nama = str(r.nama).trim();
     r.telp = str(r.telp).trim();
     r.tipe = custTipe(r.tipe);
+    r.kode_jenis = r.tipe === "reseller" ? "01" : "02";
     r.percetakan = r.tipe === "reseller" ? str(r.percetakan).trim() : "";
     if (!r.nama) return "Nama wajib diisi.";
     if (!r.telp) return "Telepon wajib diisi.";
@@ -2503,7 +3467,7 @@ var FortunerServer = (() => {
           const per = {};
           const om = { reseller: 0, enduser: 0 };
           bulanIni.forEach((o) => {
-            const k = str(o.customer_id), t = Number(o.total || 0);
+            const k = str(o.customer_id), t = Number(o.total || 0) - Number(o.batal_nilai || 0);
             const r = per[k] || (per[k] = { omzet: 0, nota: 0 });
             r.omzet += t;
             r.nota++;
@@ -2801,11 +3765,16 @@ var FortunerServer = (() => {
           const nominal = Math.round(Number(p.nominal) || 0);
           if (nominal <= 0) fail("VALIDATION", "Nominal pembayaran harus lebih dari 0.");
           const offline = bool(p.dibuat_offline);
-          if (!offline && nominal > Number(o.sisa)) fail("VALIDATION", `Nominal melebihi sisa tagihan (${Number(o.sisa).toLocaleString("id-ID")}).`);
-          const method = c.s.all("payment_methods").find((m) => m.id === p.method_id) || fail("VALIDATION", "Pilih metode pembayaran.");
+          const pakaiDeposit = p.method_id === DEPOSIT;
+          const keDeposit = !offline && !pakaiDeposit && !!p.lebih_ke_deposit;
+          if (!offline && !keDeposit && nominal > Number(o.sisa)) fail("VALIDATION", `Nominal melebihi sisa tagihan (${Number(o.sisa).toLocaleString("id-ID")}).`);
+          if (pakaiDeposit && offline) fail("VALIDATION", "Bayar pakai deposit hanya bisa saat online.");
+          const method = pakaiDeposit ? { id: DEPOSIT, nama: "Deposit" } : c.s.all("payment_methods").find((m) => m.id === p.method_id) || fail("VALIDATION", "Pilih metode pembayaran.");
           const tanggal = offline && isYmd(str(p.tanggal)) && str(p.tanggal) <= c.env.today() ? str(p.tanggal) : c.env.today();
+          if (pakaiDeposit) batal.payWithDeposit(c, o, nominal, pid);
           c.s.insert("payments", { id: pid, order_id: o.id, tanggal, nominal, method_id: method.id, kasir_id: str(c.user.id), catatan: str(p.catatan), ...stamp(c, true) });
           recalcOrder(c, str(o.id));
+          if (keDeposit) batal.overpayToDeposit(c, str(o.id));
           ext.hooks.onPayment(c, str(o.id));
           log(c, "bayar", "orders", str(o.id), `Pembayaran ${nominal.toLocaleString("id-ID")} (${method.nama}) untuk ${o.id}${offline ? " \u2014 dibuat offline" : ""}`);
           return orderDetail(c, str(o.id));
@@ -2829,18 +3798,8 @@ var FortunerServer = (() => {
     },
     "orders.cancel": {
       auth: true,
-      fn: (c, p) => {
-        need(c, "order", "hapus");
-        if (!str(p.alasan)) fail("VALIDATION", "Isi alasan pembatalan.");
-        return c.s.withLock(() => {
-          const o = c.s.all("orders").find((x) => x.id === p.order_id) || fail("NOT_FOUND", "Nota tidak ditemukan.");
-          if (Number(o.terbayar) > 0) fail("VALIDATION", "Nota sudah ada pembayaran. Pengembalian uang dicatat di modul Pengeluaran (Tahap 5), baru nota bisa dibatalkan.");
-          c.s.update("orders", "id", str(o.id), { batal: true, alasan_batal: str(p.alasan), sisa: 0, status_bayar: "batal", ...stamp(c, false) });
-          c.s.all("order_items").filter((i) => i.order_id === o.id).forEach((i) => c.s.update("order_items", "id", str(i.id), { status_produksi: "batal" }));
-          log(c, "batal_nota", "orders", str(o.id), `Membatalkan ${o.id} senilai ${Number(o.total).toLocaleString("id-ID")}`, str(p.alasan));
-          return orderDetail(c, str(o.id));
-        });
-      }
+      // v1.3.5: tidak lagi menandai nota batal langsung. Membuat dokumen pembatalan penuh (jalur cepat atau menunggu persetujuan).
+      fn: (c, p) => handlers["cancel.request"].fn(c, { order_id: p.order_id, jenis: "penuh", alasan: p.alasan, kategori: p.kategori || "Lainnya" }).order
     },
     // ----- produksi (Tahap 4) -----
     "production.list": {
@@ -2946,8 +3905,8 @@ var FortunerServer = (() => {
             const klikMesin = r.counter_akhir != null && r.counter_awal != null ? Number(r.counter_akhir) - Number(r.counter_awal) : null;
             const reject = Number(r.reject_trouble || 0) + Number(r.reject_operator || 0) + Number(r.reject_fo || 0);
             const klikFo = fo[`${r.tanggal}|${r.mesin_id}`] || 0;
-            const batal = Number(r.batal || 0);
-            return { ...r, klik_mesin: klikMesin, reject, klik_fo: klikFo, selisih: klikMesin == null ? null : klikMesin - reject - (klikFo - batal), awal_saran: (_b = (_a = last(str(r.mesin_id), str(r.tanggal))) == null ? void 0 : _a.counter_akhir) != null ? _b : null };
+            const batal2 = Number(r.batal || 0);
+            return { ...r, klik_mesin: klikMesin, reject, klik_fo: klikFo, selisih: klikMesin == null ? null : klikMesin - reject - (klikFo - batal2), awal_saran: (_b = (_a = last(str(r.mesin_id), str(r.tanggal))) == null ? void 0 : _a.counter_akhir) != null ? _b : null };
           }),
           last_akhir: Object.fromEntries(machines.map((m) => {
             var _a, _b;
@@ -3001,12 +3960,11 @@ var FortunerServer = (() => {
         const methods = c.s.all("payment_methods");
         const semua = !!((_b = (_a = c.perms) == null ? void 0 : _a.pindah_dana) == null ? void 0 : _b.lihat);
         const me = str((_c = c.user) == null ? void 0 : _c.id);
-        const pays = c.s.all("payments").filter((x) => x.tanggal === t && (semua || x.kasir_id === me));
         const sys = {};
         const cnt = {};
-        pays.forEach((x) => {
+        kasHarian(c, t).filter((x) => semua || x.kasir_id === me).forEach((x) => {
           const k = `${x.kasir_id}|${x.method_id}`;
-          sys[k] = (sys[k] || 0) + Number(x.nominal || 0);
+          sys[k] = (sys[k] || 0) + x.nominal;
           cnt[k] = (cnt[k] || 0) + 1;
         });
         const deps = c.s.all("cash_deposits").filter((d) => d.tanggal === t && (semua || d.kasir_id === me));
@@ -3054,7 +4012,7 @@ var FortunerServer = (() => {
             if (r.aktual === "" || r.aktual == null) return;
             const aktual = Math.round(Number(r.aktual));
             if (isNaN(aktual) || aktual < 0) fail("VALIDATION", "Nominal aktual tidak valid.");
-            const sistem = c.s.all("payments").filter((x) => x.tanggal === t && x.kasir_id === r.kasir_id && x.method_id === r.method_id).reduce((a, x) => a + Number(x.nominal || 0), 0);
+            const sistem = kasHarian(c, t).filter((x) => x.kasir_id === str(r.kasir_id) && x.method_id === str(r.method_id)).reduce((a, x) => a + x.nominal, 0);
             const ex = c.s.all("cash_deposits").find((d) => d.tanggal === t && d.kasir_id === r.kasir_id && d.method_id === r.method_id);
             const data = { tanggal: t, kasir_id: str(r.kasir_id), method_id: str(r.method_id), sistem, aktual, selisih: aktual - sistem, keterangan: str(r.keterangan).slice(0, 300) };
             if (aktual !== sistem && !data.keterangan) fail("VALIDATION", "Ada selisih. Isi keterangan untuk baris yang tidak cocok.");
@@ -3507,10 +4465,11 @@ var FortunerServer = (() => {
         all2.forEach((o) => {
           const t = str(o.tanggal);
           if (t.slice(0, 4) !== tahun) return;
-          const h = hari[t] || (hari[t] = { omzet: 0, piutang: 0, nota: 0 });
-          const total = Number(o.total || 0);
+          const h = hari[t] || (hari[t] = { omzet: 0, piutang: 0, batal: 0, nota: 0 });
+          const total = Number(o.total || 0), bt = Math.min(total, Number(o.batal_nilai || 0));
           h.omzet += total;
-          h.piutang += Math.min(total, Math.max(0, Number(o.sisa || 0)));
+          h.batal += bt;
+          h.piutang += Math.min(total - bt, Math.max(0, Number(o.sisa || 0)));
           h.nota++;
         });
         const tahunAda = [...new Set(all2.map((o) => str(o.tanggal).slice(0, 4)).filter((y) => /^\d{4}$/.test(y)))];
@@ -3536,7 +4495,7 @@ var FortunerServer = (() => {
         const orders = c.s.all("orders").filter((o) => !bool(o.batal) && inR(o.tanggal));
         const oIds = new Set(orders.map((o) => o.id));
         const items = c.s.all("order_items").filter((i) => oIds.has(i.order_id));
-        const pays = c.s.all("payments").filter((x) => inR(x.tanggal));
+        const pays = c.s.all("payments").filter((x) => inR(x.tanggal) && x.method_id !== DEPOSIT);
         const exps = c.s.all("expenses").filter((x) => !bool(x.deleted) && inR(x.tanggal));
         const billPays = c.s.all("bill_payments").filter((x) => inR(x.tanggal));
         const pc = c.s.all("petty_cash").filter((x) => !bool(x.deleted) && inR(x.tanggal));
@@ -3641,6 +4600,8 @@ var FortunerServer = (() => {
             rata_nota: orders.length ? Math.round(omzet / orders.length) : 0,
             klik: items.reduce((a, i) => a + Number(i.klik || 0), 0),
             piutang_periode: orders.reduce((a, o) => a + Math.max(0, Number(o.sisa || 0)), 0),
+            batal_nota: orders.reduce((a, o) => a + Number(o.batal_nilai || 0), 0),
+            pembatalan: c.s.all("cancellations").filter((x) => x.status === "disetujui" && inR(str(x.diputus_at).slice(0, 10))).reduce((a, x) => a + Number(x.nilai_batal || 0), 0),
             masuk,
             keluar_lunas: keluarLunas,
             keluar_hutang: keluarHutang,
@@ -3694,7 +4655,7 @@ var FortunerServer = (() => {
         const tanpaHarga = products.filter((p) => bool(p.aktif) && p.jenis_harga !== "manual" && !hargaBerlaku(prices.filter((r) => r.product_id === p.id), today)).length;
         const canDev = !!((_b = (_a = c.perms) == null ? void 0 : _a["pengaturan.perangkat"]) == null ? void 0 : _b.lihat);
         const orders = c.s.all("orders").filter((o) => !bool(o.batal));
-        const pays = c.s.all("payments");
+        const pays = c.s.all("payments").filter((x) => x.method_id !== DEPOSIT);
         const days = [];
         for (let i = 13; i >= 0; i--) days.push(addDays(today, -i));
         const yest = addDays(today, -1);
@@ -3705,6 +4666,7 @@ var FortunerServer = (() => {
           omzet_hari_ini: sumOrders(today),
           omzet_kemarin: sumOrders(yest),
           omzet_hari_ini_sisa: orders.filter((o) => o.tanggal === today).reduce((a, o) => a + Math.max(0, Number(o.sisa || 0)), 0),
+          omzet_hari_ini_batal: orders.filter((o) => o.tanggal === today).reduce((a, o) => a + Number(o.batal_nilai || 0), 0),
           masuk_hari_ini: sumPays(today),
           masuk_kemarin: sumPays(yest),
           nota_hari_ini: orders.filter((o) => o.tanggal === today).length,
@@ -3763,9 +4725,11 @@ var FortunerServer = (() => {
           const nDays = Number(addDays(addDays(m0, 32).slice(0, 8) + "01", -1).slice(8, 10));
           const target = Number(settingsMap(c.s)["target_" + today.slice(0, 7).replace("-", "")]) || 0;
           const sisaBulan = orders.filter((o) => str(o.tanggal) >= m0 && str(o.tanggal) <= today).reduce((x, o) => x + Math.max(0, Number(o.sisa || 0)), 0);
+          const batalBulan = orders.filter((o) => str(o.tanggal) >= m0 && str(o.tanggal) <= today).reduce((x, o) => x + Number(o.batal_nilai || 0), 0);
           bulan = {
             omzet: omzetBulan,
             omzet_sisa: sisaBulan,
+            omzet_batal: batalBulan,
             omzet_bulan_lalu_sd: sumO(prev0, prevSame),
             omzet_bulan_lalu: sumO(prev0, prevEnd),
             top_produk: Object.values(top).sort((a, b) => b.omzet - a.omzet).slice(0, 5),
@@ -3806,6 +4770,8 @@ var FortunerServer = (() => {
           if (s[k] !== void 0 && !(Number(s[k]) >= 0)) fail("VALIDATION", "Plafon / batas kas kecil harus angka.");
         });
         if (s.margin_min !== void 0 && !(Number(s.margin_min) >= 0 && Number(s.margin_min) <= 90)) fail("VALIDATION", "Margin minimum 0\u201390%.");
+        if (s.batal_ditahan_mode !== void 0 && !["hpp", "persen", "manual"].includes(str(s.batal_ditahan_mode))) fail("VALIDATION", "Pilihan biaya ditahan tidak dikenal.");
+        if (s.batal_ditahan_persen !== void 0 && !(Number(s.batal_ditahan_persen) >= 0 && Number(s.batal_ditahan_persen) <= 100)) fail("VALIDATION", "Persen biaya ditahan 0\u2013100.");
         Object.keys(s).filter((k) => /^target_\d{6}$/.test(k)).forEach((k) => {
           if (str(s[k]) !== "" && !(Number(s[k]) >= 0)) fail("VALIDATION", "Target omzet harus angka.");
         });
@@ -3842,6 +4808,11 @@ var FortunerServer = (() => {
   Object.keys(ext.handlers).forEach((k) => {
     if (handlers[k]) throw new Error("Handler ganda: " + k);
     handlers[k] = ext.handlers[k];
+  });
+  var batal = makeBatal({ fail, str, bool, newId, iso, addDays, isYmd, settingsMap, stamp, log, checkPassword, recalcOrder, orderDetail, ext });
+  Object.keys(batal.handlers).forEach((k) => {
+    if (handlers[k]) throw new Error("Handler ganda: " + k);
+    handlers[k] = batal.handlers[k];
   });
   function handle(s, env, req) {
     try {
@@ -3888,6 +4859,8 @@ var FortunerServer = (() => {
     maks_perangkat: "",
     stok_kurang_saat: "selesai",
     margin_min: "20",
+    batal_ditahan_mode: "hpp",
+    batal_ditahan_persen: "50",
     kas_kecil_plafon: "1000000",
     kas_kecil_batas_cek: "300000",
     catatan_struk: "Terima kasih. Barang yang tidak diambil lebih dari 30 hari di luar tanggung jawab kami."
@@ -3898,6 +4871,10 @@ var FortunerServer = (() => {
     const cur = settingsMap(s);
     Object.entries(BASE_SETTINGS).forEach(([k, v]) => {
       if (!(k in cur)) s.insert("settings", { key: k, value: v });
+    });
+    s.all("customers").forEach((c) => {
+      const k = c.tipe === "reseller" ? "01" : "02";
+      if (str(c.kode_jenis) !== k) s.update("customers", "id", str(c.id), { kode_jenis: k });
     });
     if (!s.all("machines").length) BASE_MACHINES.forEach((n) => s.insert("machines", { id: newId(env, "mes"), nama: n, pakai_counter: ["versant", "Mahogani", "Dopo"].includes(n), aktif: true, ...st }));
     if (!s.all("expense_categories").length) BASE_CATEGORIES.forEach(([n, j]) => s.insert("expense_categories", { id: newId(env, "cat"), nama: n, jenis: j, aktif: true, ...st }));
@@ -3988,7 +4965,7 @@ var FortunerServer = (() => {
       ...audit
     },
     cost_history: { id: "s", product_id: "s", berlaku_mulai: "s", harga_beli: "n", supplier_id: "s", sumber: "s", ...audit },
-    customers: { id: "s", kode: "s", nama: "s", percetakan: "s", telp: "s", tipe: "s", alamat: "s", catatan: "s", aktif: "b", ...audit },
+    customers: { id: "s", kode: "s", nama: "s", percetakan: "s", telp: "s", tipe: "s", kode_jenis: "s", alamat: "s", catatan: "s", aktif: "b", ...audit },
     suppliers: { id: "s", nama: "s", telp: "s", bahan: "s", aktif: "b", ...audit },
     machines: { id: "s", nama: "s", pakai_counter: "b", aktif: "b", biaya_klik: "n", ...audit },
     payment_methods: { id: "s", nama: "s", jenis: "s", rekening: "s", aktif: "b", ...audit },
@@ -4013,7 +4990,11 @@ var FortunerServer = (() => {
       catatan: "s",
       desain: "s",
       janji_selesai: "s",
-      ...audit
+      ...audit,
+      // v1.3.5 pembatalan tercatat: nilai yang dibatalkan (pengurang omzet) & uang yang sudah dikembalikan (refund/deposit)
+      batal_nilai: "n",
+      status_batal: "s",
+      dikembalikan: "n"
     },
     order_items: {
       id: "s",
@@ -4038,7 +5019,8 @@ var FortunerServer = (() => {
       ...audit,
       hpp_bahan: "n",
       hpp_klik: "n",
-      stok_at: "s"
+      stok_at: "s",
+      qty_batal: "n"
     },
     payments: { id: "s", order_id: "s", tanggal: "s", nominal: "n", method_id: "s", kasir_id: "s", catatan: "s", ...audit },
     // ---------- Operasional (Tahap 4) ----------
@@ -4099,6 +5081,80 @@ var FortunerServer = (() => {
     notif_reads: { user_id: "s", read_at: "s" },
     expense_requests: { id: "s", tanggal: "s", method_id: "s", jenis: "s", kategori_id: "s", bill_id: "s", item: "s", nominal: "n", penerima: "s", bukti: "s", catatan: "s", status: "s", expense_id: "s", diputus_oleh: "s", diputus_at: "s", catatan_owner: "s", ...audit },
     cash_handovers: { id: "s", tanggal: "s", kasir_id: "s", nominal: "n", saldo_laci: "n", catatan: "s", status: "s", diputus_oleh: "s", diputus_at: "s", catatan_owner: "s", ...audit },
+    // ---------- Pembatalan, refund, deposit konsumen (v1.3.5) ----------
+    cancellations: {
+      id: "s",
+      nomor: "s",
+      tanggal: "s",
+      order_id: "s",
+      customer_id: "s",
+      jenis: "s",
+      status: "s",
+      level: "s",
+      kategori: "s",
+      alasan: "s",
+      lampiran: "s",
+      keinginan: "s",
+      nilai_item: "n",
+      nilai_produksi: "n",
+      hpp_estimasi: "n",
+      hpp_bahan: "n",
+      hpp_klik: "n",
+      ditahan_mode: "s",
+      ditahan: "n",
+      nilai_batal: "n",
+      terbayar: "n",
+      kelebihan: "n",
+      penyelesaian: "s",
+      refund_id: "s",
+      deposit_id: "s",
+      diputus_oleh: "s",
+      diputus_at: "s",
+      catatan_owner: "s",
+      ...audit
+    },
+    cancellation_items: { id: "s", cancellation_id: "s", order_item_id: "s", nama: "s", qty: "n", qty_batal: "n", nilai: "n", diproduksi: "b", hpp_estimasi: "n", hpp_bahan: "n", hpp_klik: "n" },
+    refunds: {
+      id: "s",
+      nomor: "s",
+      tanggal: "s",
+      customer_id: "s",
+      sumber: "s",
+      ref_id: "s",
+      order_id: "s",
+      nominal: "n",
+      cara: "s",
+      status: "s",
+      alasan: "s",
+      method_id: "s",
+      kasir_id: "s",
+      penerima: "s",
+      bukti: "s",
+      diputus_oleh: "s",
+      diputus_at: "s",
+      dibayar_oleh: "s",
+      dibayar_at: "s",
+      catatan: "s",
+      ...audit
+    },
+    deposit_moves: {
+      id: "s",
+      nomor: "s",
+      tanggal: "s",
+      customer_id: "s",
+      jenis: "s",
+      masuk: "n",
+      keluar: "n",
+      saldo: "n",
+      method_id: "s",
+      kasir_id: "s",
+      bukti: "s",
+      ref_tabel: "s",
+      ref_id: "s",
+      order_id: "s",
+      keterangan: "s",
+      ...audit
+    },
     reconciliations: { id: "s", tanggal: "s", akun: "s", saldo_sistem: "n", saldo_asli: "n", selisih: "n", disesuaikan: "b", alasan: "s", akun_lawan: "s", keterangan: "s", ...audit }
   };
 

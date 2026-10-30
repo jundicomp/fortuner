@@ -14,6 +14,9 @@ export const MODULES: { key: string; label: string; group: string }[] = [
   { key: 'kas', label: 'Kas', group: 'Keuangan' },
   { key: 'pindah_dana', label: 'Pindah dana & rekonsiliasi', group: 'Keuangan' },
   { key: 'pengeluaran.titip', label: 'Titip catat pengeluaran owner', group: 'Keuangan' },
+  { key: 'pembatalan', label: 'Pembatalan nota (tambah = ajukan, ubah = setujui)', group: 'Keuangan' },
+  { key: 'pembatalan.owner', label: 'Setujui pembatalan besar & pencairan deposit', group: 'Keuangan' },
+  { key: 'deposit', label: 'Deposit konsumen (tambah = top-up)', group: 'Keuangan' },
   { key: 'mesin', label: 'Mesin & Operator', group: 'Operasional' },
   { key: 'stok', label: 'Stok bahan & opname', group: 'Operasional' },
   { key: 'pembelian', label: 'Pembelian bahan', group: 'Operasional' },
@@ -47,17 +50,21 @@ export function defaultPermissions(role: Role): PermissionMap {
       set(MODULES.map((m) => m.key), all);
       break;
     case 'admin':
-      set(MODULES.map((m) => m.key).filter((k) => k !== 'laporan.laba'), all);
+      set(MODULES.map((m) => m.key).filter((k) => k !== 'laporan.laba' && k !== 'pembatalan.owner'), all);
       break;
     case 'cs':
       set(['dashboard', 'order', 'produksi', 'master.produk'], view);
       set(['fo'], { lihat: true, tambah: true });
       set(['master.konsumen'], { lihat: true, tambah: true, ubah: true });
+      set(['pembatalan'], { tambah: true });
+      set(['deposit'], view);
       break;
     case 'kasir':
       set(['dashboard', 'produksi', 'master.produk', 'master.konsumen'], view);
       set(['kasir', 'order', 'piutang', 'kas'], { lihat: true, tambah: true, ubah: true, ekspor: true });
       set(['pengeluaran.titip'], { lihat: true, tambah: true });
+      set(['pembatalan'], { tambah: true });
+      set(['deposit'], { lihat: true, tambah: true });
       break;
     case 'operator':
       set(['dashboard', 'order'], view);
@@ -68,6 +75,8 @@ export function defaultPermissions(role: Role): PermissionMap {
       set(['dashboard', 'order', 'piutang', 'master.produk', 'master.harga_beli', 'master.supplier'], { lihat: true, ekspor: true });
       set(['pengeluaran', 'hutang', 'kas', 'pindah_dana', 'pengeluaran.titip', 'laporan', 'pembelian'], all);
       set(['stok'], { lihat: true, tambah: true, ubah: true, ekspor: true });
+      set(['pembatalan'], { lihat: true, tambah: true, ubah: true, ekspor: true });
+      set(['deposit'], { lihat: true, tambah: true, ubah: true, ekspor: true });
       break;
   }
   return p;

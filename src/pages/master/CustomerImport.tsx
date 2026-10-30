@@ -50,10 +50,10 @@ export function CustomerImport({ onClose }: { onClose: () => void }) {
 
   const template = async () => {
     let data: Record<string, unknown>[] = [];
-    try { data = (await api<Customer[]>('master.list', { table: 'customers' })).map((c) => ({ kode: c.kode, nama: c.nama, jenis: c.tipe === 'reseller' ? 'Percetakan' : 'End user', nama_percetakan: c.percetakan || '', telepon: c.telp, alamat: c.alamat, catatan: c.catatan, aktif: c.aktif ? 'ya' : 'tidak' })); } catch { /* template kosong */ }
+    try { data = (await api<Customer[]>('master.list', { table: 'customers' })).map((c) => ({ kode: c.kode, nama: c.nama, jenis: c.tipe === 'reseller' ? '01' : '02', nama_percetakan: c.percetakan || '', telepon: c.telp, alamat: c.alamat, catatan: c.catatan, aktif: c.aktif ? 'ya' : 'tidak' })); } catch { /* template kosong */ }
     if (!data.length) data = [
-      { kode: '', nama: 'Pak Hendra', jenis: 'Percetakan', nama_percetakan: 'Percetakan Cahaya Ilmu', telepon: '081200001111', alamat: '', catatan: '', aktif: 'ya' },
-      { kode: '', nama: 'Bu Rina', jenis: 'End user', nama_percetakan: '', telepon: '081300002222', alamat: '', catatan: '', aktif: 'ya' },
+      { kode: '', nama: 'Pak Hendra', jenis: '01', nama_percetakan: 'Percetakan Cahaya Ilmu', telepon: '081200001111', alamat: '', catatan: '', aktif: 'ya' },
+      { kode: '', nama: 'Bu Rina', jenis: '02', nama_percetakan: '', telepon: '081300002222', alamat: '', catatan: '', aktif: 'ya' },
     ];
     exportXlsx(data, `Template_Konsumen_${ymd()}.xlsx`, 'Konsumen', { title: '' }); // tanpa judul: file ini dibaca ulang saat import
   };
@@ -81,8 +81,8 @@ export function CustomerImport({ onClose }: { onClose: () => void }) {
       <div className="flex flex-col gap-4">
         <ol className="list-decimal space-y-1 pl-5 text-sm text-muted">
           <li>Unduh template. Isinya konsumen yang sudah ada, jadi bisa langsung diedit atau ditambah di bawahnya.</li>
-          <li>Wajib diisi: <b>nama</b>, <b>jenis</b> (<span className="font-mono text-xs">Percetakan</span> atau <span className="font-mono text-xs">End user</span>), dan <b>telepon</b> (jenis kosong dianggap End user). Untuk jenis Percetakan isi juga <b>nama_percetakan</b>; kalau kosong, dipakai nama konsumen.</li>
-          <li>Jenis menentukan harga: Percetakan = harga reseller, End user = harga end user.</li>
+          <li>Wajib diisi: <b>nama</b>, <b>jenis</b> (<span className="font-mono text-xs">01</span> = Percetakan atau <span className="font-mono text-xs">02</span> = End user; boleh juga ditulis namanya), dan <b>telepon</b> (jenis kosong dianggap End user). Untuk jenis Percetakan isi juga <b>nama_percetakan</b>; kalau kosong, dipakai nama konsumen.</li>
+          <li>Jenis menentukan harga dan kode di nota: 01 Percetakan = harga reseller, 02 End user = harga end user.</li>
           <li>File hasil tombol <b>Excel</b> di tabel Konsumen juga bisa di-import ulang.</li>
         </ol>
         <button className="btn btn-excel self-start" onClick={template}><FileSpreadsheet size={16} />Unduh template</button>

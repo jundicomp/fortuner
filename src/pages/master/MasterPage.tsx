@@ -25,9 +25,11 @@ interface Props<T> {
   actions?: React.ReactNode;
   /** konten di antara judul halaman dan tabel (mis. ringkasan) */
   top?: React.ReactNode;
+  /** ganti aksi klik baris (default: buka form ubah). openEdit membuka form ubah. */
+  onRowClick?: (row: T, openEdit: (row: T) => void) => void;
 }
 
-export function MasterPage<T extends { id: string; aktif: boolean }>({ table, perm, title, desc, noun, columns, fields, defaults, cardTitle, actions, top }: Props<T>) {
+export function MasterPage<T extends { id: string; aktif: boolean }>({ table, perm, title, desc, noun, columns, fields, defaults, cardTitle, actions, top, onRowClick }: Props<T>) {
   const { can } = useAuth();
   const qc = useQueryClient();
   const toast = useToast();
@@ -57,7 +59,7 @@ export function MasterPage<T extends { id: string; aktif: boolean }>({ table, pe
         storageKey={`master-${table}`}
         canExport={can(perm, 'ekspor')}
         cardTitle={cardTitle}
-        onRowClick={canEdit ? (r) => { save.reset(); setEdit(r); } : undefined}
+        onRowClick={onRowClick ? (r) => onRowClick(r, (x) => { save.reset(); setEdit(x); }) : canEdit ? (r) => { save.reset(); setEdit(r); } : undefined}
         toolbar={can(perm, 'tambah') && <button className="btn btn-primary" onClick={() => { save.reset(); setEdit({ ...defaults, aktif: true } as Partial<T>); }}><Plus size={16} />Tambah</button>}
         emptyText={`Belum ada ${noun.toLowerCase()}.`}
       />

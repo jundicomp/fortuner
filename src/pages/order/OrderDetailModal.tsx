@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { ErrorBox, Field } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
-import { no4, printReceipt, shopOf, tipeLabel, type ReceiptData, type ReceiptShop } from '@/components/Receipt';
+import { printReceipt, shopOf, tipeLabel, type ReceiptData, type ReceiptShop } from '@/components/Receipt';
 import { ReceiptModal } from '@/components/ReceiptModal';
 import { drawerForCash, paperWidth } from '@/platform/printer';
 import { api } from '@/lib/api';
@@ -15,6 +15,8 @@ import { CUT_SIZES, namaSisi } from '@/lib/pricing';
 import { nf, rp, tgl, tglJam } from '@/lib/format';
 import type { OrderDetail } from '@/types';
 import { Money } from '@/components/ui/Money';
+import { noPendek, jenisLabel } from '@/lib/jenis';
+import { BatalModal, CancelDecideModal, CN_STATUS, useInvalidateBatal } from '@/components/Pembatalan';
 
 export const BAYAR: Record<string, [string, string]> = { lunas: ['Lunas', 'pill-ok'], dp: ['DP', 'pill-warn'], belum: ['Belum bayar', 'pill-bad'], batal: ['Batal', 'pill-mute'] };
 export const PRODUKSI: Record<string, [string, string]> = { antrian: ['Antrian', 'pill-brand'], proses: ['Proses', 'pill-warn'], selesai: ['Selesai', 'pill-ok'], batal: ['Batal', 'pill-mute'] };
@@ -27,7 +29,10 @@ export function OrderDetailModal({ orderId, onClose }: { orderId: string; onClos
   const toast = useToast();
   const settings = useSettings();
   const q = useQuery({ queryKey: ['order', orderId], queryFn: () => api<OrderDetail>('orders.get', { order_id: orderId }) });
-  const [panel, setPanel] = useState<'' | 'bayar' | 'ambil' | 'batal'>('');
+  const [panel, setPanel] = useState<'' | 'bayar' | 'ambil'>('');
+  const [batalOpen, setBatalOpen] = useState(false);
+  const [cnId, setCnId] = useState('');
+  const invBatal = useInvalidateBatal();
   const [nominalIn, setNominalIn] = useState('');
   const [diterimaIn, setDiterimaIn] = useState('');
   const [methodId, setMethodId] = useState('');
@@ -35,7 +40,8 @@ export function OrderDetailModal({ orderId, onClose }: { orderId: string; onClos
   const [payId, setPayId] = useState(() => newClientId('pmt'));
   const [rcpt, setRcpt] = useState<ReceiptData | null>(null);
 
-  const methodList = q.data?.payment_methods || [];
+  const depSaldo = q.data?.deposit_saldo || 0;
+  const methodList = [...(q.data?.payment_methods || []), ...(depSaldo > 0 ? [{ id: 'deposit', nama: `Deposit (saldo ${rp(depSaldo)})`, jenis: 'deposit' }] : [])];
   const after = (msg: string) => { qc.invalidateQueries({ queryKey: ['orders'] }); qc.invalidateQueries({ queryKey: ['dashboard'] }); toast(msg); setPanel(''); setAlasan(''); };
   const setData = (d: OrderDetail) => qc.setQueryData(['order', orderId], d);
 
@@ -51,9 +57,9 @@ export function OrderDetailModal({ orderId, onClose }: { orderId: string; onClos
     mutationFn: (diambil: boolean) => api<OrderDetail>('orders.ambil', { order_id: orderId, diambil, alasan }),
     onSuccess: (d) => { setData(d); after(d.order.status_ambil === 'diambil' ? 'Ditandai sudah diambil' : 'Status diambil dibatalkan'); },
   });
-  const cancel = useMutation({
-    mutationFn: () => api<OrderDetail>('orders.cancel', { order_id: orderId, alasan }),
-    onSuccess: (d) => { setData(d); after('Nota dibatalkan'); },
+  const keDeposit = useMutation({
+    mutationFn: () => api<OrderDetail>('order.lebih_ke_deposit', { order_id: orderId }),
+    onSuccess: (d) => { setData(d); invBatal(); after('Kelebihan bayar disimpan sebagai deposit'); },
   });
 
   const d = q.data;
@@ -78,7 +84,7 @@ export function OrderDetailModal({ orderId, onClose }: { orderId: string; onClos
     const sebelumnya = list.slice(0, i).reduce((a, x) => a + x.nominal, 0);
     const jenis = (dd.payment_methods || methodList).find((m) => m.id === p.method_id)?.jenis;
     return {
-      ...base(dd), jenis: 'kwitansi', ulang: true, waktu: p.created_at || p.tanggal, cs: (p.kasir_nama || '').split(' ')[0], kw_no: `KW-${no4(dd.order.nomor)}-${i + 1}`, ke: i + 1,
+      ...base(dd), jenis: 'kwitansi', ulang: true, waktu: p.created_at || p.tanggal, cs: (p.kasir_nama || '').split(' ')[0], kw_no: `KW-${noPendek(dd.order.nomor, dd.order.customer_tipe)}-${i + 1}`, ke: i + 1,
       metode: p.method_nama, metode_jenis: jenis, catatan: p.catatan, sebelumnya, payments: [{ label: `Bayar ${p.method_nama || ''}`, nominal: p.nominal }],
       sisa: Math.max(0, dd.order.total - sebelumnya - p.nominal),
     };
@@ -103,7 +109,7 @@ export function OrderDetailModal({ orderId, onClose }: { orderId: string; onClos
   return (
     <Modal open onClose={onClose} size="lg"
       title={o ? <span className="font-mono">{o.nomor}</span> : 'Memuat nota…'}
-      subtitle={o ? <>{tglJam(o.created_at)} · {o.customer_nama} ({o.customer_tipe === 'reseller' ? 'reseller' : 'end user'}) · CS {o.cs_nama}</> : undefined}>
+      subtitle={o ? <>{tglJam(o.created_at)} · {o.customer_nama} ({jenisLabel(o.customer_tipe)}) · CS {o.cs_nama}</> : undefined}>
       {q.isLoading && <p className="text-sm text-muted">Memuat…</p>}
       <ErrorBox error={q.error} />
       {d && o && (
@@ -113,6 +119,8 @@ export function OrderDetailModal({ orderId, onClose }: { orderId: string; onClos
             <span className={`pill ${o.status_ambil === 'diambil' ? 'pill-ok' : 'pill-mute'}`}>{o.status_ambil === 'diambil' ? `Diambil ${tglJam(o.tgl_ambil)}` : 'Belum diambil'}</span>
             {o.dibuat_offline && <span className="pill pill-warn"><CloudOff size={11} />Dibuat offline</span>}
             {o.batal && <span className="pill pill-bad">Dibatalkan: {o.alasan_batal}</span>}
+            {o.status_batal && <span className="pill pill-bad">{o.status_batal === 'penuh' ? 'Batal penuh' : 'Batal sebagian'}{o.alasan_batal ? ` · ${o.alasan_batal}` : ''}</span>}
+            {d.pembatalan?.some((x) => x.status === 'menunggu') && <span className="pill pill-warn">Pengajuan pembatalan menunggu persetujuan</span>}
           </div>
           {(o.catatan || o.desain || o.janji_selesai) && (
             <div className="flex flex-col gap-1 rounded-lg bg-sunk px-3 py-2 text-sm">
@@ -134,7 +142,7 @@ export function OrderDetailModal({ orderId, onClose }: { orderId: string; onClos
                       <div className="font-semibold">{namaSisi(i.nama_produk, i.sisi)}{i.jenis_harga === 'cutting' ? ` · ${CUT_SIZES[i.ukuran_cutting]}` : ''}</div>
                       <div className="text-xs text-muted">{[i.keterangan, i.mesin_nama, i.harga_manual ? 'harga manual' : ''].filter(Boolean).join(' · ')}</div>
                     </td>
-                    <td className="num px-3 py-2 text-right">{nf(i.qty)}</td>
+                    <td className="num px-3 py-2 text-right">{nf(i.qty)}{(i.qty_batal || 0) > 0 && <span className="block text-xs text-bad">{nf(i.qty_batal!)} batal</span>}</td>
                     <td className="num px-3 py-2 text-right"><Money v={i.harga_satuan} /></td>
                     <td className="num px-3 py-2 text-right font-semibold"><Money v={i.subtotal} /></td>
                     <td className="px-3 py-2"><span className={`pill ${PRODUKSI[i.status_produksi]?.[1]}`}>{PRODUKSI[i.status_produksi]?.[0]}</span></td>
@@ -143,11 +151,34 @@ export function OrderDetailModal({ orderId, onClose }: { orderId: string; onClos
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-ink/70 font-bold"><td className="px-3 py-2" colSpan={3}>Total</td><td className="num px-3 py-2 text-right"><Money v={o.total} /></td><td /></tr>
-                <tr><td className="px-3 py-1 text-muted" colSpan={3}>Terbayar</td><td className="num px-3 py-1 text-right"><Money v={o.terbayar} /></td><td /></tr>
+                {!!o.batal_nilai && <tr><td className="px-3 py-1 text-muted" colSpan={3}>Dibatalkan (dokumen pembatalan)</td><td className="num px-3 py-1 text-right text-bad">− <Money v={o.batal_nilai} /></td><td /></tr>}
+                <tr><td className="px-3 py-1 text-muted" colSpan={3}>Terbayar{o.dikembalikan ? ` (setelah ${rp(o.dikembalikan)} dikembalikan)` : ''}</td><td className="num px-3 py-1 text-right"><Money v={o.terbayar} /></td><td /></tr>
                 <tr className="font-bold"><td className="px-3 py-1.5" colSpan={3}>{o.sisa < 0 ? 'Lebih bayar' : 'Sisa'}</td><td className={`num px-3 py-1.5 text-right ${o.sisa > 0 ? 'text-bad' : o.sisa < 0 ? 'text-warn' : 'text-ok'}`}><Money v={Math.abs(o.sisa)} /></td><td /></tr>
               </tfoot>
             </table>
           </div>
+
+          {o.sisa < 0 && (
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-warn/40 bg-warn/5 px-3 py-2.5 text-sm">
+              {d.refund_jalan?.length
+                ? <span>Refund {d.refund_jalan.map((r) => `${r.nomor} ${rp(r.nominal)} (${r.cara})`).join(', ')} siap dibayar di menu Keuangan → Deposit Konsumen.</span>
+                : <><span className="flex-1">Konsumen lebih bayar {rp(-o.sisa)}.</span>{(can('kasir', 'tambah') || can('pembatalan', 'ubah')) && <button id="od-ke-deposit" className="btn btn-sm" disabled={keDeposit.isPending} onClick={() => keDeposit.mutate()}>Simpan sebagai deposit</button>}</>}
+            </div>
+          )}
+          {!!d.pembatalan?.length && (
+            <div>
+              <h3 className="mb-2 text-sm font-bold">Pembatalan</h3>
+              <ul className="divide-y divide-line rounded-xl border border-line text-sm">
+                {d.pembatalan.map((x) => (
+                  <li key={x.id} className="flex cursor-pointer flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 hover:bg-sunk" onClick={() => setCnId(x.id)}>
+                    <span className="font-mono text-xs">{x.nomor}</span><span className={`pill ${CN_STATUS[x.status]?.[1]}`}>{CN_STATUS[x.status]?.[0]}</span>
+                    <span className="text-xs text-muted">{x.jenis === 'penuh' ? 'penuh' : 'sebagian'} · {x.diajukan} · "{x.alasan}"</span>
+                    <span className="num ml-auto font-bold">{rp(x.status === 'disetujui' ? x.nilai_batal : x.nilai_item)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           <div>
             <h3 className="mb-2 text-sm font-bold">Pembayaran</h3>
@@ -157,7 +188,7 @@ export function OrderDetailModal({ orderId, onClose }: { orderId: string; onClos
                   <li key={p.id} className="flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2">
                     <span className="num w-5 text-muted">{i + 1}</span><span className="num">{tgl(p.tanggal)}</span><span className="font-semibold">{p.method_nama}</span>
                     <span className="text-xs text-muted">{p.kasir_nama}{p.catatan ? ` · ${p.catatan}` : ''}</span><span className="num ml-auto font-bold">{rp(p.nominal)}</span>
-                    <button className="btn btn-sm" onClick={() => setRcpt(kwitansiOf(d, i))} title={`Kwitansi KW-${no4(o.nomor)}-${i + 1}`}><ReceiptText size={14} />Kwitansi</button>
+                    <button className="btn btn-sm" onClick={() => setRcpt(kwitansiOf(d, i))} title={`Kwitansi KW-${noPendek(o.nomor, o.customer_tipe)}-${i + 1}`}><ReceiptText size={14} />Kwitansi</button>
                   </li>
                 ))}
               </ul>
@@ -185,15 +216,6 @@ export function OrderDetailModal({ orderId, onClose }: { orderId: string; onClos
               <div className="mt-3 flex justify-end gap-2"><button className="btn" onClick={() => setPanel('')}>Batal</button><button className="btn btn-primary" disabled={!alasan.trim() || ambil.isPending} onClick={() => ambil.mutate(true)}>Tandai diambil</button></div>
             </section>
           )}
-          {panel === 'batal' && (
-            <section className="rounded-xl border border-bad/40 bg-bad/5 p-4">
-              <h3 className="text-sm font-bold text-bad">Batalkan nota {o.nomor}?</h3>
-              <p className="mt-1 text-sm text-muted">Nota tetap tersimpan dengan status batal dan tidak dihitung di omzet maupun piutang.</p>
-              <input id="od-alasan-batal" className="input mt-3" value={alasan} onChange={(e) => setAlasan(e.target.value)} placeholder="Alasan pembatalan" />
-              <div className="mt-3"><ErrorBox error={cancel.error} /></div>
-              <div className="mt-3 flex justify-end gap-2"><button className="btn" onClick={() => setPanel('')}>Kembali</button><button className="btn btn-danger" disabled={!alasan.trim() || cancel.isPending} onClick={() => cancel.mutate()}>Batalkan nota</button></div>
-            </section>
-          )}
 
           {!panel && (
             <div className="flex flex-wrap gap-2 border-t border-line pt-4">
@@ -204,12 +226,14 @@ export function OrderDetailModal({ orderId, onClose }: { orderId: string; onClos
                 ? <button className="btn" disabled={ambil.isPending} onClick={() => ambil.mutate(false)}><Undo2 size={16} />Batal diambil</button>
                 : <button className="btn" disabled={ambil.isPending} onClick={() => { ambil.reset(); setAlasan(''); if (o.sisa > 0) setPanel('ambil'); else ambil.mutate(true); }}><PackageCheck size={16} />Tandai diambil</button>)}
               <button className="btn" onClick={reprint}><Printer size={16} />Nota / SPK</button>
-              {!o.batal && can('order', 'hapus') && <button className="btn btn-ghost ml-auto text-bad" onClick={() => { cancel.reset(); setAlasan(''); setPanel('batal'); }}><Ban size={16} />Batalkan</button>}
+              {!o.batal && o.status_batal !== 'penuh' && !d.pembatalan?.some((x) => x.status === 'menunggu') && (can('pembatalan', 'tambah') || can('order', 'hapus')) && <button id="od-batal" className="btn btn-ghost ml-auto text-bad" onClick={() => setBatalOpen(true)}><Ban size={16} />Batalkan</button>}
             </div>
           )}
-          <ErrorBox error={!panel ? ambil.error : null} />
+          <ErrorBox error={!panel ? ambil.error || keDeposit.error : null} />
         </div>
       )}
+      {batalOpen && d && <BatalModal d={d} onClose={() => { setBatalOpen(false); q.refetch(); }} />}
+      {cnId && <CancelDecideModal id={cnId} onClose={() => { setCnId(''); q.refetch(); }} />}
     </Modal>
   );
 }

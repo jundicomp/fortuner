@@ -64,6 +64,7 @@ body { @apply bg-canvas text-ink font-sans antialiased; font-size: 14px; }
   .pill-bad { @apply bg-bad/10 text-bad; }
   .pill-brand { @apply bg-brand/10 text-brand; }
   .pill-mute { @apply bg-sunk text-muted; }
+  .pill-ink { @apply bg-ink text-canvas; }
 }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

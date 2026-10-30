@@ -47,14 +47,17 @@ export const BASE_ACCOUNTS: Account[] = [
   { kode: '1400', nama: 'Aset tetap & peralatan', tipe: 'aset' },
   { kode: '2100', nama: 'Hutang usaha (supplier)', tipe: 'kewajiban' },
   { kode: '2110', nama: 'Hutang biaya klik mesin', tipe: 'kewajiban' },
+  { kode: '2150', nama: 'Uang muka (deposit) konsumen', tipe: 'kewajiban' },
   { kode: '3100', nama: 'Modal / saldo awal', tipe: 'modal' },
   { kode: '3200', nama: 'Prive (ambil pribadi)', tipe: 'modal' },
   { kode: '4100', nama: 'Pendapatan penjualan', tipe: 'pendapatan' },
+  { kode: '4150', nama: 'Pembatalan penjualan', tipe: 'pendapatan' },
   { kode: '4900', nama: 'Pendapatan lain', tipe: 'pendapatan' },
   { kode: '5100', nama: 'HPP bahan baku', tipe: 'hpp' },
   { kode: '5110', nama: 'HPP biaya klik mesin', tipe: 'hpp' },
   { kode: '5120', nama: 'Bahan di luar stok', tipe: 'hpp' },
   { kode: '5130', nama: 'Selisih persediaan (opname)', tipe: 'hpp' },
+  { kode: '5190', nama: 'Kerugian order batal', tipe: 'hpp' },
   { kode: '6900', nama: 'Beban kas kecil', tipe: 'beban' },
   { kode: '6910', nama: 'Selisih kas', tipe: 'beban' },
   { kode: '6920', nama: 'Beban administrasi bank', tipe: 'beban' },
@@ -83,7 +86,7 @@ export function makeExt(h: Helpers) {
   const fmt = (n: number) => Math.round(n).toLocaleString('id-ID');
   /** Saldo kas kecil (akun 1110) per hari ini. */
   function kasKecilSaldo(c: ExtCtx) { return Math.round(num(trial(c, '2000-01-01', today(c)).rows.find((r) => r.kode === '1110')?.saldo_akhir)); }
-  interface Ev { tipe: string; judul: string; detail?: string; nominal?: number; scope: 'keuangan' | 'kas_kecil' | 'setoran'; target?: string; tindakan?: '' | 'setoran' | 'cek' | 'titip'; ref_tabel?: string; ref_id?: string }
+  interface Ev { tipe: string; judul: string; detail?: string; nominal?: number; scope: 'keuangan' | 'kas_kecil' | 'setoran'; target?: string; tindakan?: '' | 'setoran' | 'cek' | 'titip' | 'batal' | 'cair'; ref_tabel?: string; ref_id?: string }
   /** Catat kejadian untuk notifikasi. Tidak dipanggil saat seed demo (tanpa request). */
   function emit(c: ExtCtx, e: Ev) {
     if (!(c as any).req) return;
@@ -137,6 +140,8 @@ export function makeExt(h: Helpers) {
     c.s.all('petty_cash').forEach((r) => { if (bool(r.perlu_cek) && !str(r.cek_status) && !bool(r.deleted)) set.add('petty_cash:' + str(r.id)); });
     c.s.all('fund_transfers').forEach((r) => { if (bool(r.perlu_cek) && !str(r.cek_status) && !bool(r.batal)) set.add('fund_transfers:' + str(r.id)); });
     c.s.all('expense_requests').forEach((r) => { if (r.status === 'menunggu') set.add('expense_requests:' + str(r.id)); });
+    c.s.all('cancellations').forEach((r) => { if (r.status === 'menunggu') set.add('cancellations:' + str(r.id)); });
+    c.s.all('refunds').forEach((r) => { if (r.status === 'menunggu' || r.status === 'siap') set.add('refunds:' + str(r.id)); });
     return set;
   }
   interface RRow { key: string; waktu: string; tanggal: string; jenis: string; keterangan: string; nominal: number; masuk: number; keluar: number; oleh: string; status: string; tone: string; aksi: '' | 'setoran' | 'cek' | 'titip'; ref_tabel: string; ref_id: string; bukti?: string; extra?: Row }
@@ -146,7 +151,7 @@ export function makeExt(h: Helpers) {
     const boss = pemutus(c), decide = can(c, 'pindah_dana', 'ubah');
     const me = str(c.user?.id), users = userNames(c), names = accNames(c);
     const tabs = boss
-      ? [['semua', 'Semua'], ['cek', 'Perlu dicek'], ['setoran', 'Setoran'], ['titip', 'Titipan'], ['kaskecil', 'Kas kecil'], ['pindah', 'Pindah dana'], ...(can(c, 'pengeluaran') || can(c, 'hutang') ? [['pengeluaran', 'Pengeluaran']] : []), ['rekon', 'Rekonsiliasi']]
+      ? [['semua', 'Semua'], ['cek', 'Perlu dicek'], ['setoran', 'Setoran'], ['titip', 'Titipan'], ['kaskecil', 'Kas kecil'], ['pindah', 'Pindah dana'], ['refund', 'Refund & deposit'], ...(can(c, 'pengeluaran') || can(c, 'hutang') ? [['pengeluaran', 'Pengeluaran']] : []), ['rekon', 'Rekonsiliasi']]
       : [['laci', 'Laci saya'], ['setoran', 'Setoran saya'], ...(can(c, 'pengeluaran.titip') ? [['titip', 'Titipan saya']] : []), ['kaskecil', 'Kas kecil']];
     if (!tabs.some(([k]) => k === tab)) tab = tabs[0][0];
     const open = openActions(c);
@@ -193,6 +198,16 @@ export function makeExt(h: Helpers) {
     const rekon = () => c.s.all('reconciliations').map((r) => mk({ key: 'reconciliations:' + r.id, waktu: str(r.created_at), tanggal: str(r.tanggal), jenis: 'Rekonsiliasi',
       keterangan: `${names[str(r.akun)] || r.akun}: sistem ${fmt(num(r.saldo_sistem))}, asli ${fmt(num(r.saldo_asli))}${r.alasan ? ` · ${str(r.alasan)}` : ''}`, nominal: num(r.selisih),
       oleh: users[str(r.created_by)] || '', status: !num(r.selisih) ? 'Cocok' : bool(r.disesuaikan) ? 'Disesuaikan' : 'Dicatat', tone: !num(r.selisih) ? 'ok' : bool(r.disesuaikan) ? 'brand' : 'warn', ref_tabel: 'reconciliations', ref_id: str(r.id) }));
+    const RF: Record<string, [string, string]> = { menunggu: ['Menunggu persetujuan', 'warn'], siap: ['Siap dibayar', 'brand'], dibayar: ['Dibayar', 'ok'], ditolak: ['Ditolak', 'bad'] };
+    const custs = byId(c.s.all('customers'));
+    const refundRows = (onlyMine: boolean) => c.s.all('refunds').filter((r) => !onlyMine || r.kasir_id === me || r.created_by === me).map((r) => mk({ key: 'refunds:' + r.id, waktu: str(r.dibayar_at || r.created_at), tanggal: str(r.dibayar_at).slice(0, 10) || str(r.tanggal), jenis: 'Refund',
+      keterangan: `${str(r.nomor)} · ${str(custs[str(r.customer_id)]?.nama)} · ${r.sumber === 'deposit' ? 'pencairan deposit' : 'pembatalan'} · ${str(r.cara)}${r.status === 'dibayar' ? ` dari ${r.kasir_id ? names[LACI + str(r.kasir_id)] || 'laci' : names[str(r.method_id)] || ''} ke ${str(r.penerima)}` : ''}`,
+      nominal: num(r.nominal), keluar: r.status === 'dibayar' ? num(r.nominal) : 0, oleh: users[str(r.dibayar_oleh || r.created_by)] || '', status: RF[str(r.status)]?.[0] || str(r.status), tone: RF[str(r.status)]?.[1] || '', ref_tabel: 'refunds', ref_id: str(r.id), bukti: str(r.bukti) }));
+    const depositRows = (onlyMine: boolean) => c.s.all('deposit_moves').filter((m) => m.jenis === 'topup' && (!onlyMine || m.kasir_id === me)).map((m) => mk({ key: 'deposit_moves:' + m.id, waktu: str(m.created_at), tanggal: str(m.tanggal), jenis: 'Deposit',
+      keterangan: `${str(m.nomor)} · ${str(custs[str(m.customer_id)]?.nama)} · titip di muka · ${m.kasir_id ? names[LACI + str(m.kasir_id)] || 'laci' : names[str(m.method_id)] || ''}`, nominal: num(m.masuk), masuk: num(m.masuk), oleh: users[str(m.created_by)] || '', status: 'Masuk', tone: 'ok', ref_tabel: 'deposit_moves', ref_id: str(m.id), bukti: str(m.bukti) }));
+    const BT: Record<string, [string, string]> = { menunggu: ['Menunggu persetujuan', 'warn'], disetujui: ['Disetujui', 'ok'], ditolak: ['Ditolak', 'bad'] };
+    const batalRows = () => c.s.all('cancellations').map((x) => mk({ key: 'cancellations:' + x.id, waktu: str(x.diputus_at || x.created_at), tanggal: str(x.tanggal), jenis: 'Pembatalan',
+      keterangan: `${str(x.nomor)} · ${str(custs[str(x.customer_id)]?.nama)} · "${str(x.alasan).slice(0, 60)}"`, nominal: num(x.nilai_batal) || num(x.nilai_item), oleh: users[str(x.created_by)] || '', status: BT[str(x.status)]?.[0] || str(x.status), tone: BT[str(x.status)]?.[1] || '', ref_tabel: 'cancellations', ref_id: str(x.id) }));
     const laciSaya = () => {
       const tn = tunaiMethod(c), myLaci = LACI + me;
       const orders = byId(c.s.all('orders'));
@@ -201,6 +216,8 @@ export function makeExt(h: Helpers) {
           keterangan: `${str(orders[str(x.order_id)]?.nomor)} · tunai`, nominal: num(x.nominal), masuk: num(x.nominal), oleh: users[me] || '', status: '–', ref_tabel: 'payments', ref_id: str(x.id) })),
         ...setoran(true).map((r) => ({ ...r, keluar: r.status === 'Diterima' ? r.nominal : 0 })),
         ...c.s.all('fund_transfers').filter((f) => f.dari === myLaci || f.ke === myLaci).map((f) => fundRow(f, myLaci)),
+        ...refundRows(false).filter((r) => c.s.all('refunds').some((x) => x.id === r.ref_id && x.kasir_id === me && x.status === 'dibayar')),
+        ...depositRows(true),
       ];
     };
     let rows: RRow[] = [];
@@ -211,9 +228,10 @@ export function makeExt(h: Helpers) {
     else if (tab === 'pindah') rows = c.s.all('fund_transfers').map((f) => fundRow(f));
     else if (tab === 'pengeluaran') rows = pengeluaran();
     else if (tab === 'rekon') rows = rekon();
+    else if (tab === 'refund') rows = [...refundRows(false), ...depositRows(false), ...batalRows()];
     else {
       const seen = new Set<string>();
-      rows = [...setoran(false), ...titip(false), ...kasKecil(), ...c.s.all('fund_transfers').map((f) => fundRow(f)), ...(can(c, 'pengeluaran') || can(c, 'hutang') ? pengeluaran() : []), ...rekon()].filter((r) => (seen.has(r.key) ? false : (seen.add(r.key), true)));
+      rows = [...setoran(false), ...titip(false), ...kasKecil(), ...c.s.all('fund_transfers').map((f) => fundRow(f)), ...(can(c, 'pengeluaran') || can(c, 'hutang') ? pengeluaran() : []), ...rekon(), ...refundRows(false), ...depositRows(false), ...batalRows()].filter((r) => (seen.has(r.key) ? false : (seen.add(r.key), true)));
       if (tab === 'cek') rows = rows.filter((r) => open.has(r.key));
     }
     if (tab !== 'cek') rows = rows.filter((r) => inR(r.tanggal) || open.has(r.key));
@@ -267,17 +285,20 @@ export function makeExt(h: Helpers) {
     const recipes = (cache?.recipes || c.s.all('recipes')).filter((r) => r.product_id === item.product_id);
     const machines = cache?.machines || byId(c.s.all('machines'));
     const o = (cache?.orders || byId(c.s.all('orders')))[str(item.order_id)];
+    // jumlah yang dibatalkan sebelum diproduksi tidak memotong stok
+    const aktif = num(item.qty) > 0 ? Math.max(0, num(item.qty) - num(item.qty_batal)) / num(item.qty) : 1;
+    if (aktif <= 0) return false;
     let hppB = 0;
     recipes.forEach((r) => {
       const m = mats[str(r.material_id)];
       if (!m) return;
-      const q = r2(num(r.qty) * (r.per === 'klik' ? num(item.klik) : num(item.qty)));
+      const q = r2(num(r.qty) * (r.per === 'klik' ? num(item.klik) : num(item.qty)) * aktif);
       if (!(q > 0)) return;
       const hr = num(m.harga_rata);
       move(c, m, -q, 'pakai', hr, tanggal, 'order_items', str(item.id), `${str(o?.nomor)} ${str(item.nama_produk)}`);
       hppB += q * hr;
     });
-    const hppK = num(item.klik) * num(machines[str(item.mesin_id)]?.biaya_klik);
+    const hppK = num(item.klik) * aktif * num(machines[str(item.mesin_id)]?.biaya_klik);
     const patch = { hpp_bahan: Math.round(hppB), hpp_klik: Math.round(hppK), stok_at: tanggal + 'T' + iso(c.env).slice(11) };
     c.s.update('order_items', 'id', str(item.id), patch);
     Object.assign(item, patch);
@@ -336,7 +357,7 @@ export function makeExt(h: Helpers) {
       return k;
     };
     /** Tunai yang diterima/dihitung kasir masuk ke laci kasir itu; metode lain ke akunnya sendiri. */
-    const kasOf = (methodId: unknown, kasirId: unknown) => (tunai && str(methodId) === str(tunai.id) && str(kasirId) ? laci(kasirId) : kas(methodId));
+    const kasOf = (methodId: unknown, kasirId: unknown) => (str(methodId) === 'deposit' ? '2150' : tunai && str(methodId) === str(tunai.id) && str(kasirId) ? laci(kasirId) : kas(methodId));
     const kasirIds = new Set(c.s.all('users').filter((u) => u.role === 'kasir').map((u) => str(u.id)));
     const cats = byId(c.s.all('expense_categories'));
     c.s.all('expense_categories').forEach((x) => {
@@ -374,6 +395,24 @@ export function makeExt(h: Helpers) {
       add(str(x.tanggal), str(x.nota) || 'PENGELUARAN', 'pengeluaran', str(x.item), [{ akun: dr, d: num(x.total), k: 0 }, x.cara_bayar === 'hutang' ? { akun: '2100', d: 0, k: num(x.total) } : { akun: kas(x.method_id), d: 0, k: num(x.total) }]);
     });
     c.s.all('bill_payments').forEach((b) => add(str(b.tanggal), 'BAYAR HUTANG', 'hutang', str(b.keterangan) || 'Pembayaran hutang supplier', [{ akun: '2100', d: num(b.nominal), k: 0 }, { akun: kas(b.method_id), d: 0, k: num(b.nominal) }]));
+    // ---- pembatalan tercatat, deposit konsumen, refund (v1.3.5) ----
+    c.s.all('cancellations').forEach((x) => {
+      if (x.status !== 'disetujui') return;
+      const t = str(x.diputus_at).slice(0, 10) || str(x.tanggal), nota = str(oById[str(x.order_id)]?.nomor);
+      add(t, str(x.nomor), 'pembatalan', `Pembatalan ${nota}`, [{ akun: '4150', d: num(x.nilai_batal), k: 0 }, { akun: '1200', d: 0, k: num(x.nilai_batal) }]);
+      const hb = num(x.hpp_bahan), hk = num(x.hpp_klik);
+      if (hb + hk) add(t, str(x.nomor), 'pembatalan', `Bahan & klik terbuang ${nota}`, [{ akun: '5190', d: hb + hk, k: 0 }, { akun: '5100', d: 0, k: hb }, { akun: '5110', d: 0, k: hk }]);
+    });
+    c.s.all('deposit_moves').forEach((m) => {
+      if (m.jenis === 'topup') add(str(m.tanggal), str(m.nomor), 'deposit', `Deposit masuk (titip di muka)`, [{ akun: kasOf(m.method_id, m.kasir_id), d: num(m.masuk), k: 0 }, { akun: '2150', d: 0, k: num(m.masuk) }]);
+      else if (m.jenis === 'pembatalan' || m.jenis === 'lebih_bayar') add(str(m.tanggal), str(m.nomor), 'deposit', m.jenis === 'pembatalan' ? 'Sisa uang pembatalan jadi deposit' : 'Kelebihan bayar jadi deposit', [{ akun: '1200', d: num(m.masuk), k: 0 }, { akun: '2150', d: 0, k: num(m.masuk) }]);
+      // "pakai" dicatat lewat pembayaran (metode deposit), "cair" lewat refund
+    });
+    c.s.all('refunds').forEach((r) => {
+      if (r.status !== 'dibayar') return;
+      add(str(r.dibayar_at).slice(0, 10) || str(r.tanggal), str(r.nomor), 'refund', `Refund ${r.sumber === 'deposit' ? 'pencairan deposit' : 'pembatalan'} ke konsumen`,
+        [{ akun: r.sumber === 'deposit' ? '2150' : '1200', d: num(r.nominal), k: 0 }, { akun: kasOf(r.method_id, r.kasir_id), d: 0, k: num(r.nominal) }]);
+    });
     c.s.all('petty_cash').forEach((p) => {
       if (bool(p.deleted)) return;
       if (num(p.masuk)) add(str(p.tanggal), 'KAS KECIL', 'kas kecil', str(p.item) || 'Isi kas kecil', [{ akun: '1110', d: num(p.masuk), k: 0 }, { akun: !tunai ? '3100' : kasirIds.has(str(p.created_by)) ? laci(p.created_by) : kas(tunai.id), d: 0, k: num(p.masuk) }]);
@@ -435,18 +474,21 @@ export function makeExt(h: Helpers) {
     const sum: Record<string, number> = {};
     entries.forEach((e) => { if (e.tanggal >= from && e.tanggal <= to) e.lines.forEach((l) => { sum[l.akun] = (sum[l.akun] || 0) + l.d - l.k; }); });
     const val = (k: string) => { const a = accounts[k]; return a && !debitNormal(a.tipe) ? -(sum[k] || 0) : sum[k] || 0; };
-    const pendapatan = val('4100');
+    const kotor = val('4100');
+    const pembatalan = -val('4150'); // akun pengurang pendapatan: saldo debit
+    const pendapatan = kotor - pembatalan;
     const lain = val('4900');
     const hpp = [
       { kode: '5100', nama: 'Bahan baku (kertas, stiker, film)', nilai: val('5100') },
       { kode: '5110', nama: 'Biaya klik mesin', nilai: val('5110') },
       { kode: '5120', nama: 'Bahan di luar stok', nilai: val('5120') },
       { kode: '5130', nama: 'Selisih persediaan (opname)', nilai: val('5130') },
+      { kode: '5190', nama: 'Kerugian order batal (bahan & klik terbuang)', nilai: val('5190') },
     ];
     const totalHpp = hpp.reduce((s, x) => s + x.nilai, 0);
     const beban = Object.keys(accounts).filter((k) => accounts[k].tipe === 'beban' && val(k)).map((k) => ({ kode: k, nama: accounts[k].nama, nilai: val(k) })).sort((a, b) => b.nilai - a.nilai);
     const totalBeban = beban.reduce((s, x) => s + x.nilai, 0);
-    return { pendapatan, pendapatan_lain: lain, hpp, total_hpp: totalHpp, laba_kotor: pendapatan + lain - totalHpp, beban, total_beban: totalBeban, laba_bersih: pendapatan + lain - totalHpp - totalBeban };
+    return { pendapatan_kotor: kotor, pembatalan, pendapatan, pendapatan_lain: lain, hpp, total_hpp: totalHpp, laba_kotor: pendapatan + lain - totalHpp, beban, total_beban: totalBeban, laba_bersih: pendapatan + lain - totalHpp - totalBeban };
   }
 
   // ---------------- handler ----------------
@@ -765,6 +807,9 @@ export function makeExt(h: Helpers) {
         const piutangEv: [string, number][] = [];
         allOrders.forEach((o) => piutangEv.push([str(o.tanggal), num(o.total)]));
         c.s.all('payments').forEach((x) => { if (oById[str(x.order_id)]) piutangEv.push([str(x.tanggal), -num(x.nominal)]); });
+        c.s.all('cancellations').forEach((x) => { if (x.status === 'disetujui' && oById[str(x.order_id)]) piutangEv.push([str(x.diputus_at).slice(0, 10), -num(x.nilai_batal)]); });
+        c.s.all('deposit_moves').forEach((m) => { if ((m.jenis === 'pembatalan' || m.jenis === 'lebih_bayar') && oById[str(m.order_id)]) piutangEv.push([str(m.tanggal), num(m.masuk)]); });
+        c.s.all('refunds').forEach((r) => { if (r.status === 'dibayar' && r.sumber === 'pembatalan' && oById[str(r.order_id)]) piutangEv.push([str(r.dibayar_at).slice(0, 10), num(r.nominal)]); });
         const piutang = cum(piutangEv);
         let hutang: number[] | null = null;
         if (laba) {

@@ -28,8 +28,8 @@ function Split({ a, b, fmt }: { a: number; b: number; fmt: (n: number) => string
         {t > 0 && <div style={{ width: `${(b / t) * 100}%`, background: C_EU }} />}
       </div>
       <div className="mt-2 flex flex-col gap-1 text-xs sm:flex-row sm:justify-between sm:gap-3">
-        <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm" style={{ background: C_PRC }} />Percetakan <b className="num whitespace-nowrap">{fmt(a)}</b><span className="text-muted">{pct(a, t)}%</span></span>
-        <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm" style={{ background: C_EU }} />End user <b className="num whitespace-nowrap">{fmt(b)}</b><span className="text-muted">{pct(b, t)}%</span></span>
+        <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm" style={{ background: C_PRC }} />01 · Percetakan <b className="num whitespace-nowrap">{fmt(a)}</b><span className="text-muted">{pct(a, t)}%</span></span>
+        <span className="flex items-center gap-1.5"><i className="h-2.5 w-2.5 rounded-sm" style={{ background: C_EU }} />02 · End user <b className="num whitespace-nowrap">{fmt(b)}</b><span className="text-muted">{pct(b, t)}%</span></span>
       </div>
     </div>
   );
@@ -68,7 +68,7 @@ export function CustomerStats() {
                   </div>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2">
-                  {([['Percetakan', s.total_percetakan, C_PRC], ['End user', s.total_enduser, C_EU]] as const).map(([l, n, col]) => (
+                  {([['01 · Percetakan', s.total_percetakan, C_PRC], ['02 · End user', s.total_enduser, C_EU]] as const).map(([l, n, col]) => (
                     <div key={l} className="rounded-xl border border-line px-3 py-2" style={{ borderLeft: `4px solid ${col}` }}>
                       <div className="text-xs font-semibold text-muted">{l}</div>
                       <div className="flex items-baseline gap-1.5"><b className="num text-lg">{nf(n)}</b><span className="text-xs text-muted">{pct(n, s.total)}%</span></div>

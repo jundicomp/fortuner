@@ -1,4 +1,5 @@
 import { OmzetSplit } from '@/components/OmzetSplit';
+import { jenisLabel } from '@/lib/jenis';
 import { useQuery } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -14,7 +15,7 @@ import { api } from '@/lib/api';
 import { addDays, nf, rp, tgl, ymd } from '@/lib/format';
 
 interface Ringkas {
-  omzet: number; nota: number; rata_nota: number; klik: number; piutang_periode: number;
+  omzet: number; nota: number; rata_nota: number; klik: number; piutang_periode: number; batal_nota?: number; pembatalan?: number;
   masuk: number; keluar_lunas: number; keluar_hutang: number; kas_kecil: number; arus_kas: number; pengeluaran_total: number;
   hpp?: number; laba_kotor?: number; omzet_ber_hpp?: number; cakupan_hpp?: number; biaya_operasional?: number;
 }
@@ -65,7 +66,7 @@ export function LaporanPage() {
     const name = `Laporan_${d.from}_sd_${d.to}`;
     const ring: Record<string, unknown>[] = [
       { Pos: 'Omzet (nota dibuat)', Nilai: r.omzet }, { Pos: 'Jumlah nota', Nilai: r.nota }, { Pos: 'Rata-rata per nota', Nilai: r.rata_nota },
-      { Pos: 'Total klik', Nilai: r.klik }, { Pos: 'Sisa piutang dari nota periode ini', Nilai: r.piutang_periode },
+      { Pos: 'Total klik', Nilai: r.klik }, { Pos: 'Sisa piutang dari nota periode ini', Nilai: r.piutang_periode }, { Pos: 'Pembatalan disetujui di periode ini (dokumen BTL)', Nilai: -(r.pembatalan || 0) },
       { Pos: 'Uang masuk', Nilai: r.masuk }, { Pos: 'Pengeluaran dibayar lunas', Nilai: -r.keluar_lunas }, { Pos: 'Bayar hutang supplier', Nilai: -r.keluar_hutang },
       { Pos: 'Kas kecil keluar', Nilai: -r.kas_kecil }, { Pos: 'Arus kas bersih', Nilai: r.arus_kas }, { Pos: 'Total pengeluaran (termasuk hutang)', Nilai: r.pengeluaran_total },
       ...(d.can_laba ? [
@@ -80,7 +81,7 @@ export function LaporanPage() {
       { name: 'CS', money: ['Omzet'], rows: d.per_cs.map((x) => ({ CS: x.nama, Nota: x.nota, Klik: x.klik, Omzet: x.omzet })) },
       { name: 'Mesin', money: ['Omzet'], rows: d.per_mesin.map((x) => ({ Mesin: x.nama, Item: x.item, Klik: x.klik, Omzet: x.omzet })) },
       { name: 'Metode bayar', money: ['Masuk'], rows: d.per_metode.map((x) => ({ Metode: x.nama, Jenis: x.jenis, Transaksi: x.transaksi, Masuk: x.masuk })) },
-      { name: 'Konsumen', money: ['Omzet', 'Sisa piutang'], rows: d.per_konsumen.map((x) => ({ Konsumen: x.nama, Tipe: x.tipe, Nota: x.nota, Omzet: x.omzet, 'Sisa piutang': x.sisa })) },
+      { name: 'Konsumen', money: ['Omzet', 'Sisa piutang'], rows: d.per_konsumen.map((x) => ({ Konsumen: x.nama, Jenis: jenisLabel(x.tipe), Nota: x.nota, Omzet: x.omzet, 'Sisa piutang': x.sisa })) },
       { name: 'Pengeluaran', money: ['Total'], rows: d.per_kategori.map((x) => ({ Kategori: x.nama, Jenis: x.jenis, Transaksi: x.transaksi, Total: x.total })) },
     ], `${name}.xlsx`, { subtitle: `Periode ${tgl(d.from)} – ${tgl(d.to)}` });
   };
@@ -96,7 +97,7 @@ export function LaporanPage() {
       {d && <p className="-mt-2 mb-4 text-xs text-muted">Periode {tgl(d.from)} – {tgl(d.to)}</p>}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-        <Kpi tint="orange" label="Omzet" value={rp(r?.omzet)} sub={`${nf(r?.nota)} nota`} loading={q.isLoading} extra={r && <OmzetSplit className="mt-2.5" omzet={r.omzet} sisa={r.piutang_periode} />} />
+        <Kpi tint="orange" label="Omzet" value={rp(r?.omzet)} sub={`${nf(r?.nota)} nota`} loading={q.isLoading} extra={r && <OmzetSplit className="mt-2.5" omzet={r.omzet} sisa={r.piutang_periode} batal={r.batal_nota || 0} />} />
         <Kpi tint="purple" label="Rata-rata nota" value={rp(r?.rata_nota)} sub={`${nf(r?.klik)} klik`} loading={q.isLoading} />
         <Kpi tint="blue" label="Uang masuk" value={rp(r?.masuk)} sub={r ? `${pct(r.masuk, r.omzet)} dari omzet` : ''} loading={q.isLoading} />
         <Kpi tint="rose" label="Piutang periode ini" value={rp(r?.piutang_periode)} sub="sisa dari nota periode ini" loading={q.isLoading} bad={!!r?.piutang_periode} />
@@ -252,7 +253,7 @@ function Rincian({ tab, d, loading }: { tab: string; d: Report; loading: boolean
   if (tab === 'konsumen') {
     const cols: ColumnDef<Konsumen, any>[] = [
       { accessorKey: 'nama', header: 'Konsumen', cell: (c) => <span className="font-semibold">{c.getValue()}</span> },
-      { accessorKey: 'tipe', header: 'Tipe', meta: { filter: 'select' }, cell: (c) => <span className="capitalize">{c.getValue() === 'end_user' ? 'end user' : c.getValue()}</span> },
+      { id: 'tipe', accessorFn: (x) => jenisLabel(x.tipe), header: 'Jenis', meta: { filter: 'select' } },
       { accessorKey: 'nota', header: 'Nota', meta: right },
       { accessorKey: 'omzet', header: 'Omzet', meta: { ...right, money: true }, cell: (c) => <b className="num">{nf(c.getValue())}</b> },
       { accessorKey: 'sisa', header: 'Sisa piutang', meta: { ...right, money: true }, cell: (c) => <span className={`num ${c.getValue() ? 'font-semibold text-bad' : 'text-muted'}`}>{nf(c.getValue())}</span> },

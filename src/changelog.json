@@ -1,5 +1,30 @@
 [
   {
+    "version": "1.3.6",
+    "tanggal": "2026-10-31",
+    "catatan": [
+      "Kode jenis konsumen: 01 = Percetakan/reseller, 02 = End user. Nota/SPK dan kwitansi menampilkan kode, bukan tulisan percetakan/end user.",
+      "Nomor nota pendek jadi 6 digit: 2 digit kode jenis + 4 digit nomor (contoh 020001). Berlaku di nota, struk thermal, kwitansi (KW-020001-1), antrian kasir dan pencarian.",
+      "Kolom baru kode_jenis di data konsumen; form, tabel, export, impor Excel (jenis 01/02), infografis, kartu konsumen, deposit dan laporan per konsumen ikut menampilkan kode.",
+      "Jalankan Setup / perbarui sheet sekali setelah memasang Code.gs baru agar kolom kode_jenis ditambahkan dan terisi otomatis."
+    ]
+  },
+  {
+    "version": "1.3.5",
+    "tanggal": "2026-10-30",
+    "catatan": [
+      "Pembatalan tercatat: nota tidak lagi dihapus dari omzet. Setiap pembatalan jadi dokumen BTL bertanggal hari disetujui; nilainya masuk Laba Rugi sebagai Pembatalan penjualan (pengurang omzet).",
+      "Batal penuh atau sebagian (pilih item & jumlah), alasan wajib (pilihan cepat + keterangan) dan lampiran foto. Jalur cepat untuk nota sendiri hari ini yang belum dibayar & belum diproduksi.",
+      "Persetujuan otomatis menurut risiko: Admin/Keuangan untuk yang belum diproduksi & belum dibayar; Owner (password) bila sudah ada uang masuk, sudah diproduksi, atau nota bulan lalu. Hak akses baru: Pembatalan nota, Setujui pembatalan besar, Deposit konsumen.",
+      "Batal setelah produksi: owner menetapkan biaya ditahan (HPP, persen, atau manual; bawaan diatur di Pengaturan → Umum). Bahan & klik yang terbuang tampil di Laba Rugi sebagai Kerugian order batal.",
+      "Refund dana: kelebihan bayar dikembalikan lewat deposit, tunai (dibayar kasir dari lacinya sendiri), atau transfer (wajib bukti). Ada riwayat, notifikasi, dan ikut dicocokkan di tutup kas.",
+      "Deposit konsumen (Keuangan → Deposit Konsumen): top-up/titip di muka, sisa pembatalan, kelebihan bayar (kembalian bisa disimpan jadi deposit), bayar nota pakai deposit di kasir, pencairan dengan persetujuan owner. Saldo per konsumen dengan umur, kartu deposit, kirim rekening koran ke WA, dan cek otomatis cocok dengan akun 2150 di Buku Besar.",
+      "Laporan → Pembatalan & Refund: rekap nilai, kerugian, refund, deposit, yang menunggu persetujuan, per pengaju (% dari omzet), alasan terbanyak, dan tanda nota pengganti (nota lebih murah untuk konsumen sama di hari yang sama).",
+      "Kartu Konsumen: klik konsumen di Master Konsumen untuk melihat profil, total belanja & peringkat, piutang & umur piutang (kirim tagihan WA), deposit, pembatalan, grafik belanja, produk favorit, kebiasaan order/bayar, riwayat order & pembayaran, dan aktivitas.",
+      "Kartu omzet, Omzet Harian, dan Analitik piutang ikut memperhitungkan pembatalan, refund, dan deposit. Stok tidak dipotong untuk jumlah yang dibatalkan sebelum diproduksi."
+    ]
+  },
+  {
     "version": "1.3.4",
     "tanggal": "2026-10-30",
     "catatan": [

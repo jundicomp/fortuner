@@ -1,4 +1,4 @@
-import { _hashPasswordForSeed, _newId, _ext, seedBase, formatNota, counterKey } from './core';
+import { _hashPasswordForSeed, _newId, _ext, seedBase, formatNota, counterKey, handle } from './core';
 import { hargaBerlaku, hitungHarga } from '../lib/pricing';
 import type { Env, Store } from './store';
 
@@ -79,7 +79,7 @@ export function seedDemo(s: Store, env: Env) {
     ['1005', 'Toko Sinar Abadi', '0821-0000-4405', 'enduser'], ['1006', 'SDIT Al Hikmah', '0811-0000-5506', 'enduser'],
     ['1007', 'Grafika Mandala', '0857-0000-6607', 'reseller'], ['1008', 'Kedai Kopi Senja', '0896-0000-7708', 'enduser'],
   ];
-  custs.forEach(([kode, nama, telp, tipe]) => s.insert('customers', { id: _newId(env, 'cus'), kode, nama, percetakan: tipe === 'reseller' ? nama : '', telp, tipe, alamat: '', catatan: '', aktif: true, ...st }));
+  custs.forEach(([kode, nama, telp, tipe]) => s.insert('customers', { id: _newId(env, 'cus'), kode, nama, percetakan: tipe === 'reseller' ? nama : '', telp, tipe, kode_jenis: tipe === 'reseller' ? '01' : '02', alamat: '', catatan: '', aktif: true, ...st }));
   [['Toko Kertas Sejahtera', 'Kertas'], ['Mitra Stiker Utama', 'Stiker'], ['Sumber Film DTF', 'Film DTF'], ['Plastik Makmur', 'Plastik, laminating']].forEach(([n, b]) =>
     s.insert('suppliers', { id: _newId(env, 'sup'), nama: n, telp: '', bahan: b, aktif: true, ...st }));
   // contoh perangkat menunggu persetujuan
@@ -384,4 +384,45 @@ function seedFinance(s: Store, env: Env, rnd: () => number, pick: <T>(a: T[]) =>
   const nDays = new Date(Date.UTC(Number(t0.slice(0, 4)), Number(t0.slice(5, 7)), 0)).getUTCDate();
   s.insert('settings', { key: 'target_' + t0.slice(0, 7).replace('-', ''), value: String(Math.round((perHari * nDays * 1.1) / 500000) * 500000) });
   void pick;
+  seedBatalDemo(s, env);
+}
+
+/** Contoh pembatalan, refund, dan deposit (v1.3.5) dibuat lewat aksi API supaya jurnal & saldo konsisten. */
+function seedBatalDemo(s: Store, env: Env) {
+  try {
+    const call = (action: string, payload: unknown, token?: string) => handle(s, env, { action, payload, token, deviceId: 'demo-seed' });
+    const tok = (call('auth.login', { username: 'owner', password: 'owner123' }).data as { token: string }).token;
+    const C = (a: string, p: unknown) => call(a, p, tok);
+    const cust = (nama: string) => String(s.all('customers').find((c) => c.nama === nama)?.id || '');
+    const bca = String(s.all('payment_methods').find((m) => m.nama === 'BCA')?.id || '');
+    const ci = cust('Percetakan Cahaya Ilmu'), rd = cust('Rumah Desain Nusa'), sk = cust('Sablon Kencana');
+    const ordersOf = (cid: string, pred: (o: Record<string, unknown>) => boolean) => s.all('orders').filter((o) => o.customer_id === cid && !o.batal && pred(o)).sort((a, b) => String(b.created_at).localeCompare(String(a.created_at)));
+    // 1. top-up deposit
+    C('deposit.topup', { customer_id: ci, nominal: 1000000, method_id: bca, catatan: 'Deposit order kalender 2027' });
+    C('deposit.topup', { customer_id: sk, nominal: 350000, method_id: bca, catatan: 'Titip di muka' });
+    // 2. pembatalan sebagian nota lunas -> kelebihan jadi deposit
+    const lunas = ordersOf(ci, (o) => o.status_bayar === 'lunas')[0];
+    if (lunas) {
+      const its = s.all('order_items').filter((i) => i.order_id === lunas.id);
+      const it = its[its.length - 1];
+      const r = C('cancel.request', { order_id: lunas.id, jenis: its.length > 1 ? 'sebagian' : 'penuh', items: [{ id: it.id, qty: it.qty }], alasan: 'Konsumen ganti desain, item ini tidak jadi', kategori: 'Ganti desain', keinginan: 'deposit' });
+      const id = (r.data as { cancellation?: { id: string } })?.cancellation?.id;
+      if (id) C('cancel.decide', { id, setuju: true, ditahan_mode: 'hpp', penyelesaian: 'deposit', catatan: 'OK', password: 'owner123' });
+    }
+    // 3. pembatalan nota lunas -> refund transfer siap dibayar
+    const lunas2 = ordersOf(rd, (o) => o.status_bayar === 'lunas')[0];
+    if (lunas2) {
+      const r = C('cancel.request', { order_id: lunas2.id, jenis: 'penuh', alasan: 'Acara diundur, minta uang kembali', kategori: 'Konsumen batal / acara diundur', keinginan: 'transfer' });
+      const id = (r.data as { cancellation?: { id: string } })?.cancellation?.id;
+      if (id) C('cancel.decide', { id, setuju: true, ditahan_mode: 'hpp', penyelesaian: 'transfer', password: 'owner123' });
+    }
+    // 4. pengajuan yang masih menunggu persetujuan owner
+    const dp = ordersOf(sk, (o) => o.status_bayar === 'dp')[0] || ordersOf(sk, (o) => o.status_bayar === 'lunas')[0];
+    if (dp) C('cancel.request', { order_id: dp.id, jenis: 'penuh', alasan: 'Hasil cetak tidak sesuai warna, minta dibatalkan', kategori: 'Hasil cetak tidak sesuai', keinginan: 'deposit' });
+    // 5. bayar pakai deposit
+    const belum = ordersOf(ci, (o) => Number(o.sisa) > 0)[0];
+    if (belum) C('orders.pay', { order_id: belum.id, nominal: Math.min(Number(belum.sisa), 400000), method_id: 'deposit', payment_id: _newId(env, 'pmt') });
+    // 6. pencairan deposit menunggu persetujuan
+    C('deposit.cair', { customer_id: sk, nominal: 150000, cara: 'transfer', alasan: 'Sisa titipan dikembalikan, order dibatalkan konsumen' });
+  } catch { /* contoh demo opsional */ }
 }
