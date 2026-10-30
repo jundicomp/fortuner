@@ -174,8 +174,8 @@ export function FoPage() {
 
   // ---------- pilihan combobox ----------
   const custItems: ComboItem[] = useMemo(() => (d?.customers || []).map((c) => ({
-    value: c.id, label: c.nama, hint: [c.kode && `#${c.kode}`, c.telp !== '-' && c.telp].filter(Boolean).join(' · '),
-    search: `${c.nama} ${c.kode} ${c.telp}`.toLowerCase(),
+    value: c.id, label: c.nama, hint: [c.kode && `#${c.kode}`, c.percetakan, c.end_user, c.telp !== '-' && c.telp].filter(Boolean).join(' · '),
+    search: `${c.nama} ${c.kode} ${c.percetakan || ''} ${c.end_user || ''} ${c.telp}`.toLowerCase(),
     right: <TipeTag tipe={c.tipe} />,
   })), [d]);
   const prodItems: ComboItem[] = useMemo(() => products.map((p) => ({

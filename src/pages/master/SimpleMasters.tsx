@@ -12,12 +12,16 @@ export function CustomersPage() {
       columns={[
         { accessorKey: 'kode', header: 'Kode', meta: { className: 'font-mono text-xs', hideOnCard: true } },
         { accessorKey: 'nama', header: 'Nama', cell: (c) => <span className="font-semibold">{c.getValue()}</span>, meta: { hideOnCard: true } },
+        { accessorKey: 'percetakan', header: 'Percetakan' },
+        { accessorKey: 'end_user', header: 'End user' },
         { accessorKey: 'telp', header: 'Telepon' },
         { accessorKey: 'tipe', header: 'Tipe', meta: { filter: 'select', filterLabel: (v) => (v === 'reseller' ? 'Reseller' : 'End user') }, cell: (c) => c.getValue() === 'reseller' ? <span className="pill pill-brand">Reseller</span> : <span className="pill pill-mute">End user</span> },
         { accessorKey: 'alamat', header: 'Alamat', meta: { hideOnCard: true } },
       ]}
       fields={[
         { key: 'nama', label: 'Nama', required: true, full: true },
+        { key: 'percetakan', label: 'Percetakan' },
+        { key: 'end_user', label: 'End user' },
         { key: 'kode', label: 'Kode', hint: 'Kosongkan untuk nomor otomatis.' },
         { key: 'tipe', label: 'Tipe harga', type: 'select', options: [{ value: 'enduser', label: 'End user' }, { value: 'reseller', label: 'Reseller' }] },
         { key: 'telp', label: 'Telepon', type: 'tel' },

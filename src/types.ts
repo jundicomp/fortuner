@@ -61,7 +61,7 @@ export interface Product {
   harga_berikutnya?: PriceRow | null; // harga terjadwal (bila ada)
 }
 
-export interface Customer { id: string; kode: string; nama: string; telp: string; tipe: 'reseller' | 'enduser'; alamat: string; catatan: string; aktif: boolean; created_at?: string }
+export interface Customer { id: string; kode: string; nama: string; percetakan?: string; end_user?: string; telp: string; tipe: 'reseller' | 'enduser'; alamat: string; catatan: string; aktif: boolean; created_at?: string }
 export interface Supplier { id: string; nama: string; telp: string; bahan: string; aktif: boolean }
 export interface Machine { id: string; nama: string; pakai_counter: boolean; aktif: boolean; biaya_klik?: number }
 export interface PaymentMethod { id: string; nama: string; jenis: 'tunai' | 'transfer' | 'edc'; rekening: string; aktif: boolean }
@@ -93,7 +93,7 @@ export type Settings = Record<string, string>;
 export type MasterTable = 'customers' | 'suppliers' | 'machines' | 'payment_methods';
 
 // ---------- Tahap 2: transaksi ----------
-export interface CustomerLite { id: string; kode: string; nama: string; telp: string; tipe: 'reseller' | 'enduser' }
+export interface CustomerLite { id: string; kode: string; nama: string; percetakan?: string; end_user?: string; telp: string; tipe: 'reseller' | 'enduser' }
 
 export interface PosBootstrap {
   today: string;

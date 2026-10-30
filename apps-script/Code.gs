@@ -2623,7 +2623,10 @@ var FortunerServer = (() => {
           products: c.s.all("products").filter((p) => bool(p.aktif)).map((p) => productWithPrice(c.s, p, today, prices)),
           // harga terjadwal ikut dikirim supaya saat offline lewat tengah malam harga tetap benar
           price_rows: prices.filter((r) => !str(r.berlaku_sampai) || str(r.berlaku_sampai) >= addDays(today, -1)),
-          customers: c.s.all("customers").filter((x) => bool(x.aktif)).map((x) => ({ id: x.id, kode: x.kode, nama: x.nama, telp: x.telp, tipe: x.tipe })),
+          customers: c.s.all("customers").filter((x) => bool(x.aktif)).map((x) => {
+            var _a2, _b2;
+            return { id: x.id, kode: x.kode, nama: x.nama, percetakan: (_a2 = x.percetakan) != null ? _a2 : "", end_user: (_b2 = x.end_user) != null ? _b2 : "", telp: x.telp, tipe: x.tipe };
+          }),
           payment_methods: c.s.all("payment_methods").filter((x) => bool(x.aktif)),
           machines: c.s.all("machines"),
           can_manual: !!((_g = (_f = c.perms) == null ? void 0 : _f["kasir.harga_manual"]) == null ? void 0 : _g.ubah)
@@ -3851,7 +3854,7 @@ var FortunerServer = (() => {
       ...audit
     },
     cost_history: { id: "s", product_id: "s", berlaku_mulai: "s", harga_beli: "n", supplier_id: "s", sumber: "s", ...audit },
-    customers: { id: "s", kode: "s", nama: "s", telp: "s", tipe: "s", alamat: "s", catatan: "s", aktif: "b", ...audit },
+    customers: { id: "s", kode: "s", nama: "s", percetakan: "s", end_user: "s", telp: "s", tipe: "s", alamat: "s", catatan: "s", aktif: "b", ...audit },
     suppliers: { id: "s", nama: "s", telp: "s", bahan: "s", aktif: "b", ...audit },
     machines: { id: "s", nama: "s", pakai_counter: "b", aktif: "b", biaya_klik: "n", ...audit },
     payment_methods: { id: "s", nama: "s", jenis: "s", rekening: "s", aktif: "b", ...audit },

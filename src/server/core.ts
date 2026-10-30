@@ -782,7 +782,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
         products: c.s.all('products').filter((p) => bool(p.aktif)).map((p) => productWithPrice(c.s, p, today, prices)),
         // harga terjadwal ikut dikirim supaya saat offline lewat tengah malam harga tetap benar
         price_rows: prices.filter((r) => !str(r.berlaku_sampai) || str(r.berlaku_sampai) >= addDays(today, -1)),
-        customers: c.s.all('customers').filter((x) => bool(x.aktif)).map((x) => ({ id: x.id, kode: x.kode, nama: x.nama, telp: x.telp, tipe: x.tipe })),
+        customers: c.s.all('customers').filter((x) => bool(x.aktif)).map((x) => ({ id: x.id, kode: x.kode, nama: x.nama, percetakan: x.percetakan ?? '', end_user: x.end_user ?? '', telp: x.telp, tipe: x.tipe })),
         payment_methods: c.s.all('payment_methods').filter((x) => bool(x.aktif)),
         machines: c.s.all('machines'),
         can_manual: !!c.perms?.['kasir.harga_manual']?.ubah,
