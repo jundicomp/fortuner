@@ -9,7 +9,8 @@
       "Tabel & export Excel konsumen: kolom Jenis dan Nama percetakan. Pencarian konsumen di Front Office juga mencari nama percetakan.",
       "Import konsumen massal dari Excel (Master Data → Konsumen → Import Excel): kode kosong = konsumen baru, kode yang ada = diperbarui. File export tabel Konsumen bisa di-import ulang.",
       "Ringkasan konsumen di atas tabel Konsumen: konsumen aktif, baru bulan ini, yang order bulan ini, lama tidak order (> 60 hari), komposisi Percetakan vs End user, omzet per jenis, piutang, dan top 5 konsumen bulan ini. Bisa diciutkan.",
-      "Kartu Omzet (Dashboard: hari ini & bulan ini, Laporan) kini dibagi Cash (sudah dibayar, termasuk transfer & DP) dan Piutang (sisa belum dibayar). Cash + Piutang = Omzet."
+      "Kartu Omzet (Dashboard: hari ini & bulan ini, Laporan) kini dibagi Cash (sudah dibayar, termasuk transfer & DP) dan Piutang (sisa belum dibayar). Cash + Piutang = Omzet.",
+      "Menu baru Laporan → Omzet Harian: tabel tanggal 1–31 × 12 bulan, tiap bulan dibagi kolom Cash dan Piutang (bisa ganti ke Omzet atau Nota), baris total/persen/omzet/nota per bulan, ringkasan tahunan, klik tanggal untuk rincian, dan export Excel (3 sheet)."
     ]
   },
   {

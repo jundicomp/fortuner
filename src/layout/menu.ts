@@ -1,6 +1,6 @@
 import {
   ScrollText, LayoutDashboard, ShoppingCart, FilePlus2, ClipboardList, Factory, HandCoins, Receipt, Truck, Wallet, Gauge, Package, Users, Store, Cog,
-  CreditCard, BarChart3, Boxes, ShoppingBag, TrendingUp, BookOpen, Percent, UserCog, ShieldCheck, MonitorSmartphone, SlidersHorizontal, History, ArrowLeftRight, Landmark, Database, Settings, Printer, Info, ReceiptText, LineChart, type LucideIcon,
+  CreditCard, BarChart3, Boxes, ShoppingBag, TrendingUp, BookOpen, Percent, UserCog, ShieldCheck, MonitorSmartphone, SlidersHorizontal, History, ArrowLeftRight, Landmark, Database, Settings, Printer, Info, ReceiptText, LineChart, CalendarDays, type LucideIcon,
 } from 'lucide-react';
 
 /** `desktop` = hanya muncul di aplikasi desktop (Tauri). */
@@ -58,6 +58,7 @@ export const MENU: MenuGroup[] = [
     icon: BarChart3,
     items: [
       { path: '/laporan', label: 'Laporan', icon: BarChart3, perm: 'laporan', desc: 'Rekap harian/bulanan, omzet per CS/produk/mesin, dan laba kotor.' },
+      { path: '/laporan/omzet-harian', label: 'Omzet Harian', icon: CalendarDays, perm: 'laporan', desc: 'Tabel omzet per tanggal selama 12 bulan, dibagi cash dan piutang.' },
       { path: '/laporan/analitik', label: 'Analitik', icon: LineChart, perm: 'laporan', desc: 'Kurva penjualan, laba, pembelian, hutang & piutang, dan top pelanggan.' },
       { path: '/laporan/laba-rugi', label: 'Laba Rugi', icon: TrendingUp, perm: 'laporan.laba', desc: 'Pendapatan, komponen HPP, beban, dan laba bersih.' },
       { path: '/laporan/buku-besar', label: 'Buku Besar', icon: BookOpen, perm: 'laporan.laba', desc: 'Neraca saldo, buku besar per akun, dan jurnal.' },

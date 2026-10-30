@@ -3495,6 +3495,29 @@ var FortunerServer = (() => {
       }
     },
     // ----- laporan (Tahap 5) -----
+    /** Omzet per tanggal setahun (nota tidak batal), dipecah cash (sudah dibayar) dan piutang (sisa saat ini). */
+    "report.daily_year": {
+      auth: true,
+      fn: (c, p) => {
+        need(c, "laporan");
+        const today = c.env.today();
+        const tahun = /^\d{4}$/.test(str(p.tahun)) ? str(p.tahun) : today.slice(0, 4);
+        const all2 = c.s.all("orders").filter((o) => !bool(o.batal));
+        const hari = {};
+        all2.forEach((o) => {
+          const t = str(o.tanggal);
+          if (t.slice(0, 4) !== tahun) return;
+          const h = hari[t] || (hari[t] = { omzet: 0, piutang: 0, nota: 0 });
+          const total = Number(o.total || 0);
+          h.omzet += total;
+          h.piutang += Math.min(total, Math.max(0, Number(o.sisa || 0)));
+          h.nota++;
+        });
+        const tahunAda = [...new Set(all2.map((o) => str(o.tanggal).slice(0, 4)).filter((y) => /^\d{4}$/.test(y)))];
+        if (!tahunAda.includes(today.slice(0, 4))) tahunAda.push(today.slice(0, 4));
+        return { tahun, today, hari, tahun_tersedia: tahunAda.sort().reverse() };
+      }
+    },
     "report.summary": {
       auth: true,
       fn: (c, p) => {

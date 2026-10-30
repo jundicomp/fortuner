@@ -182,3 +182,27 @@ body { @apply bg-canvas text-ink font-sans antialiased; font-size: 14px; }
 .tag-r, .tag-e { display: inline-flex; align-items: center; gap: 4px; border-radius: 6px; padding: 1px 7px; font-size: 11px; font-weight: 700; color: #fff; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .tag-r { background: #C2410C; }
 .tag-e { background: #14532D; }
+
+/* Omzet Harian: matriks tanggal × bulan. Kolom tanggal, header 2 baris, dan baris total menempel saat digeser. */
+.omz { border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums; width: 100%; }
+.omz th, .omz td { padding: 0 8px; height: 30px; text-align: right; white-space: nowrap; border-bottom: 1px solid rgb(var(--line)); border-right: 1px solid rgb(var(--line)); font-size: 12.5px; }
+.omz thead th { position: sticky; top: 0; z-index: 2; background: rgb(var(--tbl-head)); color: #fff; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; height: 36px; text-align: center; }
+.omz thead tr.r2 th { top: 36px; height: 26px; font-size: 10px; }
+.omz thead th.cur { background: rgb(var(--brand)); }
+.omz thead tr.r2 th.cs { color: #c4f0d3; } .omz thead tr.r2 th.pt { color: #ffd0d0; }
+.omz thead tr.r2 th.cur { color: #fff; }
+.omz .tgl { position: sticky; left: 0; z-index: 1; text-align: center; width: 1%; min-width: 48px; font-weight: 700; background: rgb(var(--surface)); }
+.omz thead .tgl { z-index: 3; background: rgb(var(--tbl-head)); }
+.omz td.v { cursor: pointer; position: relative; }
+.omz td.v.wk { box-shadow: inset 0 -2px 0 rgb(var(--muted) / .25); }
+.omz td.v.na { background: rgb(var(--sunk)); cursor: default; background-image: repeating-linear-gradient(135deg, transparent 0 5px, rgb(var(--line)) 5px 6px); }
+.omz td.v.fut, .omz td.v.zero { color: rgb(var(--muted)); }
+.omz td.v.fut { cursor: default; }
+.omz td.v.today { box-shadow: inset 0 0 0 2px rgb(var(--brand)); }
+.omz td.v.sel { box-shadow: inset 0 0 0 2px rgb(var(--ink)); }
+.omz td.v:not(.na):not(.fut):hover { outline: 2px solid rgb(var(--brand)); outline-offset: -2px; }
+.omz .pt { border-right: 2px solid rgb(var(--line)); }
+.omz tfoot td { position: sticky; background: rgb(var(--sunk)); font-weight: 700; z-index: 1; }
+.omz tfoot td.tgl { text-align: left; font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: rgb(var(--muted)); background: rgb(var(--sunk)); z-index: 2; padding-left: 10px; }
+.omz tfoot tr.total td { background: rgb(var(--ink)); color: rgb(var(--surface)); }
+.omz tfoot td.c { color: rgb(var(--ok)); } .omz tfoot td.p { color: rgb(var(--bad)); }
