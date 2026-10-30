@@ -7,7 +7,8 @@
       "Form konsumen baru: pilih jenis Percetakan atau End user. Percetakan wajib mengisi nama percetakan dan otomatis memakai harga reseller; End user memakai harga end user.",
       "Telepon wajib diisi (form Master Konsumen dan tambah konsumen cepat di Front Office).",
       "Tabel & export Excel konsumen: kolom Jenis dan Nama percetakan. Pencarian konsumen di Front Office juga mencari nama percetakan.",
-      "Import konsumen massal dari Excel (Master Data → Konsumen → Import Excel): kode kosong = konsumen baru, kode yang ada = diperbarui. File export tabel Konsumen bisa di-import ulang."
+      "Import konsumen massal dari Excel (Master Data → Konsumen → Import Excel): kode kosong = konsumen baru, kode yang ada = diperbarui. File export tabel Konsumen bisa di-import ulang.",
+      "Ringkasan konsumen di atas tabel Konsumen: konsumen aktif, baru bulan ini, yang order bulan ini, lama tidak order (> 60 hari), komposisi Percetakan vs End user, omzet per jenis, piutang, dan top 5 konsumen bulan ini. Bisa diciutkan."
     ]
   },
   {

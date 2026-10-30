@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Upload } from 'lucide-react';
 import { MasterPage } from './MasterPage';
 import { CustomerImport } from './CustomerImport';
+import { CustomerStats } from './CustomerStats';
 import { useAuth } from '@/auth/AuthContext';
 import { nf } from '@/lib/format';
 import type { Customer, Machine, PaymentMethod, Supplier } from '@/types';
@@ -18,6 +19,7 @@ export function CustomersPage() {
         desc="Jenis konsumen menentukan harga di kasir: Percetakan memakai harga reseller, End user memakai harga end user."
         defaults={{ tipe: 'enduser', kode: '', percetakan: '' }}
         actions={can('master.konsumen', 'tambah') && can('master.konsumen', 'ubah') && <button className="btn" onClick={() => setImporting(true)}><Upload size={16} />Import Excel</button>}
+        top={<CustomerStats />}
         cardTitle={(r) => <span>{r.nama} <span className="font-mono text-xs font-normal text-muted">#{r.kode}</span></span>}
         columns={[
           { accessorKey: 'kode', header: 'Kode', meta: { className: 'font-mono text-xs', hideOnCard: true } },

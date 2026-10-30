@@ -23,9 +23,11 @@ interface Props<T> {
   table: MasterTable; perm: string; title: string; desc: string; noun: string;
   columns: ColumnDef<T, any>[]; fields: FieldDef[]; defaults: Partial<T>; cardTitle?: (r: T) => React.ReactNode;
   actions?: React.ReactNode;
+  /** konten di antara judul halaman dan tabel (mis. ringkasan) */
+  top?: React.ReactNode;
 }
 
-export function MasterPage<T extends { id: string; aktif: boolean }>({ table, perm, title, desc, noun, columns, fields, defaults, cardTitle, actions }: Props<T>) {
+export function MasterPage<T extends { id: string; aktif: boolean }>({ table, perm, title, desc, noun, columns, fields, defaults, cardTitle, actions, top }: Props<T>) {
   const { can } = useAuth();
   const qc = useQueryClient();
   const toast = useToast();
@@ -46,6 +48,7 @@ export function MasterPage<T extends { id: string; aktif: boolean }>({ table, pe
   return (
     <>
       <PageHeader title={title} desc={desc} actions={actions} />
+      {top}
       <DataTable<T>
         data={q.data || []}
         loading={q.isLoading}

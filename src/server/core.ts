@@ -650,6 +650,50 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
       });
     },
   },
+  'customers.stats': {
+    auth: true,
+    fn: (c) => {
+      need(c, 'master.konsumen');
+      const today = c.env.today();
+      const m0 = today.slice(0, 8) + '01';
+      const tidurBatas = addDays(today, -60);
+      const cust = c.s.all('customers');
+      const aktif = cust.filter((x) => bool(x.aktif));
+      const tipeOf: Record<string, string> = Object.fromEntries(cust.map((x) => [str(x.id), str(x.tipe) === 'reseller' ? 'reseller' : 'enduser']));
+      const orders = c.s.all('orders').filter((o) => !bool(o.batal));
+      const terakhir: Record<string, string> = {};
+      orders.forEach((o) => { const k = str(o.customer_id); if (str(o.tanggal) > (terakhir[k] || '')) terakhir[k] = str(o.tanggal); });
+      const bulanIni = orders.filter((o) => str(o.tanggal) >= m0 && str(o.tanggal) <= today);
+      const res: Row = {
+        total: cust.length, aktif: aktif.length, nonaktif: cust.length - aktif.length,
+        percetakan: aktif.filter((x) => tipeOf[str(x.id)] === 'reseller').length,
+        enduser: aktif.filter((x) => tipeOf[str(x.id)] === 'enduser').length,
+        baru_bulan_ini: cust.filter((x) => str(x.created_at).slice(0, 10) >= m0).length,
+        transaksi_bulan_ini: new Set(bulanIni.map((o) => str(o.customer_id))).size,
+        tidur: aktif.filter((x) => terakhir[str(x.id)] && terakhir[str(x.id)] < tidurBatas).length,
+        omzet: null, top: null, piutang: null,
+      };
+      if (c.perms?.laporan?.lihat) {
+        const per: Record<string, { omzet: number; nota: number }> = {};
+        const om = { reseller: 0, enduser: 0 };
+        bulanIni.forEach((o) => {
+          const k = str(o.customer_id), t = Number(o.total || 0);
+          const r = (per[k] ||= { omzet: 0, nota: 0 }); r.omzet += t; r.nota++;
+          om[(tipeOf[k] || 'enduser') as 'reseller' | 'enduser'] += t;
+        });
+        res.omzet = om;
+        res.top = Object.entries(per).sort((a, b) => b[1].omzet - a[1].omzet).slice(0, 5).map(([id, v]) => {
+          const x = cust.find((y) => y.id === id);
+          return { id, nama: str(x?.nama) || '(terhapus)', percetakan: str(x?.percetakan), tipe: tipeOf[id] || 'enduser', ...v };
+        });
+      }
+      if (c.perms?.piutang?.lihat) {
+        const open = orders.filter((o) => Number(o.sisa) > 0);
+        res.piutang = { total: open.reduce((a, o) => a + Number(o.sisa), 0), konsumen: new Set(open.map((o) => str(o.customer_id))).size };
+      }
+      return res;
+    },
+  },
   'customers.import': {
     auth: true,
     fn: (c, p) => {
