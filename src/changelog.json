@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.3.7",
+    "tanggal": "2026-10-31",
+    "catatan": [
+      "Kartu konsumen bisa diekspor ukuran A4: tombol PDF A4 (cetak atau Simpan sebagai PDF) dan Word (.doc, bisa diedit).",
+      "Isi dokumen: kop toko, profil & kode jenis, ringkasan, belanja per bulan, produk favorit, kebiasaan, umur piutang, tagihan belum lunas, riwayat order, pembayaran, mutasi deposit, pembatalan, dan kolom tanda tangan.",
+      "Nota/SPK tidak lagi menampilkan kode jenis di belakang nama pelanggan; kode sudah ada di nomor nota 6 digit."
+    ]
+  },
+  {
     "version": "1.3.6",
     "tanggal": "2026-10-31",
     "catatan": [

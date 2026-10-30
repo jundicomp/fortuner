@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { MessageCircle, Pencil, Plus, WalletCards } from 'lucide-react';
+import { FileDown, FileText, MessageCircle, Pencil, Plus, WalletCards } from 'lucide-react';
 import { useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { ErrorBox } from '@/components/ui/Field';
@@ -9,10 +9,12 @@ import { DepositCairModal, DepositMutasi, DepositTopupModal, waLink, type DepCar
 import { OrderDetailModal, BAYAR } from '@/pages/order/OrderDetailModal';
 import { useSettings } from '@/lib/queries';
 import { api } from '@/lib/api';
+import { downloadCustomerDoc, printCustomerReport } from '@/lib/customerReport';
+import { shopOf } from '@/components/Receipt';
 import { nf, rp, tgl, tglJam } from '@/lib/format';
 import type { Customer } from '@/types';
 
-interface Profile {
+export interface Profile {
   customer: Customer & { created_at?: string }; cs_terbanyak: string; pelanggan_sejak: string;
   kpi: { belanja: number; nota: number; rata_nota: number; peringkat: number | null; jumlah_konsumen: number; terakhir: string; hari_sejak: number | null; interval: number | null;
     piutang: number; piutang_nota: number; piutang_tertua: number; deposit: number; deposit_bebas: number; batal_dokumen: number; batal_nilai: number; batal_menunggu: number };
@@ -32,7 +34,7 @@ const initials = (s: string) => s.split(/\s+/).filter(Boolean).slice(0, 2).map((
 
 /** Kartu Konsumen: profil, ringkasan, grafik belanja, riwayat order, piutang, deposit, pembatalan, aktivitas. */
 export function CustomerCard({ id, onClose, onEdit }: { id: string; onClose: () => void; onEdit?: (c: Customer) => void }) {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const settings = useSettings();
   const q = useQuery({ queryKey: ['customer-profile', id], queryFn: () => api<Profile>('customer.profile', { customer_id: id }) });
   const [tab, setTab] = useState<'order' | 'piutang' | 'deposit' | 'batal' | 'bayar'>('order');
@@ -77,6 +79,10 @@ export function CustomerCard({ id, onClose, onEdit }: { id: string; onClose: () 
                 {cu.telp && cu.telp !== '-' && <a className="btn btn-sm border-white/20 bg-white/10 text-white" href={waLink(cu.telp, `Halo ${cu.nama}, `)} target="_blank" rel="noreferrer"><MessageCircle size={14} />WhatsApp</a>}
                 {can('deposit', 'tambah') && <button className="btn btn-sm border-white/20 bg-white/10 text-white" onClick={() => setTopup(true)}><Plus size={14} />Deposit</button>}
                 {onEdit && can('master.konsumen', 'ubah') && <button className="btn btn-sm border-white/20 bg-white/10 text-white" onClick={() => onEdit(cu)}><Pencil size={14} />Ubah</button>}
+              </div>
+              <div className="relative mt-2 flex flex-wrap gap-2">
+                <button id="cc-pdf" className="btn btn-sm border-white/20 bg-white/10 text-white" title="Cetak kartu konsumen ukuran A4, atau pilih Simpan sebagai PDF di jendela print" onClick={() => printCustomerReport(p, shopOf(settings.data), { olehNama: user?.nama })}><FileDown size={14} />PDF A4</button>
+                <button id="cc-doc" className="btn btn-sm border-white/20 bg-white/10 text-white" title="Unduh kartu konsumen sebagai dokumen Word (A4)" onClick={() => void downloadCustomerDoc(p, shopOf(settings.data), { olehNama: user?.nama })}><FileText size={14} />Word</button>
               </div>
             </section>
             <div className="flex flex-col gap-3">
