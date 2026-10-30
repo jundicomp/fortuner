@@ -335,6 +335,18 @@ const MASTER: Record<string, { perm: string; label: string; prefix: string; requ
   product_categories: { perm: 'master.produk', label: 'kategori produk', prefix: 'kat', required: ['nama'] },
 };
 
+/** Konsumen: kode selalu dari sistem; jenis Percetakan = harga reseller, End user = harga end user. */
+const custKodeBerikut = (rows: Row[]) => String(rows.reduce((a, x) => Math.max(a, Number(x.kode) || 0), 1000) + 1);
+const custTipe = (v: unknown) => (/^(reseller|percetakan)$/i.test(str(v).trim()) ? 'reseller' : 'enduser');
+function custRapikan(r: Row): string {
+  r.nama = str(r.nama).trim(); r.telp = str(r.telp).trim(); r.tipe = custTipe(r.tipe);
+  r.percetakan = r.tipe === 'reseller' ? str(r.percetakan).trim() : '';
+  if (!r.nama) return 'Nama wajib diisi.';
+  if (!r.telp) return 'Telepon wajib diisi.';
+  if (r.tipe === 'reseller' && !r.percetakan) return 'Nama percetakan wajib diisi untuk konsumen percetakan.';
+  return '';
+}
+
 function productWithPrice(s: Store, p: Row, today: string, prices?: Row[]) {
   const rows = (prices || s.all('price_history')).filter((r) => r.product_id === p.id) as any[];
   const harga = hargaBerlaku(rows, today);
@@ -537,12 +549,11 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
         const rows = c.s.all(p.table);
         if (rows.some((x) => str(x.nama).toLowerCase() === str(r.nama).toLowerCase() && x.id !== r.id && p.table !== 'customers')) fail('VALIDATION', `Nama ${m!.label} "${r.nama}" sudah ada.`);
         if (p.table === 'customers') {
-          if (!str(r.kode)) {
-            const max = rows.reduce((a, x) => Math.max(a, Number(x.kode) || 0), 1000);
-            r.kode = String(max + 1);
-          }
-          if (rows.some((x) => str(x.kode) === str(r.kode) && x.id !== r.id)) fail('VALIDATION', `Kode konsumen ${r.kode} sudah dipakai.`);
-          r.tipe = r.tipe === 'reseller' ? 'reseller' : 'enduser';
+          const msg = custRapikan(r);
+          if (msg) fail('VALIDATION', msg);
+          delete r.end_user;
+          const lama = isNew ? null : rows.find((x) => x.id === r.id);
+          r.kode = lama ? str(lama.kode) || custKodeBerikut(rows) : custKodeBerikut(rows); // kode tidak bisa diubah dari form
         }
         if (p.table === 'product_categories' && c.s.all('product_categories').some((x) => str(x.nama).toLowerCase() === str(r.nama).toLowerCase() && x.id !== r.id)) fail('VALIDATION', `Kategori ${r.nama} sudah ada.`);
         if (p.table === 'machines' && r.biaya_klik !== undefined) r.biaya_klik = Math.max(0, Number(String(r.biaya_klik).replace(',', '.')) || 0);
@@ -637,6 +648,41 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
           `${res.koreksi ? 'Koreksi' : 'Harga baru'} ${(prod as Row).nama} berlaku ${mulai}${pctLabel(res.sebelum, res.row)}`, str(p.catatan));
         return res.row;
       });
+    },
+  },
+  'customers.import': {
+    auth: true,
+    fn: (c, p) => {
+      need(c, 'master.konsumen', 'tambah');
+      need(c, 'master.konsumen', 'ubah');
+      const rows: any[] = Array.isArray(p.rows) ? p.rows : [];
+      if (!rows.length) fail('VALIDATION', 'File tidak berisi baris konsumen.');
+      if (rows.length > 5000) fail('VALIDATION', 'Maksimal 5.000 baris sekali import.');
+      const res = { dibuat: 0, diperbarui: 0, dilewati: [] as string[] };
+      c.s.withLock(() => {
+        const all = c.s.all('customers');
+        rows.forEach((x, i) => {
+          const baris = `Baris ${i + 2 + (Number(p.offset) || 0)}`;
+          const kode = str(x.kode).trim();
+          const r: Row = { nama: x.nama, telp: x.telp, tipe: x.tipe, percetakan: x.percetakan, alamat: str(x.alamat).trim(), catatan: str(x.catatan).trim() };
+          if (custTipe(r.tipe) === 'reseller' && !str(r.percetakan).trim()) r.percetakan = str(x.nama); // data lama: nama percetakan = nama konsumen
+          const msg = custRapikan(r);
+          if (msg) { res.dilewati.push(`${baris}${r.nama ? ` (${r.nama})` : ''}: ${msg}`); return; }
+          if (x.aktif !== undefined && str(x.aktif) !== '') r.aktif = !/^(tidak|no|nonaktif|false|0)$/i.test(str(x.aktif).trim());
+          const lama = kode ? all.find((y) => str(y.kode) === kode) : null;
+          if (kode && !lama) { res.dilewati.push(`${baris} (${r.nama}): kode ${kode} tidak ditemukan. Kosongkan kode untuk konsumen baru.`); return; }
+          if (lama) {
+            c.s.update('customers', 'id', str(lama.id), { ...r, ...stamp(c, false) });
+            res.diperbarui++;
+          } else {
+            const row = c.s.insert('customers', { aktif: true, ...r, kode: custKodeBerikut(all), id: newId(c.env, 'cus'), ...stamp(c, true) });
+            all.push(row as Row);
+            res.dibuat++;
+          }
+        });
+      });
+      log(c, 'import', 'customers', '', `Import konsumen: ${res.dibuat} baru, ${res.diperbarui} diperbarui, ${res.dilewati.length} dilewati`);
+      return res;
     },
   },
   'products.import': {
@@ -782,7 +828,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
         products: c.s.all('products').filter((p) => bool(p.aktif)).map((p) => productWithPrice(c.s, p, today, prices)),
         // harga terjadwal ikut dikirim supaya saat offline lewat tengah malam harga tetap benar
         price_rows: prices.filter((r) => !str(r.berlaku_sampai) || str(r.berlaku_sampai) >= addDays(today, -1)),
-        customers: c.s.all('customers').filter((x) => bool(x.aktif)).map((x) => ({ id: x.id, kode: x.kode, nama: x.nama, percetakan: x.percetakan ?? '', end_user: x.end_user ?? '', telp: x.telp, tipe: x.tipe })),
+        customers: c.s.all('customers').filter((x) => bool(x.aktif)).map((x) => ({ id: x.id, kode: x.kode, nama: x.nama, percetakan: x.percetakan ?? '', telp: x.telp, tipe: x.tipe })),
         payment_methods: c.s.all('payment_methods').filter((x) => bool(x.aktif)),
         machines: c.s.all('machines'),
         can_manual: !!c.perms?.['kasir.harga_manual']?.ubah,

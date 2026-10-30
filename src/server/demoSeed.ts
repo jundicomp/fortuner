@@ -79,7 +79,7 @@ export function seedDemo(s: Store, env: Env) {
     ['1005', 'Toko Sinar Abadi', '0821-0000-4405', 'enduser'], ['1006', 'SDIT Al Hikmah', '0811-0000-5506', 'enduser'],
     ['1007', 'Grafika Mandala', '0857-0000-6607', 'reseller'], ['1008', 'Kedai Kopi Senja', '0896-0000-7708', 'enduser'],
   ];
-  custs.forEach(([kode, nama, telp, tipe]) => s.insert('customers', { id: _newId(env, 'cus'), kode, nama, percetakan: '', end_user: '', telp, tipe, alamat: '', catatan: '', aktif: true, ...st }));
+  custs.forEach(([kode, nama, telp, tipe]) => s.insert('customers', { id: _newId(env, 'cus'), kode, nama, percetakan: tipe === 'reseller' ? nama : '', telp, tipe, alamat: '', catatan: '', aktif: true, ...st }));
   [['Toko Kertas Sejahtera', 'Kertas'], ['Mitra Stiker Utama', 'Stiker'], ['Sumber Film DTF', 'Film DTF'], ['Plastik Makmur', 'Plastik, laminating']].forEach(([n, b]) =>
     s.insert('suppliers', { id: _newId(env, 'sup'), nama: n, telp: '', bahan: b, aktif: true, ...st }));
   // contoh perangkat menunggu persetujuan

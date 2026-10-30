@@ -174,8 +174,8 @@ export function FoPage() {
 
   // ---------- pilihan combobox ----------
   const custItems: ComboItem[] = useMemo(() => (d?.customers || []).map((c) => ({
-    value: c.id, label: c.nama, hint: [c.kode && `#${c.kode}`, c.percetakan, c.end_user, c.telp !== '-' && c.telp].filter(Boolean).join(' · '),
-    search: `${c.nama} ${c.kode} ${c.percetakan || ''} ${c.end_user || ''} ${c.telp}`.toLowerCase(),
+    value: c.id, label: c.nama, hint: [c.kode && `#${c.kode}`, c.percetakan, c.telp !== '-' && c.telp].filter(Boolean).join(' · '),
+    search: `${c.nama} ${c.kode} ${c.percetakan || ''} ${c.telp}`.toLowerCase(),
     right: <TipeTag tipe={c.tipe} />,
   })), [d]);
   const prodItems: ComboItem[] = useMemo(() => products.map((p) => ({
@@ -381,22 +381,29 @@ export function FoPage() {
 }
 
 function NewCustomerModal({ onClose, onCreated }: { onClose: () => void; onCreated: (id: string) => void }) {
-  const [f, setF] = useState({ nama: '', telp: '', tipe: 'enduser' });
+  const [f, setF] = useState({ nama: '', telp: '', tipe: 'enduser', percetakan: '' });
   const [err, setErr] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
   const save = async () => {
     setBusy(true); setErr(null);
     try { const r = await api<{ id: string }>('master.save', { table: 'customers', record: f }); onCreated(r.id); } catch (e) { setErr(e); } finally { setBusy(false); }
   };
+  const ok = f.nama.trim() && f.telp.trim() && (f.tipe !== 'reseller' || f.percetakan.trim());
+  const req = <span className="text-bad"> *</span>;
   return (
-    <Modal open onClose={onClose} size="sm" title="Konsumen baru"
-      footer={<><button className="btn" onClick={onClose}>Batal</button><button className="btn btn-primary" disabled={busy || !f.nama.trim()} onClick={save}>Simpan</button></>}>
+    <Modal open onClose={onClose} size="sm" title="Konsumen baru" subtitle="Kode konsumen dibuat otomatis."
+      footer={<><button className="btn" onClick={onClose}>Batal</button><button className="btn btn-primary" disabled={busy || !ok} onClick={save}>Simpan</button></>}>
       <div className="flex flex-col gap-3">
-        <Field label="Nama"><input id="nc-nama" className="input" autoFocus value={f.nama} onChange={(e) => setF({ ...f, nama: e.target.value })} /></Field>
-        <Field label="Telepon / WA"><input id="nc-telp" className="input" inputMode="tel" value={f.telp} onChange={(e) => setF({ ...f, telp: e.target.value })} /></Field>
-        <Field label="Tipe harga">
-          <select id="nc-tipe" className="input" value={f.tipe} onChange={(e) => setF({ ...f, tipe: e.target.value })}><option value="enduser">End user</option><option value="reseller">Reseller</option></select>
+        <Field label={<>Nama{req}</>}><input id="nc-nama" className="input" autoFocus value={f.nama} onChange={(e) => setF({ ...f, nama: e.target.value })} /></Field>
+        <Field label={<>Jenis konsumen{req}</>} hint={f.tipe === 'reseller' ? 'Memakai harga reseller.' : 'Memakai harga end user.'}>
+          <div className="grid grid-cols-2 gap-2">
+            {[['reseller', 'Percetakan'], ['enduser', 'End user']].map(([v, l]) => (
+              <button key={v} type="button" id={`nc-tipe-${v}`} onClick={() => setF({ ...f, tipe: v })} className={`rounded-xl border px-3 py-2 text-sm font-semibold ${f.tipe === v ? 'border-brand bg-brand/10 text-brand' : 'border-line hover:bg-sunk'}`}>{l}</button>
+            ))}
+          </div>
         </Field>
+        {f.tipe === 'reseller' && <Field label={<>Nama percetakan{req}</>}><input id="nc-percetakan" className="input" value={f.percetakan} onChange={(e) => setF({ ...f, percetakan: e.target.value })} /></Field>}
+        <Field label={<>Telepon / WA{req}</>}><input id="nc-telp" className="input" inputMode="tel" value={f.telp} onChange={(e) => setF({ ...f, telp: e.target.value })} /></Field>
         <ErrorBox error={err} />
       </div>
     </Modal>

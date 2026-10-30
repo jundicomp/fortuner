@@ -11,16 +11,21 @@ import { useAuth } from '@/auth/AuthContext';
 import type { MasterTable } from '@/types';
 
 export interface FieldDef {
-  key: string; label: string; type?: 'text' | 'tel' | 'number' | 'textarea' | 'select' | 'switch'; required?: boolean; hint?: string;
+  key: string; label: string; type?: 'text' | 'tel' | 'number' | 'textarea' | 'select' | 'switch' | 'choice' | 'info'; required?: boolean; hint?: string;
   options?: { value: string; label: string }[]; placeholder?: string; full?: boolean;
+  /** tampilkan field hanya bila kondisi terpenuhi (mis. nama percetakan hanya untuk jenis Percetakan) */
+  show?: (rec: Record<string, unknown>) => boolean;
+  /** type 'info': isi teks hanya-baca yang dihitung dari data form */
+  render?: (rec: Record<string, unknown>) => React.ReactNode;
 }
 
 interface Props<T> {
   table: MasterTable; perm: string; title: string; desc: string; noun: string;
   columns: ColumnDef<T, any>[]; fields: FieldDef[]; defaults: Partial<T>; cardTitle?: (r: T) => React.ReactNode;
+  actions?: React.ReactNode;
 }
 
-export function MasterPage<T extends { id: string; aktif: boolean }>({ table, perm, title, desc, noun, columns, fields, defaults, cardTitle }: Props<T>) {
+export function MasterPage<T extends { id: string; aktif: boolean }>({ table, perm, title, desc, noun, columns, fields, defaults, cardTitle, actions }: Props<T>) {
   const { can } = useAuth();
   const qc = useQueryClient();
   const toast = useToast();
@@ -40,7 +45,7 @@ export function MasterPage<T extends { id: string; aktif: boolean }>({ table, pe
 
   return (
     <>
-      <PageHeader title={title} desc={desc} />
+      <PageHeader title={title} desc={desc} actions={actions} />
       <DataTable<T>
         data={q.data || []}
         loading={q.isLoading}
@@ -60,9 +65,26 @@ export function MasterPage<T extends { id: string; aktif: boolean }>({ table, pe
             {fields.map((f) => {
               const v = (edit as Record<string, unknown>)[f.key];
               const id = `${table}-${f.key}`;
+              const rec = edit as Record<string, unknown>;
+              if (f.show && !f.show(rec)) return null;
+              const cls = f.full || f.type === 'textarea' || f.type === 'choice' ? 'sm:col-span-2' : '';
+              if (f.type === 'info') return <Field key={f.key} label={f.label} hint={f.hint} className={cls}><div id={id} className="input flex items-center bg-sunk text-muted">{f.render?.(rec)}</div></Field>;
+              if (f.type === 'choice') return (
+                <Field key={f.key} label={<>{f.label}{f.required && <span className="text-bad"> *</span>}</>} hint={f.hint} className={cls}>
+                  <div className="grid grid-cols-2 gap-2" role="radiogroup">
+                    {f.options!.map((o) => {
+                      const on = String(v ?? '') === o.value;
+                      return <button key={o.value} type="button" role="radio" aria-checked={on} id={`${id}-${o.value}`} onClick={() => set(f.key, o.value)}
+                        className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition ${on ? 'border-brand bg-brand/10 text-brand' : 'border-line hover:bg-sunk'}`}>
+                        <span className={`grid h-4 w-4 shrink-0 place-items-center rounded-full border-2 ${on ? 'border-brand' : 'border-line'}`}>{on && <span className="h-2 w-2 rounded-full bg-brand" />}</span>{o.label}
+                      </button>;
+                    })}
+                  </div>
+                </Field>
+              );
               if (f.type === 'switch') return <div key={f.key} className="sm:col-span-2"><Switch id={id} checked={!!v} onChange={(x) => set(f.key, x)} label={f.label} /></div>;
               return (
-                <Field key={f.key} label={<>{f.label}{f.required && <span className="text-bad"> *</span>}</>} hint={f.hint} className={f.full || f.type === 'textarea' ? 'sm:col-span-2' : ''}>
+                <Field key={f.key} label={<>{f.label}{f.required && <span className="text-bad"> *</span>}</>} hint={f.hint} className={cls}>
                   {f.type === 'select' ? (
                     <select id={id} className="input" value={String(v ?? '')} onChange={(e) => set(f.key, e.target.value)}>{f.options!.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select>
                   ) : f.type === 'textarea' ? (

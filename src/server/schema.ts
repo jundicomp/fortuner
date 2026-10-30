@@ -33,7 +33,7 @@ export const SCHEMA: Record<string, TableSchema> = {
     rb: 'n', rb_bb: 'n', rs: 'n', rs_bb: 'n', eb: 'n', eb_bb: 'n', es: 'n', es_bb: 'n', catatan: 's', ...audit,
   },
   cost_history: { id: 's', product_id: 's', berlaku_mulai: 's', harga_beli: 'n', supplier_id: 's', sumber: 's', ...audit },
-  customers: { id: 's', kode: 's', nama: 's', percetakan: 's', end_user: 's', telp: 's', tipe: 's', alamat: 's', catatan: 's', aktif: 'b', ...audit },
+  customers: { id: 's', kode: 's', nama: 's', percetakan: 's', telp: 's', tipe: 's', alamat: 's', catatan: 's', aktif: 'b', ...audit },
   suppliers: { id: 's', nama: 's', telp: 's', bahan: 's', aktif: 'b', ...audit },
   machines: { id: 's', nama: 's', pakai_counter: 'b', aktif: 'b', biaya_klik: 'n', ...audit },
   payment_methods: { id: 's', nama: 's', jenis: 's', rekening: 's', aktif: 'b', ...audit },

@@ -2112,6 +2112,18 @@ var FortunerServer = (() => {
     payment_methods: { perm: "master.metode", label: "metode bayar", prefix: "pay", required: ["nama"] },
     product_categories: { perm: "master.produk", label: "kategori produk", prefix: "kat", required: ["nama"] }
   };
+  var custKodeBerikut = (rows) => String(rows.reduce((a, x) => Math.max(a, Number(x.kode) || 0), 1e3) + 1);
+  var custTipe = (v) => /^(reseller|percetakan)$/i.test(str(v).trim()) ? "reseller" : "enduser";
+  function custRapikan(r) {
+    r.nama = str(r.nama).trim();
+    r.telp = str(r.telp).trim();
+    r.tipe = custTipe(r.tipe);
+    r.percetakan = r.tipe === "reseller" ? str(r.percetakan).trim() : "";
+    if (!r.nama) return "Nama wajib diisi.";
+    if (!r.telp) return "Telepon wajib diisi.";
+    if (r.tipe === "reseller" && !r.percetakan) return "Nama percetakan wajib diisi untuk konsumen percetakan.";
+    return "";
+  }
   function productWithPrice(s, p, today, prices) {
     const rows = (prices || s.all("price_history")).filter((r) => r.product_id === p.id);
     const harga = hargaBerlaku(rows, today);
@@ -2337,12 +2349,11 @@ var FortunerServer = (() => {
           const rows = c.s.all(p.table);
           if (rows.some((x) => str(x.nama).toLowerCase() === str(r.nama).toLowerCase() && x.id !== r.id && p.table !== "customers")) fail("VALIDATION", `Nama ${m.label} "${r.nama}" sudah ada.`);
           if (p.table === "customers") {
-            if (!str(r.kode)) {
-              const max = rows.reduce((a, x) => Math.max(a, Number(x.kode) || 0), 1e3);
-              r.kode = String(max + 1);
-            }
-            if (rows.some((x) => str(x.kode) === str(r.kode) && x.id !== r.id)) fail("VALIDATION", `Kode konsumen ${r.kode} sudah dipakai.`);
-            r.tipe = r.tipe === "reseller" ? "reseller" : "enduser";
+            const msg = custRapikan(r);
+            if (msg) fail("VALIDATION", msg);
+            delete r.end_user;
+            const lama = isNew ? null : rows.find((x) => x.id === r.id);
+            r.kode = lama ? str(lama.kode) || custKodeBerikut(rows) : custKodeBerikut(rows);
           }
           if (p.table === "product_categories" && c.s.all("product_categories").some((x) => str(x.nama).toLowerCase() === str(r.nama).toLowerCase() && x.id !== r.id)) fail("VALIDATION", `Kategori ${r.nama} sudah ada.`);
           if (p.table === "machines" && r.biaya_klik !== void 0) r.biaya_klik = Math.max(0, Number(String(r.biaya_klik).replace(",", ".")) || 0);
@@ -2453,6 +2464,47 @@ var FortunerServer = (() => {
           );
           return res.row;
         });
+      }
+    },
+    "customers.import": {
+      auth: true,
+      fn: (c, p) => {
+        need(c, "master.konsumen", "tambah");
+        need(c, "master.konsumen", "ubah");
+        const rows = Array.isArray(p.rows) ? p.rows : [];
+        if (!rows.length) fail("VALIDATION", "File tidak berisi baris konsumen.");
+        if (rows.length > 5e3) fail("VALIDATION", "Maksimal 5.000 baris sekali import.");
+        const res = { dibuat: 0, diperbarui: 0, dilewati: [] };
+        c.s.withLock(() => {
+          const all2 = c.s.all("customers");
+          rows.forEach((x, i) => {
+            const baris = `Baris ${i + 2 + (Number(p.offset) || 0)}`;
+            const kode = str(x.kode).trim();
+            const r = { nama: x.nama, telp: x.telp, tipe: x.tipe, percetakan: x.percetakan, alamat: str(x.alamat).trim(), catatan: str(x.catatan).trim() };
+            if (custTipe(r.tipe) === "reseller" && !str(r.percetakan).trim()) r.percetakan = str(x.nama);
+            const msg = custRapikan(r);
+            if (msg) {
+              res.dilewati.push(`${baris}${r.nama ? ` (${r.nama})` : ""}: ${msg}`);
+              return;
+            }
+            if (x.aktif !== void 0 && str(x.aktif) !== "") r.aktif = !/^(tidak|no|nonaktif|false|0)$/i.test(str(x.aktif).trim());
+            const lama = kode ? all2.find((y) => str(y.kode) === kode) : null;
+            if (kode && !lama) {
+              res.dilewati.push(`${baris} (${r.nama}): kode ${kode} tidak ditemukan. Kosongkan kode untuk konsumen baru.`);
+              return;
+            }
+            if (lama) {
+              c.s.update("customers", "id", str(lama.id), { ...r, ...stamp(c, false) });
+              res.diperbarui++;
+            } else {
+              const row = c.s.insert("customers", { aktif: true, ...r, kode: custKodeBerikut(all2), id: newId(c.env, "cus"), ...stamp(c, true) });
+              all2.push(row);
+              res.dibuat++;
+            }
+          });
+        });
+        log(c, "import", "customers", "", `Import konsumen: ${res.dibuat} baru, ${res.diperbarui} diperbarui, ${res.dilewati.length} dilewati`);
+        return res;
       }
     },
     "products.import": {
@@ -2624,8 +2676,8 @@ var FortunerServer = (() => {
           // harga terjadwal ikut dikirim supaya saat offline lewat tengah malam harga tetap benar
           price_rows: prices.filter((r) => !str(r.berlaku_sampai) || str(r.berlaku_sampai) >= addDays(today, -1)),
           customers: c.s.all("customers").filter((x) => bool(x.aktif)).map((x) => {
-            var _a2, _b2;
-            return { id: x.id, kode: x.kode, nama: x.nama, percetakan: (_a2 = x.percetakan) != null ? _a2 : "", end_user: (_b2 = x.end_user) != null ? _b2 : "", telp: x.telp, tipe: x.tipe };
+            var _a2;
+            return { id: x.id, kode: x.kode, nama: x.nama, percetakan: (_a2 = x.percetakan) != null ? _a2 : "", telp: x.telp, tipe: x.tipe };
           }),
           payment_methods: c.s.all("payment_methods").filter((x) => bool(x.aktif)),
           machines: c.s.all("machines"),
@@ -3854,7 +3906,7 @@ var FortunerServer = (() => {
       ...audit
     },
     cost_history: { id: "s", product_id: "s", berlaku_mulai: "s", harga_beli: "n", supplier_id: "s", sumber: "s", ...audit },
-    customers: { id: "s", kode: "s", nama: "s", percetakan: "s", end_user: "s", telp: "s", tipe: "s", alamat: "s", catatan: "s", aktif: "b", ...audit },
+    customers: { id: "s", kode: "s", nama: "s", percetakan: "s", telp: "s", tipe: "s", alamat: "s", catatan: "s", aktif: "b", ...audit },
     suppliers: { id: "s", nama: "s", telp: "s", bahan: "s", aktif: "b", ...audit },
     machines: { id: "s", nama: "s", pakai_counter: "b", aktif: "b", biaya_klik: "n", ...audit },
     payment_methods: { id: "s", nama: "s", jenis: "s", rekening: "s", aktif: "b", ...audit },
