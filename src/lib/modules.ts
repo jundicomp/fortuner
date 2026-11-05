@@ -46,6 +46,7 @@ export function defaultPermissions(role: Role): PermissionMap {
   MODULES.forEach((m) => (p[m.key] = {}));
   const set = (keys: string[], v: object) => keys.forEach((k) => (p[k] = { ...v }));
   switch (role) {
+    case 'superadmin':
     case 'owner':
       set(MODULES.map((m) => m.key), all);
       break;

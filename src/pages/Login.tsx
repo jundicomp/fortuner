@@ -8,6 +8,7 @@ import { DesktopLoginPanel } from '@/pages/desktop/DesktopLoginPanel';
 import { isDesktop } from '@/platform/desktop';
 import { useMaintenance } from '@/lib/maintenance';
 import { MaintenanceScreen, SuperadminLogin } from '@/components/MaintenanceScreen';
+import { ForgotPassword } from '@/components/ForgotPassword';
 
 const DEMO = [['owner', 'Owner']];
 
@@ -32,6 +33,7 @@ function MaintLogin() {
 
 function NormalLogin() {
   const { login, notice } = useAuth();
+  const [lupa, setLupa] = useState(false);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [show, setShow] = useState(false);
@@ -72,6 +74,7 @@ function NormalLogin() {
                 <button type="button" className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-muted" onClick={() => setShow((s) => !s)} aria-label={show ? 'Sembunyikan password' : 'Tampilkan password'}>{show ? <EyeOff size={16} /> : <Eye size={16} />}</button>
               </div>
             </label>
+            <button type="button" id="login-lupa" className="-mt-2 self-end text-xs font-semibold text-brand hover:underline" onClick={() => setLupa(true)}>Lupa password?</button>
             {err && <div className="rounded-lg border border-bad/30 bg-bad/5 px-3 py-2 text-sm text-bad">{err}</div>}
             <button className="btn btn-primary py-2.5" disabled={busy}><LogIn size={16} />{busy ? 'Memeriksa…' : 'Masuk'}</button>
           </form>
@@ -87,6 +90,7 @@ function NormalLogin() {
             </div>
           )}
           {isDesktop() && <DesktopLoginPanel />}
+          {lupa && <ForgotPassword awal={username} onClose={() => setLupa(false)} onDone={(u, p) => { setLupa(false); setUsername(u); setPassword(p); submit(undefined, u, p); }} />}
           <p className="mt-6 text-center font-mono text-[10.5px] text-muted/70">ID perangkat: {getDeviceId().slice(0, 8)}</p>
         </div>
       </div>

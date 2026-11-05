@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Eye, EyeOff, Lock, NotebookPen, Phone } from 'lucide-react';
 import { labelSelesai, progresOf, sisaWaktu, type MaintStatus } from '@/lib/maintenance';
+import { ForgotPassword } from '@/components/ForgotPassword';
 
 /** Ilustrasi printer mencetak nota + roda gigi berputar (animasi CSS, lihat .mt-* di index.css). */
 export function MaintArt({ size = 300 }: { size?: number }) {
@@ -73,7 +74,8 @@ export function SuperadminLogin({ onLogin, onClose }: { onLogin: (u: string, p: 
   const [show, setShow] = useState(false);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
-  useEffect(() => { const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose(); window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose]);
+  const [lupa, setLupa] = useState(false);
+  useEffect(() => { const k = (e: KeyboardEvent) => e.key === 'Escape' && !lupa && onClose(); window.addEventListener('keydown', k); return () => window.removeEventListener('keydown', k); }, [onClose, lupa]);
   const submit = async (e: FormEvent) => {
     e.preventDefault(); setErr(''); setBusy(true);
     try { await onLogin(u.trim(), pw); } catch (x) { setErr((x as Error).message); setBusy(false); }
@@ -82,7 +84,7 @@ export function SuperadminLogin({ onLogin, onClose }: { onLogin: (u: string, p: 
     <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/60 p-4" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <form onSubmit={submit} className="w-full max-w-sm rounded-2xl bg-white p-6 text-[#111] shadow-2xl" aria-label="Masuk superadmin">
         <h3 className="flex items-center gap-2.5 text-lg font-extrabold"><span className="grid h-9 w-9 place-items-center rounded-xl bg-[#111] text-[#F26B1D]"><Lock size={17} /></span>Masuk superadmin</h3>
-        <p className="mb-4 mt-2 text-[13px] leading-relaxed text-[#666]">Selama perbaikan hanya akun <b>Owner</b> yang bisa masuk untuk mengecek dan menyelesaikan setup.</p>
+        <p className="mb-4 mt-2 text-[13px] leading-relaxed text-[#666]">Selama perbaikan hanya akun <b>Superadmin / Owner</b> yang bisa masuk untuk mengecek dan menyelesaikan setup.</p>
         <label className="mb-1.5 block text-xs font-bold text-[#555]" htmlFor="sa-username">Username</label>
         <input id="sa-username" className="w-full rounded-xl border-[1.5px] border-[#ddd] px-3.5 py-2.5 text-[15px] outline-none focus:border-[#F26B1D] focus:ring-[3px] focus:ring-[#F26B1D]/20" autoFocus autoComplete="username" autoCapitalize="none" value={u} onChange={(e) => setU(e.target.value)} required />
         <label className="mb-1.5 mt-3 block text-xs font-bold text-[#555]" htmlFor="sa-password">Password</label>
@@ -92,8 +94,12 @@ export function SuperadminLogin({ onLogin, onClose }: { onLogin: (u: string, p: 
         </div>
         {err && <div className="mt-3 rounded-lg bg-[#fdecea] px-3 py-2 text-[12.5px] leading-snug text-[#c62828]"><b>Ditolak.</b> {err}</div>}
         <button id="sa-submit" className="mt-5 w-full rounded-xl bg-[#F26B1D] py-3 font-extrabold text-white disabled:opacity-60" disabled={busy}>{busy ? 'Memeriksa…' : 'Masuk'}</button>
-        <button type="button" className="mt-2 w-full py-2 text-sm text-[#888]" onClick={onClose}>Batal</button>
+        <div className="mt-2 flex justify-between text-sm">
+          <button type="button" className="py-2 text-[#888]" onClick={onClose}>Batal</button>
+          <button type="button" id="sa-lupa" className="py-2 font-semibold text-[#F26B1D]" onClick={() => setLupa(true)}>Lupa password?</button>
+        </div>
       </form>
+      {lupa && <ForgotPassword awal={u} onClose={() => setLupa(false)} onDone={(un, p) => { setLupa(false); setU(un); setPw(p); setErr(''); void onLogin(un, p).catch((x) => setErr((x as Error).message)); }} />}
     </div>
   );
 }

@@ -21,7 +21,7 @@ export function RolesPage() {
     mutationFn: () => api('roles.save', { role, permissions: draft }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['roles'] }); toast('Hak akses disimpan'); if (user?.role === role) refresh(); },
   });
-  const locked = role === 'owner' || (role === 'admin' && user?.role !== 'owner') || !can('pengaturan.role', 'ubah');
+  const locked = role === 'owner' || role === 'superadmin' || (role === 'admin' && user?.role !== 'owner' && user?.role !== 'superadmin') || !can('pengaturan.role', 'ubah');
   const dirty = q.data && JSON.stringify(q.data[role]) !== JSON.stringify(draft);
   const groups = Array.from(new Set(MODULES.map((m) => m.group)));
 
@@ -70,7 +70,7 @@ export function RolesPage() {
       </div>
       <div className="mt-4 flex flex-wrap items-center justify-end gap-3">
         <ErrorBox error={save.error} />
-        {locked ? <span className="text-sm text-muted">{role === 'owner' ? 'Owner selalu akses penuh.' : 'Anda tidak bisa mengubah role ini.'}</span>
+        {locked ? <span className="text-sm text-muted">{role === 'owner' || role === 'superadmin' ? 'Owner & superadmin selalu akses penuh.' : 'Anda tidak bisa mengubah role ini.'}</span>
           : <button className="btn btn-primary" disabled={!dirty || save.isPending} onClick={() => save.mutate()}>{save.isPending ? 'Menyimpan…' : 'Simpan hak akses'}</button>}
       </div>
     </>

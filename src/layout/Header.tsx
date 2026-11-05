@@ -57,7 +57,7 @@ export function Header({ onBurger, onChangePassword }: { onBurger: () => void; o
                 <div className="text-sm font-bold">{user?.nama}</div>
                 <div className="text-xs text-muted">{user?.username}</div>
               </div>
-              <button className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-sunk" onClick={() => { setOpen(false); onChangePassword(); }}><KeyRound size={16} /> Ganti password</button>
+              <button className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm hover:bg-sunk" onClick={() => { setOpen(false); onChangePassword(); }}><KeyRound size={16} /> Password & email</button>
               <button className="flex w-full items-center gap-2.5 px-4 py-2.5 text-sm text-bad hover:bg-sunk" onClick={() => {
                 const n = sync.pendingCount();
                 if (n) { setOpen(false); toast(`Masih ada ${n} data belum terkirim. Tunggu internet kembali dan sinkron dulu sebelum keluar.`, 'err'); return; }

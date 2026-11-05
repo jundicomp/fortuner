@@ -1,5 +1,6 @@
-export type Role = 'owner' | 'admin' | 'cs' | 'kasir' | 'operator' | 'keuangan';
+export type Role = 'superadmin' | 'owner' | 'admin' | 'cs' | 'kasir' | 'operator' | 'keuangan';
 export const ROLES: { value: Role; label: string }[] = [
+  { value: 'superadmin', label: 'Superadmin (pengembang)' },
   { value: 'owner', label: 'Owner' },
   { value: 'admin', label: 'Admin' },
   { value: 'cs', label: 'Front Office (CS)' },
@@ -21,6 +22,7 @@ export interface User {
   jam_login_sampai: string;
   aktif: boolean;
   harus_ganti_password?: boolean;
+  email?: string;
   created_at?: string;
 }
 

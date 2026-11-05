@@ -12,7 +12,8 @@ export const SCHEMA: Record<string, TableSchema> = {
   // ---------- Sistem ----------
   users: {
     id: 's', username: 's', nama: 's', role: 's', password_hash: 's', salt: 's', khusus_kantor: 'b',
-    jam_login_dari: 's', jam_login_sampai: 's', aktif: 'b', harus_ganti_password: 'b', ...audit,
+    jam_login_dari: 's', jam_login_sampai: 's', aktif: 'b', harus_ganti_password: 'b',
+    email: 's', reset_hash: 's', reset_exp: 's', reset_coba: 'n', reset_kirim: 's', ...audit,
   },
   role_permissions: { role: 's', permissions: 'j', updated_at: 's', updated_by: 's' },
   devices: {

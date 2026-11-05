@@ -19,7 +19,7 @@ const isActivePath = (path: string, current: string) => (exact(path) ? current =
 export function Sidebar({ collapsed, mobileOpen, onCloseMobile, appName }: Props) {
   const { can, user } = useAuth();
   const { pathname } = useLocation();
-  const groups = MENU.map((g) => ({ ...g, items: g.items.filter((i) => can(i.perm) && (!i.desktop || isDesktop()) && (!i.owner || user?.role === 'owner')) })).filter((g) => g.items.length);
+  const groups = MENU.map((g) => ({ ...g, items: g.items.filter((i) => can(i.perm) && (!i.desktop || isDesktop()) && (!i.owner || user?.role === 'owner' || user?.role === 'superadmin')) })).filter((g) => g.items.length);
   const narrow = collapsed && !mobileOpen; // drawer HP selalu lebar penuh
   const activeGroup = groups.find((g) => g.items.some((i) => isActivePath(i.path, pathname)))?.label || '';
   const [openGroup, setOpenGroup] = useState(activeGroup);

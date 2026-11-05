@@ -48,9 +48,14 @@ function hashPassword(password: string, salt: string) {
   return h;
 }
 const publicUser = (u: Row) => {
-  const { password_hash: _h, salt: _s, ...rest } = u;
+  const { password_hash: _h, salt: _s, reset_hash: _r, reset_exp: _e, reset_coba: _c, reset_kirim: _k, ...rest } = u;
   return rest;
 };
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+/** "firman@gmail.com" -> "fi****@gmail.com" */
+const maskEmail = (e: string) => { const [a, d] = e.split('@'); return `${a.slice(0, 2)}${'*'.repeat(Math.max(2, a.length - 2))}@${d}`; };
+const RESET_MENIT = 15, RESET_MAKS_COBA = 5, RESET_JEDA_DETIK = 60;
+const cariAkun = (s: Store, v: string) => { const k = v.trim().toLowerCase(); return k ? s.all('users').find((u) => str(u.username).toLowerCase() === k || str(u.email).toLowerCase() === k) : undefined; };
 
 function settingsMap(s: Store): Record<string, string> {
   const m: Record<string, string> = {};
@@ -59,7 +64,7 @@ function settingsMap(s: Store): Record<string, string> {
 }
 
 // ---------------- mode perbaikan ----------------
-export const MAINT_MSG = 'Aplikasi sedang dalam perbaikan. Hanya superadmin (Owner) yang bisa masuk sampai perbaikan selesai.';
+export const MAINT_MSG = 'Aplikasi sedang dalam perbaikan. Hanya superadmin / owner yang bisa masuk sampai perbaikan selesai.';
 /** Waktu lokal (Asia/Jakarta) "YYYY-MM-DDTHH:mm", sama dengan format kolom perkiraan selesai. */
 const lokal = (env: Env) => `${env.today()}T${env.timeHM()}`;
 export function maintenanceOf(s: Store, env: Env) {
@@ -78,10 +83,13 @@ export function maintenanceOf(s: Store, env: Env) {
 /** Aksi yang tetap boleh dipanggil pengguna biasa saat perbaikan (supaya bisa keluar dengan rapi). */
 const MAINT_BEBAS = new Set(['auth.logout', 'maintenance.status', 'ping', 'device.check']);
 
+/** Owner dan superadmin (pengembang): akses penuh, lolos Mode Perbaikan, tidak dibatasi PC/jam. */
+export const isTop = (role: unknown) => role === 'owner' || role === 'superadmin';
+
 function permsFor(s: Store, role: string): PermissionMap {
   const row = s.all('role_permissions').find((r) => r.role === role);
   const base = defaultPermissions(role as Role);
-  if (role === 'owner') return base; // owner selalu akses penuh
+  if (isTop(role)) return defaultPermissions('owner'); // owner & superadmin selalu akses penuh
   if (!row || !row.permissions) return base;
   const saved = row.permissions as PermissionMap;
   // modul baru yang belum ada di data tersimpan memakai nilai default
@@ -117,14 +125,14 @@ const cleanInfo = (i: any): DeviceInfo => (i && typeof i === 'object' ? {
   nama: str(i.nama).slice(0, 60), jenis: i.jenis === 'desktop' ? 'desktop' : 'web', versi: str(i.versi).slice(0, 20),
   kode: str(i.kode).toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4), lokasi: str(i.lokasi).slice(0, 60),
 } : {});
-const ROLE_LABEL: Record<string, string> = { owner: 'owner', admin: 'admin', cs: 'CS', kasir: 'kasir', operator: 'operator', keuangan: 'keuangan' };
+const ROLE_LABEL: Record<string, string> = { superadmin: 'superadmin', owner: 'owner', admin: 'admin', cs: 'CS', kasir: 'kasir', operator: 'operator', keuangan: 'keuangan' };
 export const parseRoles = (v: unknown) => str(v).split(',').map((x) => x.trim()).filter(Boolean);
 const cleanRoles = (v: unknown) => (Array.isArray(v) ? v.map(String) : parseRoles(v)).filter((r) => r in ROLE_LABEL).join(',');
 
 function checkDevice(c: Ctx, user: Row, onLogin: boolean, info: DeviceInfo = {}) {
   const dev = deviceRow(c);
   // Role per PC: perangkat yang disetujui boleh dibatasi hanya untuk role tertentu. Owner selalu boleh supaya tidak terkunci.
-  if (dev && dev.status === 'disetujui' && user.role !== 'owner') {
+  if (dev && dev.status === 'disetujui' && !isTop(user.role)) {
     const izin = parseRoles(dev.role_izin);
     if (izin.length && !izin.includes(str(user.role))) {
       fail('ROLE_NOT_ALLOWED', `PC ${str(dev.kode_pc)} hanya untuk ${izin.map((r) => ROLE_LABEL[r] || r).join(', ')}. Akun ${ROLE_LABEL[str(user.role)] || user.role} tidak bisa login di sini.`);
@@ -164,7 +172,7 @@ function checkDeviceLimit(c: Ctx, exceptId?: string) {
 
 function checkHours(c: Ctx, user: Row) {
   const dari = str(user.jam_login_dari), sampai = str(user.jam_login_sampai);
-  if (!dari || !sampai || user.role === 'owner') return;
+  if (!dari || !sampai || isTop(user.role)) return;
   const now = c.env.timeHM();
   if (now < dari || now > sampai) fail('OUTSIDE_HOURS', `Akun ini hanya bisa login pukul ${dari}–${sampai}.`);
 }
@@ -468,7 +476,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
       if (!user || !bool(user.aktif) || hashPassword(str(p.password), str(user.salt)) !== user.password_hash) {
         fail('LOGIN_FAILED', 'Username atau password salah.');
       }
-      if (user!.role !== 'owner' && maintenanceOf(c.s, c.env).aktif) fail('MAINTENANCE', MAINT_MSG);
+      if (!isTop(user!.role) && maintenanceOf(c.s, c.env).aktif) fail('MAINTENANCE', MAINT_MSG);
       checkHours(c, user!);
       c.s.withLock(() => checkDevice(c, user!, true, cleanInfo(p.device)));
       c.user = user;
@@ -478,6 +486,76 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
     },
   },
   'auth.me': { auth: true, fn: (c) => ({ user: publicUser(c.user!), permissions: c.perms }) },
+  /** Lupa password langkah 1: kirim kode 6 angka ke email akun. Jawaban selalu sama supaya tidak bisa dipakai menebak akun. */
+  'auth.forgot': {
+    auth: false,
+    fn: (c, p) => {
+      const umum = { ok: true, pesan: 'Bila username/email itu terdaftar dan punya email, kode reset sudah dikirim. Cek kotak masuk & folder spam.' };
+      const u = cariAkun(c.s, str(p.akun));
+      const email = str(u?.email).trim();
+      if (!u || !bool(u.aktif) || !EMAIL_RE.test(email)) return umum;
+      if (!c.env.sendMail) {
+        // mode demo: tidak ada email, kode ditampilkan langsung
+        const kode = String(parseInt(c.env.uuid().replace(/-/g, '').slice(0, 8), 16) % 1000000).padStart(6, '0');
+        c.s.withLock(() => c.s.update('users', 'id', str(u.id), { reset_hash: sha256(`rst:${kode}:${u.salt}`), reset_exp: new Date(c.env.now().getTime() + RESET_MENIT * 60000).toISOString(), reset_coba: 0, reset_kirim: iso(c.env) }));
+        return { ...umum, kode_demo: kode };
+      }
+      const now = c.env.now();
+      if (str(u.reset_kirim) && now.getTime() - new Date(str(u.reset_kirim)).getTime() < RESET_JEDA_DETIK * 1000) return umum; // anti-spam
+      const kode = String(parseInt(c.env.uuid().replace(/-/g, '').slice(0, 8), 16) % 1000000).padStart(6, '0');
+      const exp = new Date(now.getTime() + RESET_MENIT * 60000).toISOString();
+      c.s.withLock(() => c.s.update('users', 'id', str(u.id), { reset_hash: sha256(`rst:${kode}:${u.salt}`), reset_exp: exp, reset_coba: 0, reset_kirim: iso(c.env) }));
+      const usaha = str(settingsMap(c.s).nama_usaha) || 'Fortuner POS';
+      const html = `<div style="font-family:Arial,sans-serif;max-width:460px;margin:auto;color:#111">
+<div style="background:#111;color:#fff;padding:16px 20px;border-radius:12px 12px 0 0"><b style="color:#F26B1D">${usaha}</b> · Reset password</div>
+<div style="border:1px solid #eee;border-top:0;padding:20px;border-radius:0 0 12px 12px">
+<p>Halo ${str(u.nama)},</p><p>Kode untuk mengatur ulang password akun <b>${str(u.username)}</b>:</p>
+<div style="font-size:32px;font-weight:800;letter-spacing:8px;background:#FFF1E8;color:#F26B1D;text-align:center;padding:14px;border-radius:10px">${kode}</div>
+<p style="color:#555;font-size:13px">Berlaku ${RESET_MENIT} menit. Jangan berikan kode ini kepada siapa pun. Bila Anda tidak meminta reset password, abaikan email ini; password lama tetap berlaku.</p></div></div>`;
+      const text = `Kode reset password ${usaha} untuk akun ${str(u.username)}: ${kode}\nBerlaku ${RESET_MENIT} menit. Abaikan bila Anda tidak memintanya.`;
+      try { c.env.sendMail(email, `Kode reset password ${usaha}: ${kode}`, html, text); }
+      catch (e) { fail('MAIL_FAILED', 'Email gagal dikirim. Hubungi owner/admin untuk reset password.'); }
+      c.user = u;
+      log(c, 'lupa_password', 'users', str(u.id), `Kode reset dikirim ke ${maskEmail(email)}`);
+      return umum;
+    },
+  },
+  /** Lupa password langkah 2: kode + password baru. */
+  'auth.reset': {
+    auth: false,
+    fn: (c, p) => {
+      const salah = () => fail('VALIDATION', 'Kode salah atau sudah kedaluwarsa. Minta kode baru.');
+      const baru = str(p.baru);
+      if (baru.length < 6) fail('VALIDATION', 'Password baru minimal 6 karakter.');
+      return c.s.withLock(() => {
+        const u = cariAkun(c.s, str(p.akun));
+        if (!u || !bool(u.aktif) || !str(u.reset_hash) || str(u.reset_exp) < iso(c.env)) salah();
+        if (Number(u!.reset_coba || 0) >= RESET_MAKS_COBA) { c.s.update('users', 'id', str(u!.id), { reset_hash: '', reset_exp: '' }); fail('VALIDATION', 'Terlalu banyak percobaan. Minta kode baru.'); }
+        if (sha256(`rst:${str(p.kode).trim()}:${u!.salt}`) !== u!.reset_hash) { c.s.update('users', 'id', str(u!.id), { reset_coba: Number(u!.reset_coba || 0) + 1 }); salah(); }
+        const salt = c.env.uuid();
+        c.s.update('users', 'id', str(u!.id), { salt, password_hash: hashPassword(baru, salt), harus_ganti_password: false, reset_hash: '', reset_exp: '', reset_coba: 0 });
+        c.s.all('sessions').filter((x) => x.user_id === u!.id).forEach((x) => c.s.remove('sessions', 'token_hash', str(x.token_hash)));
+        c.user = u;
+        log(c, 'reset_password', 'users', str(u!.id), 'Password diatur ulang lewat kode email');
+        return { ok: true, username: str(u!.username) };
+      });
+    },
+  },
+  /** Email akun sendiri (untuk lupa password). */
+  'auth.setEmail': {
+    auth: true,
+    fn: (c, p) => {
+      const email = str(p.email).trim().toLowerCase();
+      if (email && !EMAIL_RE.test(email)) fail('VALIDATION', 'Format email tidak valid.');
+      if (hashPassword(str(p.password), str(c.user!.salt)) !== c.user!.password_hash) fail('VALIDATION', 'Password salah.');
+      return c.s.withLock(() => {
+        if (email && c.s.all('users').some((x) => str(x.email).toLowerCase() === email && x.id !== c.user!.id)) fail('VALIDATION', 'Email itu sudah dipakai akun lain.');
+        const row = c.s.update('users', 'id', str(c.user!.id), { email });
+        log(c, 'ubah_email', 'users', str(c.user!.id), email ? `Email diatur: ${maskEmail(email)}` : 'Email dihapus');
+        return publicUser(row!);
+      });
+    },
+  },
   'auth.logout': {
     auth: true,
     fn: (c) => { c.s.remove('sessions', 'token_hash', sha256('tok:' + c.req.token)); return { ok: true }; },
@@ -563,7 +641,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
       if (patch.status === 'disetujui' && (cur as Row).status !== 'disetujui') { checkDeviceLimit(c, str(d.id)); patch.disetujui_oleh = str(c.user!.nama); }
       // jangan sampai admin mengunci dirinya sendiri dari PC yang sedang dipakai
       const izin = parseRoles(patch.role_izin);
-      if (izin.length && deviceRow(c)?.id === d.id && c.user!.role !== 'owner' && !izin.includes(str(c.user!.role))) fail('VALIDATION', 'Role Anda tidak termasuk di daftar role PC ini, jadi Anda akan terkunci. Tambahkan role Anda atau minta owner yang mengubah.');
+      if (izin.length && deviceRow(c)?.id === d.id && !isTop(c.user!.role) && !izin.includes(str(c.user!.role))) fail('VALIDATION', 'Role Anda tidak termasuk di daftar role PC ini, jadi Anda akan terkunci. Tambahkan role Anda atau minta owner yang mengubah.');
       const row = c.s.update('devices', 'id', str(d.id), patch)!;
       if (patch.status === 'dicabut') c.s.all('sessions').filter((x) => x.device_id === d.id).forEach((x) => c.s.remove('sessions', 'token_hash', str(x.token_hash)));
       log(c, 'ubah_perangkat', 'devices', str(d.id), `${patch.nama} (${kode || '-'}): ${patch.status}`);
@@ -867,7 +945,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
   },
 
   // ----- user & role -----
-  'users.list': { auth: true, fn: (c) => { need(c, 'pengaturan.user'); return c.s.all('users').map(publicUser); } },
+  'users.list': { auth: true, fn: (c) => { need(c, 'pengaturan.user'); const lihatSA = c.user!.role === 'superadmin'; return c.s.all('users').filter((u) => lihatSA || u.role !== 'superadmin').map(publicUser); } },
   'users.save': {
     auth: true,
     fn: (c, p) => {
@@ -877,14 +955,24 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
       const username = str(u.username).toLowerCase();
       if (!/^[a-z0-9._-]{3,30}$/.test(username)) fail('VALIDATION', 'Username 3–30 karakter: huruf kecil, angka, titik, minus.');
       if (!str(u.nama)) fail('VALIDATION', 'Nama wajib diisi.');
-      if (!['owner', 'admin', 'cs', 'kasir', 'operator', 'keuangan'].includes(u.role)) fail('VALIDATION', 'Role tidak dikenal.');
-      if (u.role === 'owner' && c.user!.role !== 'owner') fail('FORBIDDEN', 'Hanya owner yang bisa membuat atau mengubah akun owner.');
+      if (!['superadmin', 'owner', 'admin', 'cs', 'kasir', 'operator', 'keuangan'].includes(u.role)) fail('VALIDATION', 'Role tidak dikenal.');
+      if (u.role === 'owner' && !isTop(c.user!.role)) fail('FORBIDDEN', 'Hanya owner yang bisa membuat atau mengubah akun owner.');
       if (isNew && str(p.password).length < 6) fail('VALIDATION', 'Password minimal 6 karakter.');
       return c.s.withLock(() => {
         const users = c.s.all('users');
         if (users.some((x) => str(x.username).toLowerCase() === username && x.id !== u.id)) fail('VALIDATION', `Username ${username} sudah dipakai.`);
         const cur = users.find((x) => x.id === u.id);
-        if (cur?.role === 'owner' && c.user!.role !== 'owner') fail('FORBIDDEN', 'Hanya owner yang bisa mengubah akun owner.');
+        if (cur?.role === 'owner' && !isTop(c.user!.role)) fail('FORBIDDEN', 'Hanya owner yang bisa mengubah akun owner.');
+        if (u.role === 'superadmin' && cur?.role !== 'superadmin' && c.user!.role !== 'superadmin') fail('FORBIDDEN', 'Akun superadmin (pengembang) hanya bisa dibuat oleh superadmin atau dari editor Apps Script.');
+        // owner boleh menonaktifkan/mengaktifkan akun pengembang, tapi tidak mengubah isinya
+        if (cur?.role === 'superadmin' && c.user!.role !== 'superadmin') {
+          if (c.user!.role !== 'owner') fail('FORBIDDEN', 'Hanya owner yang bisa menonaktifkan akun superadmin.');
+          const akt = u.aktif !== false;
+          const row = c.s.update('users', 'id', str(cur.id), { aktif: akt, ...stamp(c, false) })!;
+          if (!akt) c.s.all('sessions').filter((x) => x.user_id === cur.id).forEach((x) => c.s.remove('sessions', 'token_hash', str(x.token_hash)));
+          log(c, 'ubah', 'users', str(cur.id), `${akt ? 'Mengaktifkan' : 'Menonaktifkan'} akun superadmin ${str(cur.username)}`);
+          return publicUser(row);
+        }
         const aktif = u.aktif !== false;
         if (cur && cur.role === 'owner' && (u.role !== 'owner' || !aktif) && users.filter((x) => x.role === 'owner' && bool(x.aktif)).length <= 1) {
           fail('VALIDATION', 'Harus ada minimal satu owner aktif.');
@@ -892,7 +980,10 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
         const data: Row = {
           username, nama: str(u.nama), role: u.role, khusus_kantor: bool(u.khusus_kantor), aktif,
           jam_login_dari: str(u.jam_login_dari), jam_login_sampai: str(u.jam_login_sampai),
+          email: str(u.email).trim().toLowerCase(),
         };
+        if (data.email && !EMAIL_RE.test(str(data.email))) fail('VALIDATION', 'Format email tidak valid.');
+        if (data.email && users.some((x) => str(x.email).toLowerCase() === data.email && x.id !== u.id)) fail('VALIDATION', 'Email itu sudah dipakai akun lain.');
         if (str(p.password)) {
           if (str(p.password).length < 6) fail('VALIDATION', 'Password minimal 6 karakter.');
           const salt = c.env.uuid();
@@ -912,7 +1003,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
     fn: (c) => {
       need(c, 'pengaturan.role');
       const out: Record<string, PermissionMap> = {};
-      ['owner', 'admin', 'cs', 'kasir', 'operator', 'keuangan'].forEach((r) => (out[r] = permsFor(c.s, r)));
+      ['superadmin', 'owner', 'admin', 'cs', 'kasir', 'operator', 'keuangan'].forEach((r) => (out[r] = permsFor(c.s, r)));
       return out;
     },
   },
@@ -920,8 +1011,8 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
     auth: true,
     fn: (c, p) => {
       need(c, 'pengaturan.role', 'ubah');
-      if (p.role === 'owner') fail('VALIDATION', 'Hak akses owner selalu penuh.');
-      if (p.role === 'admin' && c.user!.role !== 'owner') fail('FORBIDDEN', 'Hanya owner yang bisa mengubah hak akses admin.');
+      if (isTop(p.role)) fail('VALIDATION', 'Hak akses owner & superadmin selalu penuh.');
+      if (p.role === 'admin' && !isTop(c.user!.role)) fail('FORBIDDEN', 'Hanya owner yang bisa mengubah hak akses admin.');
       const clean: PermissionMap = {};
       MODULES.forEach((m) => {
         const v = (p.permissions || {})[m.key] || {};
@@ -1751,14 +1842,14 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
   'maintenance.get': {
     auth: true,
     fn: (c) => {
-      if (c.user!.role !== 'owner') fail('FORBIDDEN', 'Hanya superadmin (Owner) yang bisa membuka mode perbaikan.');
+      if (!isTop(c.user!.role)) fail('FORBIDDEN', 'Hanya superadmin / owner yang bisa membuka mode perbaikan.');
       const m = maintenanceOf(c.s, c.env), set = settingsMap(c.s);
       const now = iso(c.env);
       const users = c.s.all('users');
       const per: Record<string, { id: string; nama: string; role: string; sesi: number; terakhir: string }> = {};
       c.s.all('sessions').filter((x) => str(x.expired_at) >= now && x.user_id !== c.user!.id).forEach((x) => {
         const u = users.find((y) => y.id === x.user_id);
-        if (!u || u.role === 'owner') return;
+        if (!u || isTop(u.role)) return;
         const r = (per[str(u.id)] ||= { id: str(u.id), nama: str(u.nama || u.username), role: str(u.role), sesi: 0, terakhir: '' });
         r.sesi++; if (str(x.created_at) > r.terakhir) r.terakhir = str(x.created_at);
       });
@@ -1770,7 +1861,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
   'maintenance.set': {
     auth: true,
     fn: (c, p) => {
-      if (c.user!.role !== 'owner') fail('FORBIDDEN', 'Hanya superadmin (Owner) yang bisa mengubah mode perbaikan.');
+      if (!isTop(c.user!.role)) fail('FORBIDDEN', 'Hanya superadmin / owner yang bisa mengubah mode perbaikan.');
       const judul = str(p.judul).trim().slice(0, 80), pesan = str(p.pesan).trim().slice(0, 500), kontak = str(p.kontak).trim().slice(0, 60);
       const selesai = str(p.selesai).trim();
       if (selesai && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(selesai)) fail('VALIDATION', 'Format perkiraan selesai tidak dikenali.');
@@ -1789,7 +1880,7 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
         Object.entries(v).forEach(([k, val]) => { if (k in cur) { if (cur[k] !== val) c.s.update('settings', 'key', k, { value: val }); } else c.s.insert('settings', { key: k, value: val }); });
         if (aktif) {
           // keluarkan semua sesi selain owner saat itu juga
-          const owners = new Set(c.s.all('users').filter((u) => u.role === 'owner').map((u) => str(u.id)));
+          const owners = new Set(c.s.all('users').filter((u) => isTop(u.role)).map((u) => str(u.id)));
           c.s.all('sessions').filter((x) => !owners.has(str(x.user_id))).forEach((x) => { c.s.remove('sessions', 'token_hash', str(x.token_hash)); dikeluarkan++; });
         }
         if (aktif && !sebelum) log(c, 'maintenance_on', 'settings', '', `Mode perbaikan diaktifkan${selesai ? ` · perkiraan selesai ${selesai.replace('T', ' ')}` : ''}${dikeluarkan ? ` · ${dikeluarkan} sesi dikeluarkan` : ''}`);
@@ -1858,7 +1949,7 @@ export function handle(s: Store, env: Env, req: Request): Response {
     const c: Ctx = { s, env, req };
     if (h!.auth) {
       authenticate(c);
-      if (c.user!.role !== 'owner' && !MAINT_BEBAS.has(req.action) && maintenanceOf(s, env).aktif) fail('MAINTENANCE', MAINT_MSG);
+      if (!isTop(c.user!.role) && !MAINT_BEBAS.has(req.action) && maintenanceOf(s, env).aktif) fail('MAINTENANCE', MAINT_MSG);
     }
     return { ok: true, data: h!.fn(c, req.payload || {}), version: API_VERSION };
   } catch (e) {
@@ -1906,6 +1997,44 @@ export function seedBase(s: Store, env: Env, owner: { username: string; password
       khusus_kantor: false, jam_login_dari: '', jam_login_sampai: '', aktif: true, harus_ganti_password: true, ...st,
     });
   }
+}
+
+/**
+ * Darurat: atur ulang password akun owner dari editor Apps Script (hanya pemilik akun Google yang bisa menjalankannya).
+ * username kosong = semua akun owner. Mengembalikan username yang direset.
+ */
+export function resetOwnerPassword(s: Store, env: Env, password: string, username = '') {
+  if (password.length < 6) throw new Error('Isi Script Property OWNER_PASSWORD minimal 6 karakter dulu.');
+  const owners = s.all('users').filter((u) => u.role === 'owner' && (!username || str(u.username).toLowerCase() === username.toLowerCase()));
+  if (!owners.length) throw new Error(username ? `Akun owner "${username}" tidak ditemukan.` : 'Tidak ada akun owner.');
+  const now = env.now().toISOString();
+  owners.forEach((u) => {
+    const salt = env.uuid();
+    s.update('users', 'id', str(u.id), { salt, password_hash: hashPassword(password, salt), harus_ganti_password: true, aktif: true, reset_hash: '', reset_exp: '', reset_coba: 0, updated_at: now, updated_by: 'editor-apps-script' });
+    s.all('sessions').filter((x) => x.user_id === u.id).forEach((x) => s.remove('sessions', 'token_hash', str(x.token_hash)));
+    s.insert('activity_log', { id: newId(env, 'log'), waktu: now, user_id: str(u.id), user_nama: 'Editor Apps Script', aksi: 'reset_password', tabel: 'users', record_id: str(u.id), ringkasan: `Password owner ${str(u.username)} direset dari editor Apps Script`, alasan: '' });
+  });
+  return owners.map((u) => str(u.username));
+}
+
+/**
+ * Buat (atau atur ulang password) akun superadmin pengembang dari editor Apps Script.
+ * Akun ini terlihat di daftar User; owner bisa menonaktifkannya kapan saja.
+ */
+export function makeSuperadmin(s: Store, env: Env, username: string, password: string, nama: string) {
+  const un = username.trim().toLowerCase();
+  if (!/^[a-z0-9._-]{3,30}$/.test(un)) throw new Error('SUPERADMIN_USERNAME 3–30 karakter: huruf kecil, angka, titik, minus.');
+  if (password.length < 6) throw new Error('Isi Script Property SUPERADMIN_PASSWORD minimal 6 karakter dulu.');
+  const now = env.now().toISOString();
+  const salt = env.uuid();
+  const cur = s.all('users').find((u) => str(u.username).toLowerCase() === un);
+  if (cur && cur.role !== 'superadmin') throw new Error(`Username ${un} sudah dipakai akun ${str(cur.role)}. Pakai username lain.`);
+  const data = { username: un, nama, role: 'superadmin', salt, password_hash: hashPassword(password, salt), khusus_kantor: false, jam_login_dari: '', jam_login_sampai: '', aktif: true, harus_ganti_password: true, updated_at: now, updated_by: 'editor-apps-script' };
+  const id = cur ? str(cur.id) : newId(env, 'usr');
+  if (cur) { s.update('users', 'id', id, data); s.all('sessions').filter((x) => x.user_id === id).forEach((x) => s.remove('sessions', 'token_hash', str(x.token_hash))); }
+  else s.insert('users', { id, ...data, email: '', created_at: now, created_by: 'editor-apps-script' });
+  s.insert('activity_log', { id: newId(env, 'log'), waktu: now, user_id: id, user_nama: 'Editor Apps Script', aksi: cur ? 'reset_password' : 'tambah', tabel: 'users', record_id: id, ringkasan: `${cur ? 'Reset password' : 'Membuat'} akun superadmin ${un} dari editor Apps Script`, alasan: '' });
+  return { username: un, baru: !cur };
 }
 
 /** Dipakai seed demo. */

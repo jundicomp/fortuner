@@ -29,6 +29,7 @@ export function UsersPage() {
   const columns: ColumnDef<User, any>[] = [
     { accessorKey: 'nama', header: 'Nama', cell: (c) => <span className="font-semibold">{c.getValue()}</span> },
     { accessorKey: 'username', header: 'Username', meta: { className: 'font-mono text-xs' } },
+    { accessorKey: 'email', header: 'Email', cell: (c) => c.getValue() ? <span className="text-xs">{c.getValue()}</span> : <span className="text-xs text-muted">–</span> },
     { accessorKey: 'role', header: 'Role', meta: { filter: 'select', filterLabel: roleLabel }, cell: (c) => roleLabel(c.getValue()) },
     {
       id: 'akses', accessorFn: (r) => (r.khusus_kantor ? 'Perangkat kantor' : 'Dari mana saja'), header: 'Login dari', meta: { filter: 'select' },
@@ -56,9 +57,10 @@ export function UsersPage() {
             <Field label="Username" hint="Huruf kecil, angka, titik."><input id="usr-username" className="input font-mono" autoCapitalize="none" value={edit.username || ''} onChange={(e) => set('username', e.target.value.toLowerCase())} /></Field>
             <Field label="Role">
               <select id="usr-role" className="input" value={edit.role} onChange={(e) => { set('role', e.target.value); if (!edit.id) set('khusus_kantor', OFFICE_ROLES.includes(e.target.value)); }}>
-                {ROLES.filter((r) => r.value !== 'owner' || me?.role === 'owner').map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
+                {ROLES.filter((r) => (r.value !== 'owner' || me?.role === 'owner' || me?.role === 'superadmin') && (r.value !== 'superadmin' || me?.role === 'superadmin' || edit.role === 'superadmin')).map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
               </select>
             </Field>
+            <Field label="Email" hint="Untuk fitur lupa password (kode dikirim ke sini). Boleh kosong." className="sm:col-span-2"><input id="usr-email" type="email" className="input" autoCapitalize="none" value={edit.email || ''} onChange={(e) => set('email', e.target.value.trim())} placeholder="nama@gmail.com" /></Field>
             <Field label={edit.id ? 'Reset password' : 'Password awal'} hint={edit.id ? 'Kosongkan bila tidak diganti.' : 'Minimal 6 karakter. User wajib menggantinya saat login.'}>
               <input id="usr-password" className="input" type="text" autoComplete="new-password" value={edit.password || ''} onChange={(e) => set('password', e.target.value)} />
             </Field>

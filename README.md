@@ -69,6 +69,14 @@ private/           Data asli (tidak ikut git) — mis. file import produk
 4. Di tiap PC kantor: login sebagai owner/admin → **Pengaturan → Perangkat → Daftarkan perangkat ini**, isi kode PC (K1, K2, …). Atau biarkan staf mencoba login dulu, lalu setujui permintaannya.
 5. **Master Data → Produk & Harga → Import Excel**: pakai file dari folder `private/` (dibuat dari sheet "Basis data").
 
+## Lupa password
+- **Staf / owner yang sudah mengisi email**: klik **Lupa password?** di halaman login, masukkan username atau email, lalu masukkan kode 6 angka dari email. Email dikirim dari akun Google pemilik Apps Script (kuota ±100 email/hari untuk akun Gmail biasa).
+- **Owner lupa password dan belum mengisi email**: di editor Apps Script → Project Settings → Script Properties, isi `OWNER_PASSWORD` dengan password baru (opsional `OWNER_RESET_USERNAME` = username owner tertentu), lalu jalankan fungsi `resetPasswordOwner`. Login dengan password itu, ganti password, lalu hapus/ubah `OWNER_PASSWORD`.
+- Sekali setelah memasang versi ini jalankan `tesEmail` dari editor supaya script mendapat izin kirim email.
+
+## Akun superadmin (pengembang)
+Di editor Apps Script → Project Settings → Script Properties isi `SUPERADMIN_PASSWORD` (opsional `SUPERADMIN_USERNAME`, bawaan `jundicomp`, dan `SUPERADMIN_NAMA`), lalu jalankan `buatSuperadmin`. Login, ganti password, lalu hapus `SUPERADMIN_PASSWORD`. Menjalankan ulang fungsi ini mengatur ulang password akun tersebut. Akun ini disembunyikan dari daftar User (hanya terlihat sesama superadmin).
+
 ## Memperbarui backend
 > **Setiap pembaruan backend (Tahap 4: `machine_counters`, `petty_cash`, `cash_deposits`; Tahap 5: `expense_categories`, `expenses`, `supplier_bills`, `bill_payments`):** jalankan `setup` lagi setelah menempel `Code.gs`.
 >

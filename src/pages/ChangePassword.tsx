@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Modal } from '@/components/ui/Modal';
 import { Field, ErrorBox } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
@@ -6,7 +6,10 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/auth/AuthContext';
 
 export function ChangePasswordModal({ open, forced, onClose }: { open: boolean; forced: boolean; onClose: () => void }) {
-  const { refresh, logout } = useAuth();
+  const { refresh, logout, user } = useAuth();
+  const [email, setEmail] = useState('');
+  useEffect(() => { if (open) setEmail(user?.email || ''); }, [open, user?.email]);
+  const emailBerubah = email.trim().toLowerCase() !== (user?.email || '');
   const toast = useToast();
   const [lama, setLama] = useState('');
   const [baru, setBaru] = useState('');
@@ -16,11 +19,12 @@ export function ChangePasswordModal({ open, forced, onClose }: { open: boolean; 
 
   const save = async () => {
     setErr(null);
-    if (baru !== ulang) { setErr(new Error('Ulangi password baru dengan sama persis.')); return; }
+    if (baru && baru !== ulang) { setErr(new Error('Ulangi password baru dengan sama persis.')); return; }
     setBusy(true);
     try {
-      await api('auth.changePassword', { lama, baru });
-      toast('Password diganti');
+      if (emailBerubah) await api('auth.setEmail', { email: email.trim(), password: lama });
+      if (baru) await api('auth.changePassword', { lama, baru });
+      toast(baru ? 'Password diganti' : 'Email disimpan');
       setLama(''); setBaru(''); setUlang('');
       await refresh();
       onClose();
@@ -29,16 +33,17 @@ export function ChangePasswordModal({ open, forced, onClose }: { open: boolean; 
 
   return (
     <Modal open={open} onClose={forced ? () => {} : onClose} size="sm"
-      title={forced ? 'Ganti password dulu' : 'Ganti password'}
+      title={forced ? 'Ganti password dulu' : 'Password & email'}
       subtitle={forced ? 'Akun ini memakai password sementara. Buat password baru sebelum melanjutkan.' : undefined}
       footer={<>
         {forced ? <button className="btn btn-ghost" onClick={() => logout()}>Keluar</button> : <button className="btn" onClick={onClose}>Batal</button>}
-        <button className="btn btn-primary" onClick={save} disabled={busy || !lama || baru.length < 6}>Simpan password</button>
+        <button className="btn btn-primary" onClick={save} disabled={busy || !lama || (baru ? baru.length < 6 : forced || !emailBerubah)}>Simpan</button>
       </>}>
       <div className="flex flex-col gap-3">
         <Field label="Password lama"><input id="pw-lama" type="password" className="input" value={lama} onChange={(e) => setLama(e.target.value)} autoComplete="current-password" /></Field>
-        <Field label="Password baru" hint="Minimal 6 karakter."><input id="pw-baru" type="password" className="input" value={baru} onChange={(e) => setBaru(e.target.value)} autoComplete="new-password" /></Field>
+        <Field label="Password baru" hint={forced ? 'Minimal 6 karakter.' : 'Minimal 6 karakter. Kosongkan bila hanya mengubah email.'}><input id="pw-baru" type="password" className="input" value={baru} onChange={(e) => setBaru(e.target.value)} autoComplete="new-password" /></Field>
         <Field label="Ulangi password baru"><input id="pw-ulang" type="password" className="input" value={ulang} onChange={(e) => setUlang(e.target.value)} autoComplete="new-password" /></Field>
+        <Field label="Email pemulihan" hint="Untuk lupa password: kode reset dikirim ke email ini. Disarankan untuk owner."><input id="pw-email" type="email" className="input" autoCapitalize="none" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="nama@gmail.com" autoComplete="email" /></Field>
         <ErrorBox error={err} />
       </div>
     </Modal>

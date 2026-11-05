@@ -83,7 +83,7 @@ const PAGES: Record<string, () => ReactElement | null> = {
 
 function Guard({ perm, owner, children }: { perm: string; owner?: boolean; children: ReactElement }) {
   const { can, user } = useAuth();
-  return can(perm) && (!owner || user?.role === 'owner') ? children : <Forbidden />;
+  return can(perm) && (!owner || user?.role === 'owner' || user?.role === 'superadmin') ? children : <Forbidden />;
 }
 
 export default function App() {

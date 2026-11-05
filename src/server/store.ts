@@ -20,4 +20,6 @@ export interface Env {
   timeHM(): string;
   /** Simpan file (data URL) dan kembalikan URL tampilnya. Apps Script: Google Drive. Browser: data URL itu sendiri. */
   saveFile?(name: string, dataUrl: string): string;
+  /** Kirim email (Apps Script: MailApp, dari akun Google pemilik script). Tidak ada di mode demo. */
+  sendMail?(to: string, subject: string, html: string, text: string): void;
 }

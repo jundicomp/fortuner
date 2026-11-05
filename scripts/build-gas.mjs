@@ -1,7 +1,7 @@
 // Bundle src/server (logika yang sama dengan mode demo) menjadi apps-script/Code.gs.
 import { build } from 'esbuild';
 import fs from 'node:fs';
-const fns = ['doPost', 'doGet', 'setup', 'backupSekarang', 'pasangTriggerBackup', 'onOpen'];
+const fns = ['doPost', 'doGet', 'setup', 'backupSekarang', 'pasangTriggerBackup', 'resetPasswordOwner', 'buatSuperadmin', 'tesEmail', 'onOpen'];
 await build({
   entryPoints: ['src/server/gasEntry.ts'],
   bundle: true,

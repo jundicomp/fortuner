@@ -18,7 +18,7 @@ export function AppLayout() {
   const { user, logout } = useAuth();
   const settings = useSettings();
   const mt = useMaintenance();
-  const owner = user?.role === 'owner';
+  const owner = user?.role === 'owner' || user?.role === 'superadmin';
   // mode perbaikan: pengguna selain owner langsung keluar (server juga menolak semua permintaannya)
   useEffect(() => { if (mt.data?.aktif && user && !owner) void logout(); }, [mt.data?.aktif, user, owner, logout]);
   const [collapsed, setCollapsed] = useState(() => { try { return localStorage.getItem(KEY) === '1'; } catch { return false; } });

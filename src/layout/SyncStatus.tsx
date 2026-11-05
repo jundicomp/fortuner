@@ -26,7 +26,7 @@ export function SyncStatus() {
   const tone = !s.online ? 'pill-bad' : failed ? 'pill-warn' : n ? 'pill-brand' : 'pill-ok';
   const Icon = s.syncing ? Loader2 : !s.online ? WifiOff : failed ? AlertTriangle : Wifi;
   const text = s.syncing ? 'Mengirim…' : !s.online ? (n ? `Offline · ${n} belum terkirim` : 'Offline') : failed ? `${failed} gagal terkirim` : n ? `${n} menunggu` : 'Online';
-  const isAdmin = user?.role === 'owner' || user?.role === 'admin';
+  const isAdmin = user?.role === 'owner' || user?.role === 'superadmin' || user?.role === 'admin';
 
   return (
     <div className="relative" ref={ref}>

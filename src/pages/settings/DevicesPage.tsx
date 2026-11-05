@@ -13,7 +13,7 @@ import { ROLES, type Device } from '@/types';
 import { useSettings } from '@/lib/queries';
 import { machineInfo, isDesktop } from '@/platform/desktop';
 
-const ROLE_OPTS = ROLES.filter((r) => r.value !== 'owner');
+const ROLE_OPTS = ROLES.filter((r) => r.value !== 'owner' && r.value !== 'superadmin');
 const roleList = (v?: string) => (v || '').split(',').filter(Boolean);
 const roleText = (v?: string) => { const l = roleList(v); return l.length ? l.map((r) => ROLES.find((x) => x.value === r)?.label || r).join(', ') : 'Semua role'; };
 

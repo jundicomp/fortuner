@@ -53,7 +53,7 @@ export function MaintenancePage() {
 
   return (
     <>
-      <PageHeader title="Mode Perbaikan" desc="Kunci aplikasi sementara untuk setup, migrasi ke Google, atau perbaikan data. Selama aktif hanya superadmin (Owner) yang bisa masuk; pengguna lain melihat halaman perbaikan." />
+      <PageHeader title="Mode Perbaikan" desc="Kunci aplikasi sementara untuk setup, migrasi ke Google, atau perbaikan data. Selama aktif hanya superadmin (pengembang) dan Owner yang bisa masuk; pengguna lain melihat halaman perbaikan." />
       <ErrorBox error={q.error || save.error} />
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[1.25fr_1fr]">
         <section className="card p-5">

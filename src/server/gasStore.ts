@@ -2,7 +2,7 @@
 import { SCHEMA, type Row } from './schema';
 import type { Env, Store } from './store';
 
-declare const SpreadsheetApp: any, LockService: any, PropertiesService: any, Utilities: any, DriveApp: any;
+declare const SpreadsheetApp: any, LockService: any, PropertiesService: any, Utilities: any, DriveApp: any, MailApp: any;
 
 const TZ = 'Asia/Jakarta';
 
@@ -145,6 +145,7 @@ export function backupSpreadsheet(label = 'Backup') {
 }
 
 export const gasEnv: Env = {
+  sendMail: (to: string, subject: string, html: string, text: string) => MailApp.sendEmail({ to, subject, htmlBody: html, body: text, name: 'Fortuner POS' }),
   uuid: () => Utilities.getUuid(),
   now: () => new Date(),
   today: () => Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd'),
