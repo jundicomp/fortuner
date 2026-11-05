@@ -37,18 +37,18 @@ src/
 src-tauri/         Aplikasi desktop (Rust/Tauri): cetak RAW/LAN, ID mesin, updater
   components/table DataTable: cari, filter, rentang tanggal, pagination, export Excel
   pages/           Halaman
-apps-script/       HASIL BUILD untuk ditempel ke Apps Script (npm run build:gas)
+apps-script/       HASIL BUILD untuk ditempel ke Apps Script (npm run build:gas) — tidak ikut git
 private/           Data asli (tidak ikut git) — mis. file import produk
 ```
 
-`apps-script/Code.gs` dibuat dari `src/server/*.ts`. Jangan edit `Code.gs` langsung; ubah TypeScript-nya lalu jalankan `npm run build:gas`.
+`apps-script/Code.gs` dan `apps-script/appsscript.json` dibuat dari `src/server/*.ts` dengan `npm run build:gas` dan **tidak disimpan di GitHub** (ada di `.gitignore`). Jangan edit `Code.gs` langsung; ubah TypeScript-nya lalu build ulang.
 
 ## Setup produksi (sekali)
 
 ### 1. Google (akun khusus usaha)
 1. Login ke akun Google khusus usaha. Buat Google Sheet baru, beri nama mis. **Fortuner POS Database**.
 2. Di sheet itu: **Ekstensi → Apps Script**.
-3. Hapus isi `Code.gs`, tempel isi `apps-script/Code.gs` dari repo ini.
+3. Hapus isi `Code.gs`, tempel isi `apps-script/Code.gs` hasil `npm run build:gas` di komputer Anda.
 4. **Project Settings (ikon gerigi) → centang "Show appsscript.json"**, lalu buka `appsscript.json` dan ganti isinya dengan `apps-script/appsscript.json`.
 5. (Disarankan) **Project Settings → Script Properties → Add**: `OWNER_PASSWORD` = password awal owner. Tanpa ini password awal `fortuner123`.
 6. Pilih fungsi `setup` di toolbar → **Run** → izinkan akses. Semua sheet dan data dasar dibuat. Jalankan juga `pasangTriggerBackup` untuk backup harian ke Drive.

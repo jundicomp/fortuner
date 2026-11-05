@@ -1,16 +1,25 @@
 import { handle, type Request } from '@/server/core';
 import { MockStore, browserEnv } from '@/server/mockStore';
-import { seedDemo } from '@/server/demoSeed';
+import { seedBase } from '@/server/core';
+import type { Store, Env } from '@/server/store';
 import { sha256 } from '@/server/sha256';
 
-const KEY = 'fortuner-demo-db-v13'; // v13: pembatalan, refund, deposit (v1.3.5)
-try { ['fortuner-demo-db-v1', 'fortuner-demo-db-v2'].forEach((k) => localStorage.removeItem(k)); } catch { /* abaikan */ }
+const KEY = 'fortuner-demo-db-v14'; // v14 (v1.3.10): mode demo mulai kosong, tanpa data contoh
+// data contoh versi lama dibuang dari perangkat ini
+try { for (let i = 1; i <= 13; i++) localStorage.removeItem(`fortuner-demo-db-v${i}`); } catch { /* abaikan */ }
+
+/** Isi awal mode demo = sama dengan Google Sheet setelah Setup: data dasar + 1 akun owner. Tidak ada data contoh. */
+function seedKosong(s: Store, env: Env) {
+  seedBase(s, env, { username: 'owner', password: 'owner123', nama: 'Owner' });
+  const owner = s.all('users').find((u) => u.role === 'owner');
+  if (owner) s.update('users', 'id', String(owner.id), { harus_ganti_password: false });
+}
 let store: MockStore | null = null;
 function getStore() {
   if (!store) {
     store = new MockStore(KEY);
     const st = store;
-    if (st.isEmpty) st.batch(() => seedDemo(st, browserEnv));
+    if (st.isEmpty) st.batch(() => seedKosong(st, browserEnv));
   }
   return store;
 }
@@ -31,10 +40,4 @@ export async function mockHandle(req: Request) {
     }
   }
   return handle(getStore(), browserEnv, JSON.parse(JSON.stringify(req)));
-}
-
-export function resetDemo() {
-  const st = getStore();
-  st.reset();
-  st.batch(() => seedDemo(st, browserEnv));
 }

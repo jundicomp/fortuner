@@ -4,7 +4,7 @@
  * Fungsi global yang tersedia di editor Apps Script: doPost, doGet, setup, backupSekarang, pasangTriggerBackup, onOpen.
  */
 import { handle, seedBase, API_VERSION } from './core';
-import { GasStore, gasEnv, ensureSheets } from './gasStore';
+import { GasStore, gasEnv, ensureSheets, backupSpreadsheet } from './gasStore';
 
 declare const ContentService: any, PropertiesService: any, SpreadsheetApp: any, DriveApp: any, ScriptApp: any, Logger: any, Utilities: any;
 
@@ -36,18 +36,7 @@ export function setup() {
 
 /** Salin spreadsheet database ke folder "Fortuner POS Backup" di Drive. */
 export function backupSekarang() {
-  const props = PropertiesService.getScriptProperties();
-  const id = props.getProperty('SPREADSHEET_ID') || SpreadsheetApp.getActiveSpreadsheet().getId();
-  const file = DriveApp.getFileById(id);
-  const it = DriveApp.getFoldersByName('Fortuner POS Backup');
-  const folder = it.hasNext() ? it.next() : DriveApp.createFolder('Fortuner POS Backup');
-  const name = `Backup ${file.getName()} ${Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd HHmm')}`;
-  file.makeCopy(name, folder);
-  // simpan 30 backup terakhir
-  const files: any[] = []; const fi = folder.getFiles();
-  while (fi.hasNext()) files.push(fi.next());
-  files.sort((a, b) => b.getDateCreated() - a.getDateCreated()).slice(30).forEach((f) => f.setTrashed(true));
-  return name;
+  return backupSpreadsheet('Backup');
 }
 
 /** Pasang backup otomatis tiap hari sekitar jam 23.00. */

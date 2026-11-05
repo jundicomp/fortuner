@@ -130,6 +130,20 @@ export class GasStore implements Store {
   }
 }
 
+/** Salin spreadsheet database ke folder "Fortuner POS Backup" di Drive (menyimpan 30 salinan terakhir). */
+export function backupSpreadsheet(label = 'Backup') {
+  const ss = spreadsheet();
+  const file = DriveApp.getFileById(ss.getId());
+  const it = DriveApp.getFoldersByName('Fortuner POS Backup');
+  const folder = it.hasNext() ? it.next() : DriveApp.createFolder('Fortuner POS Backup');
+  const name = `${label} ${file.getName()} ${Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HHmm')}`;
+  file.makeCopy(name, folder);
+  const files: any[] = []; const fi = folder.getFiles();
+  while (fi.hasNext()) files.push(fi.next());
+  files.sort((a, b) => b.getDateCreated() - a.getDateCreated()).slice(30).forEach((f) => f.setTrashed(true));
+  return name;
+}
+
 export const gasEnv: Env = {
   uuid: () => Utilities.getUuid(),
   now: () => new Date(),

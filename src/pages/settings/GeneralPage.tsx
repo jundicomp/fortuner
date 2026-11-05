@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ErrorBox, Field, PageHeader } from '@/components/ui/Field';
 import { useToast } from '@/components/ui/Toast';
-import { api, IS_DEMO, purgeLocalData } from '@/lib/api';
+import { api, IS_DEMO } from '@/lib/api';
 import { useAuth } from '@/auth/AuthContext';
 import { useSettings } from '@/lib/queries';
 import type { Settings } from '@/types';
@@ -79,18 +79,10 @@ export function GeneralPage() {
 }
 
 function DemoReset() {
-  const [confirm, setConfirm] = useState(false);
   return (
     <section className="card mt-6 border-dashed p-5">
       <h2 className="text-sm font-bold">Mode demo</h2>
-      <p className="mt-1 text-sm text-muted">Data demo tersimpan di perangkat ini saja dan tidak pernah dikirim ke Google Sheets. Kembalikan ke data contoh awal bila ingin mencoba dari nol (antrian offline demo ikut dibuang). Begitu aplikasi disambungkan ke server asli, data demo otomatis dihapus.</p>
-      {!confirm ? <button id="demo-reset" className="btn btn-danger mt-3" onClick={() => setConfirm(true)}>Reset data demo</button> : (
-        <div className="mt-3 flex flex-wrap items-center gap-2">
-          <span className="text-sm font-semibold text-bad">Semua perubahan demo akan hilang.</span>
-          <button className="btn" onClick={() => setConfirm(false)}>Batal</button>
-          <button id="demo-reset-yes" className="btn btn-danger" onClick={async () => { purgeLocalData(); const m = await import('@/lib/mockServer'); m.resetDemo(); location.reload(); }}>Ya, reset</button>
-        </div>
-      )}
+      <p className="mt-1 text-sm text-muted">Aplikasi ini belum tersambung ke Google Sheet. Data yang diisi di mode demo hanya tersimpan di perangkat ini dan tidak pernah dikirim ke server. Untuk mulai memakai data asli, sambungkan ke Apps Script (Tentang Aplikasi → Koneksi server, atau variable VITE_API_URL saat build); data demo di perangkat ini otomatis dibuang.</p>
     </section>
   );
 }

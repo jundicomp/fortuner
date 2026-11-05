@@ -9,7 +9,7 @@ import { isDesktop } from '@/platform/desktop';
 import { useMaintenance } from '@/lib/maintenance';
 import { MaintenanceScreen, SuperadminLogin } from '@/components/MaintenanceScreen';
 
-const DEMO = [['owner', 'Owner'], ['admin', 'Admin'], ['cs', 'Front Office · Riska'], ['kasir', 'Kasir 1 · Tina'], ['kasir2', 'Kasir 2 · Rudi'], ['operator', 'Operator'], ['keuangan', 'Keuangan']];
+const DEMO = [['owner', 'Owner']];
 
 export function LoginPage() {
   const mt = useMaintenance();
@@ -77,13 +77,13 @@ function NormalLogin() {
           </form>
           {IS_DEMO && (
             <div className="mt-8 rounded-xl border border-dashed border-line p-4">
-              <div className="text-xs font-bold uppercase tracking-wider text-muted">Akun demo · password = username + 123</div>
+              <div className="text-xs font-bold uppercase tracking-wider text-muted">Mode demo · belum tersambung ke Google Sheet</div>
               <div className="mt-3 flex flex-wrap gap-2">
                 {DEMO.map(([u, l]) => (
                   <button key={u} type="button" className="chip hover:border-brand hover:text-brand" onClick={() => { setUsername(u); setPassword(u + '123'); submit(undefined, u, u + '123'); }}>{l}</button>
                 ))}
               </div>
-              <p className="mt-3 text-xs text-muted">Di mode demo, browser ini otomatis disetujui sebagai perangkat kantor, jadi akun FO dan kasir bisa langsung dicoba. Di versi asli, akun kantor hanya bisa login di perangkat yang disetujui admin.</p>
+              <p className="mt-3 text-xs text-muted">Login owner / owner123. Data mode demo dimulai kosong dan hanya tersimpan di perangkat ini. Akun staf dibuat sendiri di Pengaturan → User.</p>
             </div>
           )}
           {isDesktop() && <DesktopLoginPanel />}

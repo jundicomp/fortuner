@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.3.10",
+    "tanggal": "2026-11-05",
+    "catatan": [
+      "Data dummy dihapus: mode demo kini mulai kosong, sama seperti Google Sheet setelah Setup (hanya data dasar + akun owner/owner123). Data contoh lama di perangkat otomatis dibuang.",
+      "Tidak ada tombol pengosongan data di aplikasi (termasuk \"Reset data demo\"), supaya data tidak bisa terhapus tanpa sengaja.",
+      "Backend Apps Script (Code.gs & appsscript.json) tidak lagi disimpan di GitHub; dibuat dengan npm run build:gas dan ditempel manual.",
+      "Fungsi backupSekarang di Apps Script dirapikan (tetap menyimpan 30 salinan terakhir di folder \"Fortuner POS Backup\")."
+    ]
+  },
+  {
     "version": "1.3.9",
     "tanggal": "2026-11-02",
     "catatan": [
