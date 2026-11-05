@@ -24,16 +24,6 @@ interface Summary {
   perubahan_harga: { product_id: string; kode: string; nama: string; berlaku_mulai: string; sebelum: number | null; sesudah: number | null; persen: number | null; terjadwal: boolean; catatan: string }[];
 }
 
-const STAGES = [
-  { n: 1, label: 'Fondasi: login, perangkat, master data, harga matriks', status: 'selesai' },
-  { n: 2, label: 'Transaksi inti: front office, kasir, order, piutang, mode offline', status: 'selesai' },
-  { n: 4, label: 'Operasional: produksi, mesin, kas', status: 'selesai' },
-  { n: 5, label: 'Keuangan & laporan: pengeluaran, hutang supplier, laporan & laba', status: 'selesai' },
-  { n: 3, label: 'Aplikasi desktop FO & kasir: installer, printer struk, laci, update otomatis', status: 'selesai' },
-  { n: 7, label: 'Stok bahan, pembelian, HPP, laba rugi & buku besar (v1.1)', status: 'selesai' },
-  { n: 6, label: 'Migrasi data & go-live', status: 'berikutnya' },
-];
-
 export function Dashboard() {
   const { user, can } = useAuth();
   const q = useQuery({ queryKey: ['dashboard'], queryFn: () => api<Summary>('dashboard.summary') });
@@ -114,20 +104,11 @@ export function Dashboard() {
             )}
           </section>
         )}
-        <section className="card p-4">
-          <h2 className="text-sm font-bold">Progres pembangunan</h2>
-          <ol className="mt-3 flex flex-col gap-2.5">
-            {STAGES.map((s) => (
-              <li key={s.n} className="flex gap-3 text-sm">
-                <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-bold ${s.status === 'jalan' ? 'bg-brand text-brand-ink' : s.status === 'selesai' ? 'bg-ok text-white' : s.status === 'berikutnya' ? 'border-2 border-brand text-brand' : 'bg-sunk text-muted'}`}>{s.status === 'selesai' ? '✓' : s.n}</span>
-                <span className={s.status ? 'font-semibold' : 'text-muted'}>{s.label}{s.status === 'jalan' && <span className="pill pill-brand ml-2">sekarang</span>}</span>
-              </li>
-            ))}
-          </ol>
-          {d?.produk_tanpa_harga ? (
-            <div className="mt-4 flex gap-2 rounded-lg bg-warn/10 p-3 text-xs text-warn"><AlertTriangle size={15} className="shrink-0" />Ada {d.produk_tanpa_harga} produk aktif tanpa harga. Lengkapi sebelum kasir dipakai.</div>
-          ) : null}
-        </section>
+        {d?.produk_tanpa_harga ? (
+          <section className="card p-4">
+            <div className="flex gap-2 rounded-lg bg-warn/10 p-3 text-xs text-warn"><AlertTriangle size={15} className="shrink-0" />Ada {d.produk_tanpa_harga} produk aktif tanpa harga. Lengkapi sebelum kasir dipakai.</div>
+          </section>
+        ) : null}
       </div>
     </>
   );

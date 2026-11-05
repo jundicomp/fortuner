@@ -1,5 +1,12 @@
 [
   {
+    "version": "1.3.13",
+    "tanggal": "2026-11-05",
+    "catatan": [
+      "Hapus kartu \"Progres pembangunan\" dari Dashboard (tidak perlu tampil ke klien). Peringatan produk tanpa harga tetap ada bila relevan."
+    ]
+  },
+  {
     "version": "1.3.12",
     "tanggal": "2026-11-05",
     "catatan": [
