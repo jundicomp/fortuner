@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { MonitorCheck, Server } from 'lucide-react';
 import { useState } from 'react';
-import { api, IS_DEMO, serverEverOk } from '@/lib/api';
+import { api, serverEverOk } from '@/lib/api';
 import { machineInfo, pcReg } from '@/platform/desktop';
 import { Modal } from '@/components/ui/Modal';
 import { ServerForm } from './ServerForm';
@@ -20,7 +20,9 @@ export function DesktopLoginPanel() {
   const save = (r: typeof reg) => { setReg(r); pcReg.set(r); };
   const s = st.data?.status ? STATUS[st.data.status] : null;
   const approved = st.data?.status === 'disetujui';
-  const canSetServer = !IS_DEMO && !serverEverOk();
+  // aplikasi PC: boleh mengatur alamat server selama PC ini belum pernah tersambung — termasuk build mode demo,
+  // supaya satu installer bisa diarahkan ke server tanpa menanam URL /exec di build (aman untuk repo publik).
+  const canSetServer = !serverEverOk();
 
   return (
     <div id="pc-panel" className="mt-6 rounded-xl border border-line bg-surface p-4">

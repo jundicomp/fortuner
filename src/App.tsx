@@ -39,6 +39,8 @@ import { DepositPage } from '@/pages/keuangan/DepositPage';
 import { BukuBesarPage } from '@/pages/laporan/BukuBesarPage';
 import { MarginPage } from '@/pages/laporan/MarginPage';
 import { isDesktop } from '@/platform/desktop';
+import { IS_DEMO, demoOk } from '@/lib/api';
+import { ServerSetupScreen } from '@/pages/desktop/ServerSetupScreen';
 import type { ReactElement } from 'react';
 
 const PAGES: Record<string, () => ReactElement | null> = {
@@ -88,6 +90,8 @@ function Guard({ perm, owner, children }: { perm: string; owner?: boolean; child
 
 export default function App() {
   const { user, ready } = useAuth();
+  // Aplikasi PC yang belum tersambung ke server: tampilkan HANYA layar setup alamat server (sekali saja).
+  if (isDesktop() && IS_DEMO && !demoOk.get()) return <ServerSetupScreen />;
   if (!ready) return <div className="flex h-full items-center justify-center text-sm text-muted">Memuat…</div>;
   // HashRouter: URL jadi /#/master/produk sehingga tidak 404 di hosting statis.
   // Build demo satu-file memakai MemoryRouter supaya bisa jalan di halaman pratinjau yang membatasi perubahan URL.

@@ -60,6 +60,13 @@ const OK_KEY = 'fortuner-server-ok';
 /** Pernah berhasil terhubung ke server asli dari perangkat ini (mengunci pengubahan server sebelum login). */
 export const serverEverOk = () => { try { return localStorage.getItem(OK_KEY) === API_URL; } catch { return false; } };
 
+/** Aplikasi PC: tandai bahwa pengguna sengaja memilih mode demo, supaya layar setup server pertama kali dilewati. */
+const DEMO_OK_KEY = 'fortuner-demo-ok';
+export const demoOk = {
+  get: () => { try { return localStorage.getItem(DEMO_OK_KEY) === '1'; } catch { return false; } },
+  set: (v: boolean) => { try { v ? localStorage.setItem(DEMO_OK_KEY, '1') : localStorage.removeItem(DEMO_OK_KEY); } catch { /* abaikan */ } },
+};
+
 /** Tes alamat server lain (tanpa mengubah pengaturan). Mengembalikan nama usaha yang terhubung. */
 export async function pingServer(url: string): Promise<{ nama_usaha: string; version: number }> {
   if (!isValidApiUrl(url)) throw new ApiError('VALIDATION', 'Alamat harus diawali https://script.google.com/… dan berakhiran /exec.');

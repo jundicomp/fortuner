@@ -95,3 +95,9 @@ export async function autostartSet(on: boolean) {
   const m = await import('@tauri-apps/plugin-autostart');
   if (on) await m.enable(); else await m.disable();
 }
+
+/** Tutup aplikasi desktop. Di browser/simulasi: coba tutup tab, kalau diblokir biarkan (tidak bisa dipaksa). */
+export async function exitApp() {
+  if (isTauri) { try { const { exit } = await import('@tauri-apps/plugin-process'); await exit(0); return; } catch { /* lanjut fallback */ } }
+  try { window.close(); } catch { /* diblokir browser */ }
+}
