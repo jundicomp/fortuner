@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { BarChart3, AlertTriangle, ArrowDownRight, ArrowUpRight, CalendarClock, Boxes, Target, MonitorSmartphone, Package, Users, Receipt, Wallet, HandCoins, ShoppingCart } from 'lucide-react';
 import { TrendBars } from '@/components/TrendBars';
+import { DashboardMaster } from '@/components/DashboardMaster';
 import { PageHeader } from '@/components/ui/Field';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/Toast';
@@ -26,6 +27,7 @@ interface Summary {
 
 export function Dashboard() {
   const { user, can } = useAuth();
+  const isTop = user?.role === 'owner' || user?.role === 'superadmin';
   const q = useQuery({ queryKey: ['dashboard'], queryFn: () => api<Summary>('dashboard.summary') });
   const d = q.data;
   const hour = new Date().getHours();
@@ -56,6 +58,8 @@ export function Dashboard() {
           </Link>
         ))}
       </div>
+
+      {isTop && <div className="mt-4"><DashboardMaster /></div>}
 
       <div className="mt-4 grid grid-cols-1 gap-4 xl:grid-cols-3">
         {can('master.produk') && (

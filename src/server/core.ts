@@ -1829,6 +1829,74 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
       };
     },
   },
+  /** Infografis master data (pelanggan, supplier, produk) untuk dashboard owner/superadmin. */
+  'dashboard.master': {
+    auth: true,
+    fn: (c) => {
+      if (!isTop(c.user!.role)) fail('FORBIDDEN', 'Khusus owner / superadmin.');
+      const today = c.env.today();
+      const m0 = today.slice(0, 8) + '01';
+      const customers = c.s.all('customers');
+      const suppliers = c.s.all('suppliers');
+      const products = c.s.all('products');
+      const prices = c.s.all('price_history');
+      const orders = c.s.all('orders').filter((o) => !bool(o.batal));
+      const items = c.s.all('order_items');
+      const bulanIni = new Set(orders.filter((o) => str(o.tanggal) >= m0).map((o) => str(o.id)));
+
+      // ---- pelanggan ----
+      const custOmzet: Record<string, { omzet: number; nota: number }> = {};
+      const sisa: Record<string, number> = {};
+      orders.forEach((o) => {
+        const k = str(o.customer_id);
+        const r = (custOmzet[k] ||= { omzet: 0, nota: 0 });
+        r.omzet += Number(o.total || 0) - Number(o.batal_nilai || 0); r.nota++;
+        if (Number(o.sisa) > 0) sisa[k] = (sisa[k] || 0) + Number(o.sisa);
+      });
+      const tipeOf = (id: string) => (str(customers.find((x) => x.id === id)?.tipe) === 'reseller' ? 'reseller' : 'enduser');
+      const topCust = Object.entries(custOmzet).sort((a, b) => b[1].omzet - a[1].omzet).slice(0, 5).map(([id, v]) => {
+        const x = customers.find((y) => y.id === id);
+        return { nama: str(x?.percetakan || x?.nama) || '(umum)', tipe: tipeOf(id), omzet: v.omzet, nota: v.nota };
+      });
+      const aktifC = customers.filter((x) => bool(x.aktif));
+      const pelanggan = {
+        total: customers.length, aktif: aktifC.length, nonaktif: customers.length - aktifC.length,
+        reseller: customers.filter((x) => str(x.tipe) === 'reseller').length,
+        enduser: customers.filter((x) => str(x.tipe) !== 'reseller').length,
+        baru_bulan: customers.filter((x) => str(x.created_at).slice(0, 10) >= m0).length,
+        piutang_konsumen: Object.keys(sisa).length, piutang_total: Object.values(sisa).reduce((a, b) => a + b, 0),
+        top: topCust,
+      };
+
+      // ---- supplier ----
+      const beli: Record<string, { nilai: number; nota: number }> = {};
+      c.s.all('purchases').filter((p) => !bool(p.deleted)).forEach((p) => {
+        const k = str(p.supplier_id); const r = (beli[k] ||= { nilai: 0, nota: 0 }); r.nilai += Number(p.total || 0); r.nota++;
+      });
+      const openBill = c.s.all('supplier_bills').filter((b) => Number(b.sisa) > 0);
+      const suplayer = {
+        total: suppliers.length, aktif: suppliers.filter((x) => bool(x.aktif)).length,
+        hutang_total: openBill.reduce((a, b) => a + Number(b.sisa), 0),
+        hutang_supplier: new Set(openBill.map((b) => str(b.supplier_id))).size,
+        top: Object.entries(beli).sort((a, b) => b[1].nilai - a[1].nilai).slice(0, 5)
+          .map(([id, v]) => ({ nama: str(suppliers.find((s) => s.id === id)?.nama) || '(lain)', nilai: v.nilai, nota: v.nota })),
+      };
+
+      // ---- produk ----
+      const prodTop: Record<string, { nama: string; omzet: number; qty: number }> = {};
+      items.forEach((i) => { if (!bulanIni.has(str(i.order_id))) return; const t = (prodTop[str(i.product_id)] ||= { nama: str(i.nama_produk), omzet: 0, qty: 0 }); t.omzet += Number(i.subtotal || 0); t.qty += Number(i.qty || 0); });
+      const kat: Record<string, number> = {};
+      products.filter((p) => bool(p.aktif)).forEach((p) => { const k = str(p.kategori) || 'Lainnya'; kat[k] = (kat[k] || 0) + 1; });
+      const tanpaHarga = products.filter((p) => bool(p.aktif) && p.jenis_harga !== 'manual' && !hargaBerlaku(prices.filter((r) => r.product_id === p.id) as any, today)).length;
+      const produk = {
+        total: products.length, aktif: products.filter((p) => bool(p.aktif)).length,
+        nonaktif: products.filter((p) => !bool(p.aktif)).length, tanpa_harga: tanpaHarga,
+        kategori: Object.entries(kat).map(([nama, jumlah]) => ({ nama, jumlah })).sort((a, b) => b.jumlah - a.jumlah),
+        top: Object.values(prodTop).sort((a, b) => b.omzet - a.omzet).slice(0, 5),
+      };
+      return { pelanggan, suplayer, produk, bulan: today.slice(0, 7) };
+    },
+  },
 
   // ----- pengaturan & log -----
   'settings.get': { auth: true, fn: (c) => settingsMap(c.s) },

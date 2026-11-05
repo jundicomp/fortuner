@@ -1,5 +1,14 @@
 [
   {
+    "version": "1.3.14",
+    "tanggal": "2026-11-05",
+    "catatan": [
+      "Infografis master data di Dashboard (khusus owner & superadmin): kartu Pelanggan, Supplier, dan Produk dengan grafik.",
+      "Pelanggan: total, 01 Percetakan vs 02 End user, baru bulan ini, yang punya piutang, dan pelanggan teratas.",
+      "Supplier: jumlah, hutang berjalan, dan pembelian terbanyak. Produk: jumlah aktif, per kategori, peringatan tanpa harga, dan produk terlaris bulan ini."
+    ]
+  },
+  {
     "version": "1.3.13",
     "tanggal": "2026-11-05",
     "catatan": [
