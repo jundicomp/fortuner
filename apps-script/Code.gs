@@ -2751,6 +2751,29 @@ var FortunerServer = (() => {
     s.all("settings").forEach((r) => m[str(r.key)] = str(r.value));
     return m;
   }
+  var MAINT_MSG = "Aplikasi sedang dalam perbaikan. Hanya superadmin (Owner) yang bisa masuk sampai perbaikan selesai.";
+  var lokal = (env) => `${env.today()}T${env.timeHM()}`;
+  function maintenanceOf(s, env) {
+    const m = settingsMap(s);
+    const selesai = str(m.maintenance_selesai);
+    const autoOff = m.maintenance_auto_off === "1";
+    const lewat = !!selesai && lokal(env) >= selesai;
+    return {
+      aktif: m.maintenance_aktif === "1" && !(autoOff && lewat),
+      judul: str(m.maintenance_judul) || "Sedang perbaikan sistem",
+      pesan: str(m.maintenance_pesan) || "Aplikasi sedang dalam perbaikan. Data aman, sebentar lagi bisa dipakai kembali.",
+      selesai,
+      kontak: str(m.maintenance_kontak),
+      progres: m.maintenance_progres !== "0",
+      manual: m.maintenance_manual !== "0",
+      auto_off: autoOff,
+      sejak: str(m.maintenance_sejak),
+      oleh: str(m.maintenance_oleh),
+      nama_usaha: str(m.nama_usaha),
+      sekarang: lokal(env)
+    };
+  }
+  var MAINT_BEBAS = /* @__PURE__ */ new Set(["auth.logout", "maintenance.status", "ping", "device.check"]);
   function permsFor(s, role) {
     const row = s.all("role_permissions").find((r) => r.role === role);
     const base = defaultPermissions(role);
@@ -3166,6 +3189,7 @@ var FortunerServer = (() => {
         if (!user || !bool(user.aktif) || hashPassword(str(p.password), str(user.salt)) !== user.password_hash) {
           fail("LOGIN_FAILED", "Username atau password salah.");
         }
+        if (user.role !== "owner" && maintenanceOf(c.s, c.env).aktif) fail("MAINTENANCE", MAINT_MSG);
         checkHours(c, user);
         c.s.withLock(() => checkDevice(c, user, true, cleanInfo(p.device)));
         c.user = user;
@@ -4826,6 +4850,79 @@ var FortunerServer = (() => {
     },
     // ----- pengaturan & log -----
     "settings.get": { auth: true, fn: (c) => settingsMap(c.s) },
+    "maintenance.status": {
+      auth: false,
+      fn: (c) => {
+        const m = maintenanceOf(c.s, c.env);
+        return m.aktif ? m : { aktif: false, nama_usaha: m.nama_usaha, sekarang: m.sekarang };
+      }
+    },
+    "maintenance.get": {
+      auth: true,
+      fn: (c) => {
+        if (c.user.role !== "owner") fail("FORBIDDEN", "Hanya superadmin (Owner) yang bisa membuka mode perbaikan.");
+        const m = maintenanceOf(c.s, c.env), set = settingsMap(c.s);
+        const now = iso(c.env);
+        const users = c.s.all("users");
+        const per = {};
+        c.s.all("sessions").filter((x) => str(x.expired_at) >= now && x.user_id !== c.user.id).forEach((x) => {
+          var _a;
+          const u = users.find((y) => y.id === x.user_id);
+          if (!u || u.role === "owner") return;
+          const r = per[_a = str(u.id)] || (per[_a] = { id: str(u.id), nama: str(u.nama || u.username), role: str(u.role), sesi: 0, terakhir: "" });
+          r.sesi++;
+          if (str(x.created_at) > r.terakhir) r.terakhir = str(x.created_at);
+        });
+        const riwayat = c.s.all("activity_log").filter((x) => str(x.aksi).startsWith("maintenance_")).sort((a, b) => str(b.waktu).localeCompare(str(a.waktu))).slice(0, 20).map((x) => ({ waktu: str(x.waktu), aksi: str(x.aksi), oleh: str(x.user_nama), ringkasan: str(x.ringkasan) }));
+        return { ...m, disimpan_aktif: set.maintenance_aktif === "1", sesi_lain: Object.values(per), riwayat };
+      }
+    },
+    "maintenance.set": {
+      auth: true,
+      fn: (c, p) => {
+        if (c.user.role !== "owner") fail("FORBIDDEN", "Hanya superadmin (Owner) yang bisa mengubah mode perbaikan.");
+        const judul = str(p.judul).trim().slice(0, 80), pesan = str(p.pesan).trim().slice(0, 500), kontak = str(p.kontak).trim().slice(0, 60);
+        const selesai = str(p.selesai).trim();
+        if (selesai && !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(selesai)) fail("VALIDATION", "Format perkiraan selesai tidak dikenali.");
+        const aktif = !!p.aktif, autoOff = !!p.auto_off;
+        if (aktif && autoOff && (!selesai || selesai <= lokal(c.env))) fail("VALIDATION", 'Isi perkiraan selesai di masa depan untuk memakai "matikan otomatis".');
+        let dikeluarkan = 0;
+        c.s.withLock(() => {
+          const cur = settingsMap(c.s);
+          const sebelum = maintenanceOf(c.s, c.env).aktif;
+          const v = {
+            maintenance_judul: judul,
+            maintenance_pesan: pesan,
+            maintenance_kontak: kontak,
+            maintenance_selesai: selesai,
+            maintenance_progres: p.progres === false ? "0" : "1",
+            maintenance_manual: p.manual === false ? "0" : "1",
+            maintenance_auto_off: autoOff ? "1" : "0",
+            maintenance_aktif: aktif ? "1" : "0"
+          };
+          if (aktif && !sebelum) {
+            v.maintenance_sejak = iso(c.env);
+            v.maintenance_oleh = str(c.user.nama || c.user.username);
+          }
+          Object.entries(v).forEach(([k, val]) => {
+            if (k in cur) {
+              if (cur[k] !== val) c.s.update("settings", "key", k, { value: val });
+            } else c.s.insert("settings", { key: k, value: val });
+          });
+          if (aktif) {
+            const owners = new Set(c.s.all("users").filter((u) => u.role === "owner").map((u) => str(u.id)));
+            c.s.all("sessions").filter((x) => !owners.has(str(x.user_id))).forEach((x) => {
+              c.s.remove("sessions", "token_hash", str(x.token_hash));
+              dikeluarkan++;
+            });
+          }
+          if (aktif && !sebelum) log(c, "maintenance_on", "settings", "", `Mode perbaikan diaktifkan${selesai ? ` \xB7 perkiraan selesai ${selesai.replace("T", " ")}` : ""}${dikeluarkan ? ` \xB7 ${dikeluarkan} sesi dikeluarkan` : ""}`);
+          else if (!aktif && sebelum) log(c, "maintenance_off", "settings", "", "Mode perbaikan dimatikan");
+          else log(c, "maintenance_ubah", "settings", "", `Pengaturan mode perbaikan diubah (${aktif ? "aktif" : "tidak aktif"})`);
+        });
+        return { ...maintenanceOf(c.s, c.env), dikeluarkan };
+      }
+    },
     "settings.save": {
       auth: true,
       fn: (c, p) => {
@@ -4847,7 +4944,7 @@ var FortunerServer = (() => {
         c.s.withLock(() => {
           const cur = settingsMap(c.s);
           Object.keys(s).forEach((k) => {
-            if (!/^[a-z0-9_]{2,40}$/.test(k)) return;
+            if (!/^[a-z0-9_]{2,40}$/.test(k) || k.startsWith("maintenance_")) return;
             const v = str(s[k]);
             if (k in cur) {
               if (cur[k] !== v) c.s.update("settings", "key", k, { value: v });
@@ -4886,7 +4983,10 @@ var FortunerServer = (() => {
       const h = handlers[req.action];
       if (!h) fail("NOT_FOUND", `Aksi "${req.action}" tidak dikenal.`);
       const c = { s, env, req };
-      if (h.auth) authenticate(c);
+      if (h.auth) {
+        authenticate(c);
+        if (c.user.role !== "owner" && !MAINT_BEBAS.has(req.action) && maintenanceOf(s, env).aktif) fail("MAINTENANCE", MAINT_MSG);
+      }
       return { ok: true, data: h.fn(c, req.payload || {}), version: API_VERSION };
     } catch (e) {
       if (e instanceof ApiError) return { ok: false, error: { code: e.code, message: e.message }, version: API_VERSION };

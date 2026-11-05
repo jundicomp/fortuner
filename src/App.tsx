@@ -13,6 +13,7 @@ import { DevicesPage } from '@/pages/settings/DevicesPage';
 import { GeneralPage } from '@/pages/settings/GeneralPage';
 import { NotaPage } from '@/pages/settings/NotaPage';
 import { LogPage } from '@/pages/settings/LogPage';
+import { MaintenancePage } from '@/pages/settings/MaintenancePage';
 import { KasirPage } from '@/pages/kasir/KasirPage';
 import { FoPage } from '@/pages/fo/FoPage';
 import { OrderPage } from '@/pages/order/OrderPage';
@@ -75,13 +76,14 @@ const PAGES: Record<string, () => ReactElement | null> = {
   '/pengaturan/umum': GeneralPage,
   '/pengaturan/nota': NotaPage,
   '/pengaturan/log': LogPage,
+  '/pengaturan/perbaikan': MaintenancePage,
   '/pengaturan/printer': PrinterPage,
   '/pengaturan/tentang': AboutPage,
 };
 
-function Guard({ perm, children }: { perm: string; children: ReactElement }) {
-  const { can } = useAuth();
-  return can(perm) ? children : <Forbidden />;
+function Guard({ perm, owner, children }: { perm: string; owner?: boolean; children: ReactElement }) {
+  const { can, user } = useAuth();
+  return can(perm) && (!owner || user?.role === 'owner') ? children : <Forbidden />;
 }
 
 export default function App() {
@@ -99,7 +101,7 @@ export default function App() {
           <Route element={<AppLayout />}>
             {ALL_ITEMS.filter((i) => !i.desktop || isDesktop()).map((i) => {
               const Page = PAGES[i.path];
-              return <Route key={i.path} path={i.path} element={<Guard perm={i.perm}>{Page ? <Page /> : <Placeholder item={i} />}</Guard>} />;
+              return <Route key={i.path} path={i.path} element={<Guard perm={i.perm} owner={i.owner}>{Page ? <Page /> : <Placeholder item={i} />}</Guard>} />;
             })}
             <Route path="*" element={<Navigate to="/" replace />} />
           </Route>

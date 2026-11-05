@@ -6,10 +6,31 @@ import { Logo } from '@/layout/Sidebar';
 import { getDeviceId } from '@/platform/device';
 import { DesktopLoginPanel } from '@/pages/desktop/DesktopLoginPanel';
 import { isDesktop } from '@/platform/desktop';
+import { useMaintenance } from '@/lib/maintenance';
+import { MaintenanceScreen, SuperadminLogin } from '@/components/MaintenanceScreen';
 
 const DEMO = [['owner', 'Owner'], ['admin', 'Admin'], ['cs', 'Front Office · Riska'], ['kasir', 'Kasir 1 · Tina'], ['kasir2', 'Kasir 2 · Rudi'], ['operator', 'Operator'], ['keuangan', 'Keuangan']];
 
 export function LoginPage() {
+  const mt = useMaintenance();
+  if (mt.isPending) return null; // jangan sempat menampilkan form login biasa saat perbaikan
+  if (mt.data?.aktif) return <MaintLogin />;
+  return <NormalLogin />;
+}
+
+/** Saat mode perbaikan aktif: layar perbaikan untuk semua orang, login hanya lewat tombol superadmin. */
+function MaintLogin() {
+  const { login } = useAuth();
+  const mt = useMaintenance();
+  const [sa, setSa] = useState(false);
+  if (!mt.data) return null;
+  return <>
+    <MaintenanceScreen m={mt.data} onSuperadmin={() => setSa(true)} />
+    {sa && <SuperadminLogin onLogin={login} onClose={() => setSa(false)} />}
+  </>;
+}
+
+function NormalLogin() {
   const { login, notice } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');

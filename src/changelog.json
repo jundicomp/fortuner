@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.3.9",
+    "tanggal": "2026-11-02",
+    "catatan": [
+      "Menu baru Pengaturan → Mode Perbaikan (hanya Owner/superadmin): kunci aplikasi sementara untuk setup atau migrasi ke Google.",
+      "Saat aktif, halaman login berganti layar perbaikan beranimasi (printer mencetak, roda gigi berputar, progres & sisa waktu, kontak admin). Hanya Owner yang bisa masuk lewat tombol \"Masuk sebagai superadmin\".",
+      "Dikunci di server: login selain Owner ditolak, sesi pengguna lain langsung dikeluarkan, semua permintaan mereka ditolak. Antrian offline kasir tetap tersimpan sampai perbaikan selesai.",
+      "Bisa diisi judul, pesan, perkiraan selesai, kontak, dan opsi mati otomatis. Ada pratinjau, daftar pengguna yang sedang login, dan riwayat aktif/mati."
+    ]
+  },
+  {
     "version": "1.3.8",
     "tanggal": "2026-10-31",
     "catatan": [

@@ -94,6 +94,10 @@ export async function api<T = unknown>(action: string, payload?: unknown): Promi
   }
   if (!res.ok) {
     const e = res.error || { code: 'UNKNOWN', message: 'Terjadi kesalahan.' };
+    if (e.code === 'MAINTENANCE') {
+      try { window.dispatchEvent(new CustomEvent('fortuner:maintenance')); } catch { /* abaikan */ }
+      if (action !== 'auth.login') { tokenStore.set(''); onAuthLost?.(); }
+    }
     if (e.code === 'AUTH_REQUIRED' || ((e.code === 'DEVICE_NOT_ALLOWED' || e.code === 'ROLE_NOT_ALLOWED') && action !== 'auth.login')) { tokenStore.set(''); onAuthLost?.(); }
     throw new ApiError(e.code, e.message);
   }

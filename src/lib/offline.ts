@@ -92,7 +92,7 @@ export const sync = {
       } catch (e) {
         const err = e as ApiError;
         if (err.code === 'NETWORK' || err.code?.startsWith('HTTP_5')) { set({ online: false }); break; }
-        if (err.code === 'AUTH_REQUIRED') break; // login ulang dulu; antrian tetap aman
+        if (err.code === 'AUTH_REQUIRED' || err.code === 'MAINTENANCE') break; // login ulang / tunggu perbaikan selesai; antrian tetap aman
         set({ outbox: state.outbox.map((o) => (o.id === op.id ? { ...o, status: 'failed', error: err.message, tries: o.tries + 1 } : o)) });
       }
     }
