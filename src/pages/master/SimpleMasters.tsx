@@ -32,8 +32,8 @@ export function CustomersPage() {
             cell: (c) => c.row.original.tipe === 'reseller' ? <span className="pill pill-brand">01 · Percetakan</span> : <span className="pill pill-mute">02 · End user</span>,
           },
           { accessorKey: 'percetakan', header: 'Nama percetakan', cell: (c) => c.getValue() || <span className="text-muted">–</span> },
-          { accessorKey: 'telp', header: 'Telepon' },
-          { accessorKey: 'alamat', header: 'Alamat', meta: { hideOnCard: true } },
+          { accessorKey: 'telp', header: 'Telepon', cell: (c) => c.getValue() || <span className="text-muted">–</span> },
+          { accessorKey: 'alamat', header: 'Alamat', meta: { hideOnCard: true }, cell: (c) => c.getValue() || <span className="text-muted">–</span> },
         ]}
         fields={[
           { key: 'kode', label: 'Kode', type: 'info', render: (r) => r.kode ? <span className="font-mono">{String(r.kode)}</span> : 'Dibuat otomatis oleh sistem' },

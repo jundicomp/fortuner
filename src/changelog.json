@@ -1,5 +1,15 @@
 [
   {
+    "version": "1.3.16",
+    "tanggal": "2026-11-06",
+    "catatan": [
+      "Import Excel konsumen menyesuaikan file master Fortuner: kolom Nama · Percetakan · End User · No telp (Kode, Alamat, Catatan opsional).",
+      "Penentu jenis dari kolom: Percetakan terisi → 01 Percetakan (isinya jadi nama percetakan), End User terisi atau kedua kolom kosong → 02 End user.",
+      "Impor data lama: hanya Nama yang wajib, telepon boleh kosong. Nomor dari Excel dirapikan (spasi dibuang, angka 0 depan dikembalikan).",
+      "Tabel Konsumen: telepon/alamat kosong tampil tanda −, selaras dengan form input."
+    ]
+  },
+  {
     "version": "1.3.15",
     "tanggal": "2026-11-05",
     "catatan": [

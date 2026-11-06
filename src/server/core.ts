@@ -870,10 +870,11 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
         rows.forEach((x, i) => {
           const baris = `Baris ${i + 2 + (Number(p.offset) || 0)}`;
           const kode = str(x.kode).trim();
-          const r: Row = { nama: x.nama, telp: x.telp, tipe: x.tipe, percetakan: x.percetakan, alamat: str(x.alamat).trim(), catatan: str(x.catatan).trim() };
-          if (custTipe(r.tipe) === 'reseller' && !str(r.percetakan).trim()) r.percetakan = str(x.nama); // data lama: nama percetakan = nama konsumen
-          const msg = custRapikan(r);
-          if (msg) { res.dilewati.push(`${baris}${r.nama ? ` (${r.nama})` : ''}: ${msg}`); return; }
+          // impor data lama: telepon boleh kosong (beda dengan input manual yang wajib telepon)
+          const r: Row = { nama: str(x.nama).trim(), telp: str(x.telp).trim(), tipe: custTipe(x.tipe), alamat: str(x.alamat).trim(), catatan: str(x.catatan).trim() };
+          r.kode_jenis = r.tipe === 'reseller' ? '01' : '02';
+          r.percetakan = r.tipe === 'reseller' ? (str(x.percetakan).trim() || r.nama) : ''; // data lama: nama percetakan = nama konsumen
+          if (!r.nama) { res.dilewati.push(`${baris}: nama kosong`); return; }
           if (x.aktif !== undefined && str(x.aktif) !== '') r.aktif = !/^(tidak|no|nonaktif|false|0)$/i.test(str(x.aktif).trim());
           const lama = kode ? all.find((y) => str(y.kode) === kode) : null;
           if (kode && !lama) { res.dilewati.push(`${baris} (${r.nama}): kode ${kode} tidak ditemukan. Kosongkan kode untuk konsumen baru.`); return; }
