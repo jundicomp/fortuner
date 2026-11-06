@@ -1,6 +1,6 @@
 import {
   ScrollText, LayoutDashboard, ShoppingCart, FilePlus2, ClipboardList, Factory, HandCoins, Receipt, Truck, Wallet, Gauge, Package, Users, Store, Cog,
-  CreditCard, BarChart3, Boxes, ShoppingBag, TrendingUp, BookOpen, Percent, UserCog, ShieldCheck, MonitorSmartphone, SlidersHorizontal, History, ArrowLeftRight, Landmark, Database, Settings, Printer, Info, ReceiptText, LineChart, CalendarDays, WalletCards, Ban, Wrench, type LucideIcon,
+  CreditCard, BarChart3, Boxes, ShoppingBag, TrendingUp, BookOpen, Percent, UserCog, ShieldCheck, MonitorSmartphone, SlidersHorizontal, History, ArrowLeftRight, Landmark, Database, Settings, Printer, Info, ReceiptText, LineChart, CalendarDays, WalletCards, Ban, Wrench, Upload, type LucideIcon,
 } from 'lucide-react';
 
 /** `desktop` = hanya muncul di aplikasi desktop (Tauri). */
@@ -15,6 +15,7 @@ export const MENU: MenuGroup[] = [
     icon: ArrowLeftRight,
     items: [
       { path: '/fo', label: 'Front Office', icon: FilePlus2, perm: 'fo', desc: 'Terima desain dan buat order (nota/SPK) dengan harga otomatis dari matriks.' },
+      { path: '/fo/massal', label: 'Input Massal FO', icon: Upload, perm: 'fo', owner: true, desc: 'Unggah Excel berisi banyak nota sekaligus. Khusus owner / superadmin.' },
       { path: '/kasir', label: 'Kasir', icon: ShoppingCart, perm: 'kasir', desc: 'Terima pembayaran berdasarkan nota/SPK dari Front Office.' },
       { path: '/order', label: 'Order', icon: ClipboardList, perm: 'order', desc: 'Daftar nota, pembayaran berkali-kali, status diambil, dan batal dengan alasan.' },
       { path: '/produksi', label: 'Produksi', icon: Factory, perm: 'produksi', desc: 'Antrian per mesin dengan status Antrian → Proses → Selesai.' },

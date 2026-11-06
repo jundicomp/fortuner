@@ -1,5 +1,16 @@
 [
   {
+    "version": "1.3.17",
+    "tanggal": "2026-11-06",
+    "catatan": [
+      "Menu baru Input Massal FO (khusus owner/superadmin): unggah Excel berisi banyak nota sekaligus, 1 baris = 1 produk dikelompokkan per No Nota.",
+      "Alur Unggah → Tinjau & perbaiki → Eksekusi. Tinjau menampilkan infografis penjualan dari file (total nilai, jumlah nota/item, komposisi konsumen, produk terbanyak) dan tabel isi file.",
+      "Konsumen & produk otomatis dicocokkan ke seluruh data master; yang tak dikenal diberi saran untuk dipilih owner. Harga satuan kosong = otomatis dari matriks.",
+      "Tiga pilihan: lanjut nota yang benar saja (daftar baris bermasalah bisa diunduh Excel), perbaiki di tempat (cocokkan per cell lalu eksekusi semua), atau batal.",
+      "Nota lama disimpan dengan tanggal sesuai file, nomor baru otomatis, item ditandai selesai (tidak membanjiri antrian produksi); stok tidak dikurangi."
+    ]
+  },
+  {
     "version": "1.3.16",
     "tanggal": "2026-11-06",
     "catatan": [

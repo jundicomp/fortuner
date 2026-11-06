@@ -405,6 +405,43 @@ function productWithPrice(s: Store, p: Row, today: string, prices?: Row[]) {
   return { ...p, harga, harga_berikutnya: next };
 }
 
+// ---------------- Input Massal FO: pencocokan ke master ----------------
+const normT = (s: unknown) => str(s).toLowerCase().replace(/\s+/g, ' ');
+/** Skor kemiripan sederhana 0–100 untuk saran pencocokan. */
+function skorMirip(q: string, t: string): number {
+  if (!q || !t) return 0;
+  if (q === t) return 100;
+  if (t.startsWith(q) || q.startsWith(t)) return 82;
+  if (t.includes(q) || q.includes(t)) return 64;
+  const a = q.split(' '); const b = new Set(t.split(' '));
+  let hit = 0; a.forEach((w) => { if (w.length > 1 && b.has(w)) hit++; });
+  return hit ? Math.min(58, 28 + hit * 12) : 0;
+}
+/** Cocokkan konsumen: kode persis → nama/percetakan persis → saran mirip (owner yang memilih). */
+function cariKonsumen(cust: Row[], teks: string) {
+  const k = str(teks);
+  if (k) { const byK = cust.find((x) => str(x.kode) === k); if (byK) return { id: str(byK.id), saran: [] as Row[] }; }
+  const q = normT(teks); if (!q) return { id: '', saran: [] as Row[] };
+  const ex = cust.find((x) => normT(x.nama) === q || (str(x.percetakan) && normT(x.percetakan) === q));
+  if (ex) return { id: str(ex.id), saran: [] as Row[] };
+  const saran = cust.map((x) => ({ x, s: Math.max(skorMirip(q, normT(x.nama)), skorMirip(q, normT(x.percetakan))) }))
+    .filter((r) => r.s >= 58).sort((a, b) => b.s - a.s).slice(0, 4)
+    .map((r) => ({ id: str(r.x.id), kode: str(r.x.kode), nama: str(r.x.nama), percetakan: str(r.x.percetakan), tipe: str(r.x.tipe) === 'reseller' ? 'reseller' : 'enduser' }));
+  return { id: '', saran };
+}
+/** Cocokkan produk: kode persis → nama persis → saran mirip. */
+function cariProduk(prods: Row[], teks: string) {
+  const k = str(teks);
+  if (k) { const byK = prods.find((x) => str(x.kode) === k); if (byK) return { id: str(byK.id), saran: [] as Row[] }; }
+  const q = normT(teks); if (!q) return { id: '', saran: [] as Row[] };
+  const ex = prods.find((x) => normT(x.nama) === q);
+  if (ex) return { id: str(ex.id), saran: [] as Row[] };
+  const saran = prods.map((x) => ({ x, s: skorMirip(q, normT(x.nama)) }))
+    .filter((r) => r.s >= 58).sort((a, b) => b.s - a.s).slice(0, 4)
+    .map((r) => ({ id: str(r.x.id), kode: str(r.x.kode), nama: str(r.x.nama), jenis_harga: str(r.x.jenis_harga) }));
+  return { id: '', saran };
+}
+
 function tiersFrom(p: any): Row {
   const o: Row = {};
   TIERS.forEach((t) => (o[t.key] = numOrNull(p[t.key])));
@@ -1060,6 +1097,187 @@ const handlers: Record<string, { auth: boolean; fn: Handler }> = {
     fn: (c, p) => {
       need(c, 'fo', 'tambah');
       return c.s.withLock(() => createOrder(c, p));
+    },
+  },
+
+  // ----- Input Massal FO (impor banyak nota sekaligus; khusus owner/superadmin) -----
+  /** Tinjau: cocokkan tiap baris ke master, hitung harga, kumpulkan masalah + ringkasan. Tidak menyimpan apa pun. */
+  'fo.bulkPreview': {
+    auth: true,
+    fn: (c, p) => {
+      if (!isTop(c.user!.role)) fail('FORBIDDEN', 'Khusus owner / superadmin.');
+      const rows: any[] = Array.isArray(p.rows) ? p.rows : [];
+      if (!rows.length) fail('VALIDATION', 'File tidak berisi baris.');
+      if (rows.length > 4000) fail('VALIDATION', 'Maksimal 4.000 baris sekali impor.');
+      const today = c.env.today();
+      const cust = c.s.all('customers');
+      const prods = c.s.all('products');
+      const prodById = Object.fromEntries(prods.map((x) => [str(x.id), x]));
+      const prices = c.s.all('price_history');
+      const st = settingsMap(c.s);
+      const minQty = Number(st.min_qty_banyak || 26);
+
+      // kelompokkan per No Nota (urut kemunculan); baris tanpa No Nota = nota sendiri
+      const urut: string[] = [];
+      const grup: Record<string, any[]> = {};
+      rows.forEach((r, i) => {
+        const key = str(r.no_nota) || `__b${i}`;
+        if (!grup[key]) { grup[key] = []; urut.push(key); }
+        grup[key].push({ ...r, _baris: Number(r.baris) || (i + 2) });
+      });
+
+      let siap = 0; let cocokItem = 0; let totalItem = 0; let totalNilai = 0;
+      const konsumen = { reseller_nota: 0, enduser_nota: 0, reseller_nilai: 0, enduser_nilai: 0 };
+      const prodQty: Record<string, number> = {};
+      let pmin = ''; let pmax = '';
+
+      const notas = urut.map((key) => {
+        const g = grup[key];
+        const head = g[0];
+        const tglRaw = str(head.tanggal);
+        const tgl = isYmd(tglRaw) ? tglRaw : (tglRaw ? '' : today);
+        const km = cariKonsumen(cust, str(head.konsumen));
+        const custRow = km.id ? cust.find((x) => str(x.id) === km.id) : null;
+        const tipe: 'reseller' | 'enduser' = custRow && str(custRow.tipe) === 'reseller' ? 'reseller' : 'enduser';
+        const issues: any[] = [];
+        if (!km.id) issues.push({ baris: head._baris, cell: 'Konsumen', nilai: str(head.konsumen), sebab: 'tidak ada di master konsumen', saran: km.saran });
+        if (tglRaw && !isYmd(tglRaw)) issues.push({ baris: head._baris, cell: 'Tanggal', nilai: tglRaw, sebab: 'format tanggal salah (pakai 2026-10-15)' });
+        else if (tgl && tgl > today) issues.push({ baris: head._baris, cell: 'Tanggal', nilai: tgl, sebab: 'tanggal melebihi hari ini' });
+
+        const items = g.map((r) => {
+          totalItem++;
+          const pm = cariProduk(prods, str(r.produk));
+          const prod = pm.id ? prodById[pm.id] : null;
+          const qty = Math.round(Number(r.jumlah));
+          const it: any = { baris: r._baris, produk_raw: str(r.produk), product_id: pm.id, nama: prod ? str(prod.nama) : '', qty: qty || 0, keterangan: str(r.keterangan), saran_produk: pm.saran };
+          if (!prod) { it.issue = 'produk'; issues.push({ baris: r._baris, cell: 'Produk', nilai: str(r.produk), sebab: 'tidak ada di master produk', saran: pm.saran }); return it; }
+          cocokItem++;
+          if (!(qty >= 1)) { it.issue = 'jumlah'; issues.push({ baris: r._baris, cell: 'Jumlah', nilai: str(r.jumlah), sebab: 'jumlah tidak valid' }); }
+          const jenis = str(prod.jenis_harga);
+          const hargaDiisi = str(r.harga) !== '';
+          let harga: number | null = null; let manual = false; let auto = false;
+          if (jenis === 'manual' || hargaDiisi) {
+            const v = Math.round(Number(r.harga));
+            if (!(v >= 0)) { it.issue = it.issue || 'harga'; issues.push({ baris: r._baris, cell: 'Harga satuan', nilai: str(r.harga), sebab: jenis === 'manual' ? 'produk harga manual — wajib isi harga' : 'harga tidak valid' }); }
+            else { harga = v; manual = true; }
+          } else {
+            const prow = hargaBerlaku(prices.filter((x) => x.product_id === prod.id) as any, tgl || today) as any;
+            const sisi = jenis === 'matriks' && Number(prod.sisi) === 2 ? 2 : 1;
+            const calc = hitungHarga({ jenis: jenis as any, harga: prow, tipe, qty: qty || 1, sisi: sisi as 1 | 2, ukuran: 0, minQtyBanyak: minQty });
+            if (calc.harga == null) { it.issue = it.issue || 'harga'; issues.push({ baris: r._baris, cell: 'Harga satuan', nilai: '', sebab: `${str(prod.nama)} belum punya harga berlaku — isi harga manual` }); }
+            else { harga = calc.harga; auto = true; }
+          }
+          it.harga = harga; it.manual = manual; it.auto = auto;
+          it.subtotal = harga != null && qty >= 1 ? harga * qty : 0;
+          return it;
+        });
+
+        const ok = issues.length === 0;
+        const nilai = items.reduce((a, i) => a + (i.subtotal || 0), 0);
+        if (ok) {
+          siap++; totalNilai += nilai;
+          konsumen[tipe === 'reseller' ? 'reseller_nota' : 'enduser_nota']++;
+          konsumen[tipe === 'reseller' ? 'reseller_nilai' : 'enduser_nilai'] += nilai;
+          items.forEach((i) => { if (i.nama) prodQty[i.nama] = (prodQty[i.nama] || 0) + (i.qty || 0); });
+          if (tgl) { if (!pmin || tgl < pmin) pmin = tgl; if (!pmax || tgl > pmax) pmax = tgl; }
+        }
+        return {
+          ref: key, no_nota: str(head.no_nota), tanggal: tgl, baris: head._baris,
+          konsumen_raw: str(head.konsumen), customer_id: km.id, customer_nama: custRow ? str(custRow.nama) : '', tipe, saran_konsumen: km.saran,
+          desain: str(head.desain), janji_selesai: str(head.janji), catatan: str(head.catatan),
+          items, issues, ok, nilai,
+        };
+      });
+
+      const top = Object.entries(prodQty).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([nama, qty]) => ({ nama, qty }));
+      return {
+        notas,
+        stats: { total_nilai: totalNilai, nota: notas.length, item: totalItem, periode: { from: pmin, to: pmax }, konsumen, top_produk: top },
+        ringkas: { siap, bermasalah: notas.length - siap, cocok_item: cocokItem, total_item: totalItem },
+      };
+    },
+  },
+  /** Eksekusi: simpan nota yang sudah dicocokkan (customer_id & product_id final dari UI). Tanggal lampau diizinkan (owner). */
+  'fo.bulkCommit': {
+    auth: true,
+    fn: (c, p) => {
+      if (!isTop(c.user!.role)) fail('FORBIDDEN', 'Khusus owner / superadmin.');
+      const notas: any[] = Array.isArray(p.notas) ? p.notas : [];
+      if (!notas.length) fail('VALIDATION', 'Tidak ada nota untuk disimpan.');
+      if (notas.length > 2000) fail('VALIDATION', 'Maksimal 2.000 nota sekali eksekusi.');
+      const today = c.env.today();
+      const st = settingsMap(c.s);
+      const prefix = st.prefix_nota || 'FT';
+      const kode = (st.kode_pc_web || 'W').toUpperCase();
+      const prodById = Object.fromEntries(c.s.all('products').map((x) => [str(x.id), x]));
+      const custById = Object.fromEntries(c.s.all('customers').map((x) => [str(x.id), x]));
+      const prices = c.s.all('price_history');
+      const costs = c.s.all('cost_history');
+      const minQty = Number(st.min_qty_banyak || 26);
+
+      const hasil = c.s.withLock(() => {
+        const used = new Set(c.s.all('orders').map((o) => str(o.nomor)));
+        const ctr: Record<string, number> = {};
+        c.s.all('counters').forEach((r) => { ctr[str(r.key)] = Number(r.value) || 0; });
+        let dibuat = 0; const gagal: any[] = []; const nomorBaru: string[] = [];
+        const now = iso(c.env);
+
+        notas.forEach((n) => {
+          try {
+            const tgl = isYmd(str(n.tanggal)) ? str(n.tanggal) : today;
+            if (tgl > today) throw new Error('tanggal melebihi hari ini');
+            const cust = custById[str(n.customer_id)]; if (!cust) throw new Error('konsumen belum dicocokkan');
+            const tipe = str(cust.tipe) === 'reseller' ? 'reseller' : 'enduser';
+            const rawItems: any[] = Array.isArray(n.items) ? n.items : [];
+            if (!rawItems.length) throw new Error('tidak ada item');
+            if (rawItems.length > 60) throw new Error('maksimal 60 item per nota');
+            const id = newId(c.env, 'ord');
+            const items = rawItems.map((r, ii) => {
+              const prod = prodById[str(r.product_id)]; if (!prod) throw new Error(`item ${ii + 1}: produk belum dicocokkan`);
+              const qty = Math.round(Number(r.qty)); if (!(qty >= 1 && qty <= 1000000)) throw new Error(`item ${ii + 1}: jumlah tidak valid`);
+              const jenis = str(prod.jenis_harga);
+              const sisi = jenis === 'matriks' && Number(prod.sisi) === 2 ? 2 : 1;
+              const prow = hargaBerlaku(prices.filter((x) => x.product_id === prod.id) as any, tgl) as any;
+              const calc = hitungHarga({ jenis: jenis as any, harga: prow, tipe, qty, sisi: sisi as 1 | 2, ukuran: 0, minQtyBanyak: minQty });
+              let harga = calc.harga; let manual = false;
+              const cv = Math.round(Number(r.harga_satuan));
+              if (jenis === 'manual' || bool(r.harga_manual)) { if (!(cv >= 0)) throw new Error(`item ${ii + 1}: isi harga`); harga = cv; manual = true; }
+              else if (str(r.harga_satuan) !== '' && cv >= 0 && cv !== calc.harga) { harga = cv; } // hormati harga yang diisi/diubah owner
+              if (harga == null) throw new Error(`item ${ii + 1}: ${str(prod.nama)} belum punya harga`);
+              const cost = costs.filter((x) => x.product_id === prod.id && str(x.berlaku_mulai) <= tgl).sort((a, b) => str(b.berlaku_mulai).localeCompare(str(a.berlaku_mulai)))[0];
+              return {
+                id: `${id}-i${ii + 1}`, order_id: id, product_id: prod.id, nama_produk: str(prod.nama), keterangan: str(r.keterangan).slice(0, 200), qty, sisi, ukuran_cutting: 0,
+                klik: jenis === 'matriks' ? qty * sisi : qty, tier: manual ? 'manual' : str(calc.tier), harga_satuan: harga, harga_beli: cost ? Number(cost.harga_beli) : null,
+                harga_manual: manual, subtotal: (harga as number) * qty, mesin_id: str(prod.mesin_id), status_produksi: 'selesai', operator_id: '', selesai_at: now,
+              };
+            });
+            const total = items.reduce((a, i) => a + i.subtotal, 0);
+            const key = counterKey(kode, tgl);
+            let no = ctr[key] || 0; let nomor = '';
+            do { no++; nomor = formatNota(prefix, kode, tgl, no); } while (used.has(nomor));
+            ctr[key] = no; used.add(nomor);
+            const ref = str(n.ref || n.no_nota);
+            const catatan = [str(n.catatan).slice(0, 250), ref ? `impor massal · ref ${ref}` : 'impor massal'].filter(Boolean).join(' · ').slice(0, 300);
+            c.s.insert('orders', {
+              id, nomor, tanggal: tgl, kode_pc: kode, no_urut: no, customer_id: str(cust.id), cs_id: str(c.user!.id), total, terbayar: 0, sisa: total,
+              status_bayar: statusBayar(total, 0), status_ambil: 'belum', tgl_ambil: '', batal: false, alasan_batal: '', dibuat_offline: false,
+              catatan, desain: str(n.desain).slice(0, 200), janji_selesai: str(n.janji_selesai).slice(0, 20), impor_massal: true,
+              created_at: now, created_by: str(c.user!.id), updated_at: now, updated_by: str(c.user!.id),
+            });
+            items.forEach((i) => c.s.insert('order_items', { ...i, created_at: now, created_by: str(c.user!.id), updated_at: now, updated_by: str(c.user!.id) }));
+            dibuat++; nomorBaru.push(nomor);
+          } catch (e) { gagal.push({ ref: str(n.ref || n.no_nota), pesan: (e as Error).message }); }
+        });
+        // simpan counter final per bulan
+        Object.entries(ctr).forEach(([key, val]) => {
+          const row = c.s.all('counters').find((r) => str(r.key) === key);
+          if (!row) c.s.insert('counters', { key, value: val });
+          else if (Number(row.value) < val) c.s.update('counters', 'key', key, { value: val });
+        });
+        return { dibuat, gagal, nomor: nomorBaru };
+      });
+      log(c, 'import', 'orders', '', `Impor massal FO: ${hasil.dibuat} nota dibuat${hasil.gagal.length ? `, ${hasil.gagal.length} gagal` : ''}`);
+      return hasil;
     },
   },
   'orders.list': {

@@ -16,6 +16,7 @@ import { LogPage } from '@/pages/settings/LogPage';
 import { MaintenancePage } from '@/pages/settings/MaintenancePage';
 import { KasirPage } from '@/pages/kasir/KasirPage';
 import { FoPage } from '@/pages/fo/FoPage';
+import { InputMassalPage } from '@/pages/fo/InputMassalPage';
 import { OrderPage } from '@/pages/order/OrderPage';
 import { PiutangPage } from '@/pages/piutang/PiutangPage';
 import { ProduksiPage } from '@/pages/produksi/ProduksiPage';
@@ -46,6 +47,7 @@ import type { ReactElement } from 'react';
 const PAGES: Record<string, () => ReactElement | null> = {
   '/': Dashboard,
   '/fo': FoPage,
+  '/fo/massal': InputMassalPage,
   '/kasir': KasirPage,
   '/order': OrderPage,
   '/piutang': PiutangPage,
